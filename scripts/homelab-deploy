@@ -1,143 +1,196 @@
-#!/usr/bin/env python3
-from __future__ import annotations
+#!/bin/bash
+set -euo pipefail
 
-import argparse
-import os
-import subprocess
-import sys
-from pathlib import Path
+BASE_DIR="${HOMELAB_CONFIG_DIR:-/volume1/docker/homelab-config}"
+DEPLOY_BASE_DIR=""
+MODE=""
+SERVICE=""
+DRY_RUN="false"
 
-DEFAULT_BASE_DIR = Path(os.environ.get("HOMELAB_CONFIG_DIR", "/volume1/docker/homelab-config"))
+usage() {
+  cat <<'EOF'
+Usage:
+  homelab-deploy --list
+  homelab-deploy --all [--dry-run]
+  homelab-deploy --changed [--dry-run] [--base-dir DIR] [--deploy-base-dir DIR]
+  homelab-deploy <service> [--dry-run] [--deploy-base-dir DIR]
+EOF
+}
 
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --list)
+      MODE="list"
+      shift
+      ;;
+    --all)
+      MODE="all"
+      shift
+      ;;
+    --changed)
+      MODE="changed"
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    --base-dir)
+      BASE_DIR="${2:?--base-dir requires a value}"
+      shift 2
+      ;;
+    --deploy-base-dir)
+      DEPLOY_BASE_DIR="${2:?--deploy-base-dir requires a value}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      SERVICE="$1"
+      MODE="${MODE:-service}"
+      shift
+      ;;
+  esac
+done
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Deploy homelab Compose services.")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("service", nargs="?", help="Service name from services.yaml.")
-    group.add_argument("--list", action="store_true", help="List enabled services.")
-    group.add_argument("--all", action="store_true", help="Deploy all enabled services.")
-    group.add_argument("--changed", action="store_true", help="Deploy enabled services changed by git diff.")
-    parser.add_argument("--dry-run", action="store_true", help="Print actions without running docker-compose.")
-    parser.add_argument("--base-dir", default=str(DEFAULT_BASE_DIR), help="Config repo path used for services.yaml and git diff.")
-    parser.add_argument("--deploy-base-dir", help="Runtime path used for docker-compose. Defaults to --base-dir.")
-    args = parser.parse_args()
+if [[ -z "${MODE}" ]]; then
+  usage >&2
+  exit 2
+fi
 
-    base_dir = Path(args.base_dir)
-    deploy_base_dir = Path(args.deploy_base_dir or args.base_dir)
+DEPLOY_BASE_DIR="${DEPLOY_BASE_DIR:-${BASE_DIR}}"
+SERVICES_FILE="${BASE_DIR}/services.yaml"
 
-    services = load_services(base_dir)
-    if args.list:
-        for name in sorted(enabled_services(services)):
-            print(name)
-        return 0
+if [[ ! -f "${SERVICES_FILE}" ]]; then
+  echo "Missing ${SERVICES_FILE}" >&2
+  exit 2
+fi
 
-    if args.all:
-        targets = sorted(enabled_services(services))
-    elif args.changed:
-        targets = changed_services(services, base_dir)
-    else:
-        targets = [args.service]
-
-    if not targets:
-        print("No enabled services to deploy.")
-        return 0
-
-    for service in targets:
-        deploy_service(service, services, deploy_base_dir, dry_run=args.dry_run)
-    return 0
-
-
-def load_services(base_dir: Path) -> dict:
-    services_file = base_dir / "services.yaml"
-    if not services_file.exists():
-        raise SystemExit(f"Missing {services_file}")
-    services: dict[str, dict] = {}
-    current: str | None = None
-    in_services = False
-    for raw_line in services_file.read_text().splitlines():
-        line = raw_line.split("#", 1)[0].rstrip()
-        if not line:
-            continue
-        if line == "services:":
-            in_services = True
-            continue
-        if not in_services:
-            continue
-        if line.startswith("  ") and not line.startswith("    ") and line.strip().endswith(":"):
-            current = line.strip()[:-1]
-            services[current] = {}
-            continue
-        if current and line.startswith("    ") and ":" in line:
-            key, value = line.strip().split(":", 1)
-            services[current][key] = parse_value(value.strip())
-    if not services:
-        raise SystemExit("services.yaml must contain services")
-    return services
-
-
-def parse_value(value: str):
-    if value.lower() == "true":
-        return True
-    if value.lower() == "false":
-        return False
-    return value.strip("\"'")
-
-
-def enabled_services(services: dict) -> dict[str, dict]:
-    return {
-        name: config
-        for name, config in services.items()
-        if isinstance(config, dict) and config.get("enabled", True)
+service_entries() {
+  awk '
+    function emit() {
+      if (name != "" && enabled != "false") {
+        print name "|" path
+      }
     }
+    /^services:[[:space:]]*$/ {
+      in_services=1
+      next
+    }
+    in_services && /^[[:space:]]{2}[^[:space:]].*:[[:space:]]*$/ {
+      emit()
+      name=$1
+      sub(/:$/, "", name)
+      path=""
+      enabled="true"
+      next
+    }
+    in_services && /^[[:space:]]{4}path:/ {
+      path=$2
+      next
+    }
+    in_services && /^[[:space:]]{4}enabled:/ {
+      enabled=$2
+      next
+    }
+    END {
+      emit()
+    }
+  ' "${SERVICES_FILE}"
+}
 
+service_path() {
+  local service="$1"
+  service_entries | awk -F'|' -v service="${service}" '$1 == service { print $2 }'
+}
 
-def changed_services(services: dict, base_dir: Path) -> list[str]:
-    changed = git_changed_files(base_dir)
-    targets: list[str] = []
-    for name, config in enabled_services(services).items():
-        path = str(config["path"]).strip("/")
-        if any(file == "services.yaml" or file.startswith(f"{path}/") for file in changed):
-            targets.append(name)
-    return sorted(set(targets))
+enabled_service_names() {
+  service_entries | awk -F'|' '{ print $1 }' | sort
+}
 
+changed_files() {
+  local before="${BEFORE_SHA:-}"
+  local after="${AFTER_SHA:-HEAD}"
+  if [[ -n "${before}" && "${before}" != "0000000000000000000000000000000000000000" ]]; then
+    git -C "${BASE_DIR}" diff --name-only "${before}" "${after}" 2>/dev/null && return 0
+  fi
+  git -C "${BASE_DIR}" diff --name-only HEAD~1 "${after}" 2>/dev/null && return 0
+  git -C "${BASE_DIR}" show --name-only --format= "${after}"
+}
 
-def git_changed_files(base_dir: Path) -> list[str]:
-    before = os.environ.get("BEFORE_SHA")
-    after = os.environ.get("AFTER_SHA", "HEAD")
-    if before and before != "0000000000000000000000000000000000000000":
-        command = ["git", "diff", "--name-only", before, after]
-    else:
-        command = ["git", "diff", "--name-only", "HEAD~1", after]
-    result = subprocess.run(command, cwd=base_dir, text=True, capture_output=True)
-    if result.returncode != 0:
-        result = subprocess.run(["git", "show", "--name-only", "--format=", after], cwd=base_dir, text=True, capture_output=True)
-    if result.returncode != 0:
-        raise SystemExit(result.stderr.strip() or "Unable to determine changed files")
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+changed_services() {
+  local files
+  files="$(changed_files)"
+  while IFS='|' read -r service path; do
+    [[ -n "${service}" ]] || continue
+    if echo "${files}" | grep -qx "services.yaml" || echo "${files}" | grep -q "^${path}/"; then
+      echo "${service}"
+    fi
+  done < <(service_entries)
+}
 
+deploy_service() {
+  local service="$1"
+  local path
+  local service_dir
 
-def deploy_service(service: str, services: dict, deploy_base_dir: Path, dry_run: bool) -> None:
-    enabled = enabled_services(services)
-    if service not in enabled:
-        raise SystemExit(f"Unsupported or disabled service: {service}")
+  path="$(service_path "${service}")"
+  if [[ -z "${path}" ]]; then
+    echo "Unsupported or disabled service: ${service}" >&2
+    exit 2
+  fi
 
-    service_dir = deploy_base_dir / str(enabled[service]["path"])
-    compose_file = service_dir / "docker-compose.yml"
-    if not compose_file.exists():
-        raise SystemExit(f"Missing compose file: {compose_file}")
+  service_dir="${DEPLOY_BASE_DIR}/${path}"
+  if [[ ! -f "${service_dir}/docker-compose.yml" ]]; then
+    echo "Missing compose file: ${service_dir}/docker-compose.yml" >&2
+    exit 2
+  fi
 
-    print(f"Deploying {service} from {service_dir}")
-    if dry_run:
-        return
+  echo "Deploying ${service} from ${service_dir}"
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    return 0
+  fi
 
-    run(["docker-compose", "pull"], cwd=service_dir)
-    run(["docker-compose", "up", "-d"], cwd=service_dir)
-    run(["docker", "ps", "--filter", f"name={service}"], cwd=service_dir)
+  (
+    cd "${service_dir}"
+    docker-compose pull
+    docker-compose up -d
+    docker ps --filter "name=${service}"
+  )
+}
 
+case "${MODE}" in
+  list)
+    enabled_service_names
+    ;;
+  all)
+    while read -r service; do
+      [[ -n "${service}" ]] && deploy_service "${service}"
+    done < <(enabled_service_names)
+    ;;
+  changed)
+    targets="$(changed_services | sort -u)"
+    if [[ -z "${targets}" ]]; then
+      echo "No enabled services to deploy."
+      exit 0
+    fi
+    while read -r service; do
+      [[ -n "${service}" ]] && deploy_service "${service}"
+    done <<< "${targets}"
+    ;;
+  service)
+    deploy_service "${SERVICE}"
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac
 
-def run(command: list[str], cwd: Path) -> None:
-    subprocess.run(command, cwd=cwd, check=True)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
