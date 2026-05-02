@@ -29,10 +29,12 @@ jobs:
 
       - name: Render service environments
         env:
+          # BEGIN GENERATED SERVICE SECRETS
           HELLO_NAS__HELLO_NAS_MESSAGE: ${{ secrets.HELLO_NAS__HELLO_NAS_MESSAGE }}
           HELLO_NAS__HOST_PORT: ${{ secrets.HELLO_NAS__HOST_PORT }}
+          # END GENERATED SERVICE SECRETS
         run: |
-          ./scripts/render-service-env hello-nas \
+          ./scripts/render-service-env --all \
             --base-dir "${{ github.workspace }}" \
             --deploy-base-dir /volume1/docker/homelab-config
 

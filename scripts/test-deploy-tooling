@@ -6,6 +6,6 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --list
 HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" plant-monitor --dry-run
 HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --all --dry-run
+"${REPO_DIR}/scripts/check-service-secrets" --base-dir "${REPO_DIR}"
 
 echo "Deploy tooling checks passed."
-
