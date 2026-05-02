@@ -15,11 +15,12 @@
 - Added repo-owned `scripts/homelab-deploy`.
 - Added repo-owned `scripts/install-deploy-script`.
 - Added self-hosted runner deploy workflow scaffold.
+- Added Dockerized GitHub runner Compose config.
 
 ## Blocked
 
 - Local GitHub CLI token cannot inspect package metadata because it does not have `read:packages`.
-- Self-hosted GitHub Actions runner is not installed yet.
+- Dockerized self-hosted GitHub Actions runner is not started yet.
 
 ## Next Manual Checks
 

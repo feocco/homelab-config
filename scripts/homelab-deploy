@@ -3,6 +3,7 @@ set -euo pipefail
 
 BASE_DIR="${HOMELAB_CONFIG_DIR:-/volume1/docker/homelab-config}"
 DEPLOY_BASE_DIR=""
+COMPOSE_IMAGE="${COMPOSE_IMAGE:-docker/compose:1.29.2}"
 MODE=""
 SERVICE=""
 DRY_RUN="false"
@@ -160,10 +161,28 @@ deploy_service() {
 
   (
     cd "${service_dir}"
-    docker-compose pull
-    docker-compose up -d
+    compose pull
+    compose up -d
     docker ps --filter "name=${service}"
   )
+}
+
+compose() {
+  if command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+    return
+  fi
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Neither docker-compose nor docker is available." >&2
+    exit 2
+  fi
+
+  docker run --rm \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "${DEPLOY_BASE_DIR}:${DEPLOY_BASE_DIR}" \
+    -w "$PWD" \
+    "${COMPOSE_IMAGE}" "$@"
 }
 
 case "${MODE}" in
@@ -193,4 +212,3 @@ case "${MODE}" in
     exit 2
     ;;
 esac
-

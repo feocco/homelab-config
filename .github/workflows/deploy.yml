@@ -21,11 +21,12 @@ jobs:
 
       - name: Sync checkout to runtime path
         run: |
-          rsync -a --delete \
-            --exclude '.git/' \
-            --exclude '**/.env' \
-            --exclude '**/data/' \
-            homelab-config/ /volume1/docker/homelab-config/
+          cd homelab-config
+          tar \
+            --exclude './.git' \
+            --exclude './*/.env' \
+            --exclude './*/data' \
+            -cf - . | tar -C /volume1/docker/homelab-config -xf -
 
       - name: Deploy changed services
         if: github.event_name == 'push'
@@ -33,14 +34,14 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
           AFTER_SHA: ${{ github.sha }}
         run: |
-          sudo -n /usr/local/bin/homelab-deploy --changed \
+          ./homelab-config/scripts/homelab-deploy --changed \
             --base-dir "${{ github.workspace }}/homelab-config" \
             --deploy-base-dir /volume1/docker/homelab-config
 
       - name: Deploy requested service
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.service != 'all'
-        run: sudo -n /usr/local/bin/homelab-deploy "${{ github.event.inputs.service }}" --deploy-base-dir /volume1/docker/homelab-config
+        run: ./homelab-config/scripts/homelab-deploy "${{ github.event.inputs.service }}" --deploy-base-dir /volume1/docker/homelab-config
 
       - name: Deploy all services
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'all'
-        run: sudo -n /usr/local/bin/homelab-deploy --all --deploy-base-dir /volume1/docker/homelab-config
+        run: ./homelab-config/scripts/homelab-deploy --all --deploy-base-dir /volume1/docker/homelab-config

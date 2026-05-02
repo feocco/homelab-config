@@ -38,6 +38,9 @@ are tightly coupled.
 ```text
 homelab-config/
   services.yaml
+  github-runner/
+    docker-compose.yml
+    .env
   plant-monitor/
     docker-compose.yml
     .env
@@ -76,3 +79,5 @@ cd /volume1/docker/homelab-config
 git pull
 sudo -n /usr/local/bin/homelab-deploy plant-monitor
 ```
+
+Runner setup is documented in `docs/github-runner.md`.
