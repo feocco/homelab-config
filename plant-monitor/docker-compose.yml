@@ -1,0 +1,13 @@
+services:
+  plant-monitor:
+    image: ghcr.io/feocco/plant-monitor:latest
+    container_name: plant-monitor
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./plants.yaml:/app/plants.yaml:ro
+      - ./data:/app/data
+    ports:
+      - "${SERVICE_PORT:-8088}:${SERVICE_PORT:-8088}"
+

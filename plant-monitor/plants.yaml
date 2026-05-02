@@ -1,0 +1,6 @@
+# Replace this file with output from:
+#   plant discover
+#
+# Keep this private. It can contain household-specific entity IDs.
+plants: []
+
