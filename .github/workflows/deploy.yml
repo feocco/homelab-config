@@ -27,19 +27,14 @@ jobs:
             --exclude './*/data' \
             -cf - . | tar -C /volume1/docker/homelab-config -xf -
 
-      - name: Render hello-nas environment
+      - name: Render service environments
         env:
-          HELLO_NAS_MESSAGE: ${{ secrets.HELLO_NAS__HELLO_NAS_MESSAGE }}
+          HELLO_NAS__HELLO_NAS_MESSAGE: ${{ secrets.HELLO_NAS__HELLO_NAS_MESSAGE }}
+          HELLO_NAS__HOST_PORT: ${{ secrets.HELLO_NAS__HOST_PORT }}
         run: |
-          if [ -f "${{ github.workspace }}/hello-nas/.env.example" ]; then
-            service_dir="/volume1/docker/homelab-config/hello-nas"
-            mkdir -p "${service_dir}"
-            {
-              printf 'HELLO_NAS_MESSAGE=%s\n' "${HELLO_NAS_MESSAGE}"
-              printf 'HOST_PORT=8099\n'
-            } > "${service_dir}/.env"
-            chmod 600 "${service_dir}/.env"
-          fi
+          ./scripts/render-service-env hello-nas \
+            --base-dir "${{ github.workspace }}" \
+            --deploy-base-dir /volume1/docker/homelab-config
 
       - name: Deploy changed services
         if: github.event_name == 'push'

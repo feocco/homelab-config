@@ -1,0 +1,149 @@
+#!/bin/bash
+set -euo pipefail
+
+BASE_DIR="${GITHUB_WORKSPACE:-$(pwd)}"
+DEPLOY_BASE_DIR="${HOMELAB_CONFIG_DIR:-/volume1/docker/homelab-config}"
+DRY_RUN="false"
+SERVICE=""
+
+usage() {
+  cat <<'EOF'
+Usage:
+  render-service-env <service> [--base-dir DIR] [--deploy-base-dir DIR] [--dry-run]
+
+Reads <service>/.env.example to find required variable names and renders the NAS
+runtime .env from environment variables named:
+
+  <SERVICE_PREFIX>__<VARIABLE_NAME>
+
+Values are never printed.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base-dir)
+      BASE_DIR="${2:?--base-dir requires a value}"
+      shift 2
+      ;;
+    --deploy-base-dir)
+      DEPLOY_BASE_DIR="${2:?--deploy-base-dir requires a value}"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      SERVICE="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "${SERVICE}" ]]; then
+  usage >&2
+  exit 2
+fi
+
+SERVICES_FILE="${BASE_DIR}/services.yaml"
+if [[ ! -f "${SERVICES_FILE}" ]]; then
+  echo "Missing ${SERVICES_FILE}" >&2
+  exit 2
+fi
+
+service_path() {
+  awk -v service="${SERVICE}" '
+    /^services:[[:space:]]*$/ {
+      in_services=1
+      next
+    }
+    in_services && /^  [^[:space:]].*:[[:space:]]*$/ {
+      name=$1
+      sub(/:$/, "", name)
+      active=(name == service)
+      next
+    }
+    active && /^    path:/ {
+      print $2
+      exit
+    }
+  ' "${SERVICES_FILE}"
+}
+
+service_prefix() {
+  printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | tr -c '[:alnum:]' '_'
+}
+
+example_keys() {
+  local example_file="$1"
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%$'\r'}"
+    [[ -n "${line}" ]] || continue
+    [[ "${line}" != \#* ]] || continue
+    [[ "${line}" == *=* ]] || continue
+    key="${line%%=*}"
+    key="${key#export }"
+    if [[ ! "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      echo "Invalid variable name in ${example_file}: ${key}" >&2
+      exit 2
+    fi
+    printf '%s\n' "${key}"
+  done < "${example_file}"
+}
+
+SERVICE_PATH="$(service_path)"
+if [[ -z "${SERVICE_PATH}" ]]; then
+  echo "Unsupported service: ${SERVICE}" >&2
+  exit 2
+fi
+
+EXAMPLE_FILE="${BASE_DIR}/${SERVICE_PATH}/.env.example"
+SERVICE_DIR="${DEPLOY_BASE_DIR}/${SERVICE_PATH}"
+PREFIX="$(service_prefix "${SERVICE}")"
+
+if [[ ! -f "${EXAMPLE_FILE}" ]]; then
+  echo "Missing ${EXAMPLE_FILE}" >&2
+  exit 2
+fi
+
+if [[ "${DRY_RUN}" == "true" ]]; then
+  while IFS= read -r key; do
+    secret_name="${PREFIX}__${key}"
+    echo "Would render ${key} from ${secret_name}"
+  done < <(example_keys "${EXAMPLE_FILE}")
+  exit 0
+fi
+
+mkdir -p "${SERVICE_DIR}"
+tmp_file="${SERVICE_DIR}/.env.tmp.$$"
+umask 077
+
+cleanup() {
+  rm -f "${tmp_file}"
+}
+trap cleanup EXIT
+
+while IFS= read -r key; do
+  secret_name="${PREFIX}__${key}"
+  if [[ -z "${!secret_name+x}" ]]; then
+    echo "Missing environment variable ${secret_name}" >&2
+    exit 2
+  fi
+  printf '%s=%s\n' "${key}" "${!secret_name}" >> "${tmp_file}"
+done < <(example_keys "${EXAMPLE_FILE}")
+
+chmod 600 "${tmp_file}"
+mv "${tmp_file}" "${SERVICE_DIR}/.env"
+trap - EXIT
+echo "Rendered ${SERVICE}/.env with $(example_keys "${EXAMPLE_FILE}" | wc -l | tr -d ' ') values"
+
