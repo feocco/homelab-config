@@ -1,4 +1,0 @@
-interface:
-  display_name: "Homelab Docker Deploy"
-  short_description: "Deploy Docker services to the NAS homelab"
-  default_prompt: "Use $homelab-docker-deploy to add this Dockerized service to my homelab deploy workflow."

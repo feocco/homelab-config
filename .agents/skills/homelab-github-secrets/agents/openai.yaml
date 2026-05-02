@@ -1,4 +1,0 @@
-interface:
-  display_name: "Homelab GitHub Secrets"
-  short_description: "Manage homelab service secrets via GitHub Actions"
-  default_prompt: "Use $homelab-github-secrets to add or update service secrets for my homelab deploy workflow."
