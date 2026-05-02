@@ -16,12 +16,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          path: homelab-config
 
       - name: Sync checkout to runtime path
         run: |
-          cd homelab-config
           tar \
             --exclude './.git' \
             --exclude './*/.env' \
@@ -34,14 +31,14 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
           AFTER_SHA: ${{ github.sha }}
         run: |
-          ./homelab-config/scripts/homelab-deploy --changed \
-            --base-dir "${{ github.workspace }}/homelab-config" \
+          ./scripts/homelab-deploy --changed \
+            --base-dir "${{ github.workspace }}" \
             --deploy-base-dir /volume1/docker/homelab-config
 
       - name: Deploy requested service
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.service != 'all'
-        run: ./homelab-config/scripts/homelab-deploy "${{ github.event.inputs.service }}" --deploy-base-dir /volume1/docker/homelab-config
+        run: ./scripts/homelab-deploy "${{ github.event.inputs.service }}" --deploy-base-dir /volume1/docker/homelab-config
 
       - name: Deploy all services
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'all'
-        run: ./homelab-config/scripts/homelab-deploy --all --deploy-base-dir /volume1/docker/homelab-config
+        run: ./scripts/homelab-deploy --all --deploy-base-dir /volume1/docker/homelab-config
