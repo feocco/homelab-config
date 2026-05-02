@@ -131,7 +131,7 @@ changed_services() {
   files="$(changed_files)"
   while IFS='|' read -r service path; do
     [[ -n "${service}" ]] || continue
-    if echo "${files}" | grep -qx "services.yaml" || echo "${files}" | grep -q "^${path}/"; then
+    if echo "${files}" | grep -qx "services.yaml" || echo "${files}" | grep -qx "service-secrets.yaml" || echo "${files}" | grep -q "^${path}/"; then
       echo "${service}"
     fi
   done < <(service_entries)
