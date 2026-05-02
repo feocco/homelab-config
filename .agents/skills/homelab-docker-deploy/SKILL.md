@@ -33,6 +33,7 @@ Keep application code and runtime configuration separate.
    - Create one service folder per deployable service, for example `my-service/docker-compose.yml`.
    - Use `assets/docker-compose.service.yml` as the baseline.
    - Add `.env.example`; do not add real `.env`.
+   - If the service needs runtime environment values, use `$homelab-github-secrets` to add/update `service-secrets.yaml`, upload ignored local `.env` values to GitHub Actions secrets, regenerate workflow secret mappings, and validate rendering.
    - Add config files only when they belong in the private homelab-config repo.
    - Add `data/.gitkeep` for persistent state directories, not real runtime data.
    - Add the service to `services.yaml`:
@@ -69,6 +70,7 @@ services:
 
 - Do not put service runtime config in the public app repo unless it is intentionally generic.
 - Do not overwrite `.env` or `data/`; the workflow excludes `./*/.env` and `./*/data`.
+- Do not deploy a service that requires environment values until `$homelab-github-secrets` has uploaded those values and `./scripts/check-service-secrets` passes.
 - Do not make one giant Compose file unless services are tightly coupled.
 - For public images, no NAS registry login is needed. For private GHCR images, confirm the NAS has a GHCR login with package read access.
 - Keep deploy scripts portable across macOS, Synology shell, and the Dockerized runner. Avoid fragile shell features in `homelab-config/scripts`.
