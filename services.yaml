@@ -1,4 +1,8 @@
 services:
+  hello-nas:
+    path: hello-nas
+    enabled: true
+
   plant-monitor:
     path: plant-monitor
     enabled: true

@@ -1,0 +1,10 @@
+services:
+  hello-nas:
+    image: ghcr.io/feocco/hello-nas:latest
+    container_name: hello-nas
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${HOST_PORT:-8099}:8080"
+
