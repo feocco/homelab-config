@@ -8,4 +8,4 @@ Runtime-only files stay outside the public app repo:
 - `plants.yaml` contains the reviewed local plant/entity mapping.
 - `data/` contains notification and monitor state.
 
-Changes under this directory trigger the homelab deploy workflow for this service.
+Changes under this directory trigger the homelab deploy workflow for this service when the service is enabled in `services.yaml`.

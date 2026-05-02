@@ -85,7 +85,7 @@ service_entries() {
       in_services=1
       next
     }
-    in_services && /^[[:space:]]{2}[^[:space:]].*:[[:space:]]*$/ {
+    in_services && /^  [^[:space:]].*:[[:space:]]*$/ {
       emit()
       name=$1
       sub(/:$/, "", name)
@@ -93,11 +93,11 @@ service_entries() {
       enabled="true"
       next
     }
-    in_services && /^[[:space:]]{4}path:/ {
+    in_services && /^    path:/ {
       path=$2
       next
     }
-    in_services && /^[[:space:]]{4}enabled:/ {
+    in_services && /^    enabled:/ {
       enabled=$2
       next
     }
