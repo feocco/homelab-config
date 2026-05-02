@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="${REPO_DIR:-/volume1/docker/homelab-config}"
+TARGET="/usr/local/bin/homelab-deploy"
+SUDOERS_FILE="/etc/sudoers.d/homelab-deploy"
+DEPLOY_USER="${DEPLOY_USER:-feocco}"
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Run as root: sudo scripts/install-deploy-script" >&2
+  exit 2
+fi
+
+install -o root -g root -m 0755 "${REPO_DIR}/scripts/homelab-deploy" "${TARGET}"
+
+cat > "${SUDOERS_FILE}" <<EOF
+${DEPLOY_USER} ALL=(root) NOPASSWD: ${TARGET}
+EOF
+
+chown root:root "${SUDOERS_FILE}"
+chmod 0440 "${SUDOERS_FILE}"
+
+echo "Installed ${TARGET}"
+echo "Installed ${SUDOERS_FILE}"
+echo "Test as ${DEPLOY_USER}: sudo -n ${TARGET} --list"
+

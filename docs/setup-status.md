@@ -9,13 +9,17 @@
 - Created private GitHub repo: `feocco/homelab-config`.
 - Added GitHub Actions workflow in `feocco/plant-monitor` to build and push the image to GHCR.
 - Confirmed the first GHCR build completed successfully.
+- Confirmed plant monitor runs on NAS with `docker-compose`.
+- Confirmed passwordless sudo works for `/usr/local/bin/homelab-deploy plant-monitor`.
+- Added `services.yaml` manifest pattern.
+- Added repo-owned `scripts/homelab-deploy`.
+- Added repo-owned `scripts/install-deploy-script`.
+- Added self-hosted runner deploy workflow scaffold.
 
 ## Blocked
 
-- NAS `nasfeo` is not reachable from this Mac right now.
-  - `nc -vz nasfeo 22`: no route to host
-  - `nc -vz nasfeo 5000`: no route to host
 - Local GitHub CLI token cannot inspect package metadata because it does not have `read:packages`.
+- Self-hosted GitHub Actions runner is not installed yet.
 
 ## Next Manual Checks
 
@@ -31,24 +35,28 @@ Expected image:
 ghcr.io/feocco/plant-monitor:latest
 ```
 
-Make sure package visibility is private.
+Make sure package visibility is public for now.
 
 Run these from a terminal that can reach the NAS:
 
 ```bash
-ssh <nas-user>@nasfeo 'docker --version && docker compose version'
+ssh <nas-user>@nasfeo 'docker --version && docker-compose version'
 ```
 
-If that works, confirm GHCR login on the NAS:
+Install/update the deploy script on the NAS:
 
 ```bash
-echo '<github-token-with-read-packages>' | docker login ghcr.io -u feocco --password-stdin
+cd /volume1/docker/homelab-config
+git pull
+sudo scripts/install-deploy-script
+sudo -n /usr/local/bin/homelab-deploy --list
+sudo -n /usr/local/bin/homelab-deploy plant-monitor
 ```
 
 ## Open Decisions
 
 - Registry: use GitHub Container Registry first.
-- Package visibility: private.
+- Package visibility: public for `plant-monitor`.
 - App repo visibility: per-repo choice; public is fine.
 - NAS config repo: private.
-- Deployment method: SSH + `docker compose pull && docker compose up -d`.
+- Deployment method: self-hosted runner on NAS.

@@ -1,0 +1,5 @@
+services:
+  plant-monitor:
+    path: plant-monitor
+    enabled: true
+

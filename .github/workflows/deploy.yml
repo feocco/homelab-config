@@ -1,0 +1,46 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Service to deploy, or "all"
+        required: true
+        default: plant-monitor
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, nasfeo]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: homelab-config
+
+      - name: Sync checkout to runtime path
+        run: |
+          rsync -a --delete \
+            --exclude '.git/' \
+            --exclude '**/.env' \
+            --exclude '**/data/' \
+            homelab-config/ /volume1/docker/homelab-config/
+
+      - name: Deploy changed services
+        if: github.event_name == 'push'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          sudo -n /usr/local/bin/homelab-deploy --changed \
+            --base-dir "${{ github.workspace }}/homelab-config" \
+            --deploy-base-dir /volume1/docker/homelab-config
+
+      - name: Deploy requested service
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.service != 'all'
+        run: sudo -n /usr/local/bin/homelab-deploy "${{ github.event.inputs.service }}" --deploy-base-dir /volume1/docker/homelab-config
+
+      - name: Deploy all services
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'all'
+        run: sudo -n /usr/local/bin/homelab-deploy --all --deploy-base-dir /volume1/docker/homelab-config
