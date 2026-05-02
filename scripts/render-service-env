@@ -117,6 +117,10 @@ render_service() {
       echo "Missing environment variable ${secret_name}" >&2
       exit 2
     fi
+    if [[ -z "${!secret_name}" ]]; then
+      echo "Empty environment variable ${secret_name}" >&2
+      exit 2
+    fi
     printf '%s=%s\n' "${key}" "${!secret_name}" >> "${tmp_file}"
   done < <(service_secret_keys "${MANIFEST_FILE}" "${service}")
 
