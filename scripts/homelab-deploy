@@ -7,14 +7,15 @@ COMPOSE_IMAGE="${COMPOSE_IMAGE:-docker/compose:1.29.2}"
 MODE=""
 SERVICE=""
 DRY_RUN="false"
+FORCE_RECREATE="false"
 
 usage() {
   cat <<'EOF'
 Usage:
   homelab-deploy --list
-  homelab-deploy --all [--dry-run]
+  homelab-deploy --all [--dry-run] [--force-recreate]
   homelab-deploy --changed [--dry-run] [--base-dir DIR] [--deploy-base-dir DIR]
-  homelab-deploy <service> [--dry-run] [--deploy-base-dir DIR]
+  homelab-deploy <service> [--dry-run] [--force-recreate] [--deploy-base-dir DIR]
 EOF
 }
 
@@ -34,6 +35,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dry-run)
       DRY_RUN="true"
+      shift
+      ;;
+    --force-recreate)
+      FORCE_RECREATE="true"
       shift
       ;;
     --base-dir)
@@ -162,7 +167,11 @@ deploy_service() {
   (
     cd "${service_dir}"
     compose pull
-    compose up -d
+    if [[ "${FORCE_RECREATE}" == "true" ]]; then
+      compose up -d --force-recreate
+    else
+      compose up -d
+    fi
     docker ps --filter "name=${service}"
   )
 }

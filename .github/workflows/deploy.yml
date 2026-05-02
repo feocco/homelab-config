@@ -9,6 +9,10 @@ on:
         description: Service to deploy, or "all"
         required: true
         default: plant-monitor
+      force_recreate:
+        description: Force recreate containers
+        required: false
+        default: "false"
 
 jobs:
   deploy:
@@ -50,8 +54,18 @@ jobs:
 
       - name: Deploy requested service
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.service != 'all'
-        run: ./scripts/homelab-deploy "${{ github.event.inputs.service }}" --deploy-base-dir /volume1/docker/homelab-config
+        run: |
+          args=()
+          if [ "${{ github.event.inputs.force_recreate }}" = "true" ]; then
+            args+=(--force-recreate)
+          fi
+          ./scripts/homelab-deploy "${{ github.event.inputs.service }}" "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
 
       - name: Deploy all services
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'all'
-        run: ./scripts/homelab-deploy --all --deploy-base-dir /volume1/docker/homelab-config
+        run: |
+          args=()
+          if [ "${{ github.event.inputs.force_recreate }}" = "true" ]; then
+            args+=(--force-recreate)
+          fi
+          ./scripts/homelab-deploy --all "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
