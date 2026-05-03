@@ -1,0 +1,14 @@
+services:
+  hass-janitor:
+    image: ghcr.io/feocco/hass-janitor:latest
+    container_name: hass-janitor
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - hass_janitor_logs:/app/logs
+    ports:
+      - "${SERVICE_PORT:-8092}:${SERVICE_PORT:-8092}"
+
+volumes:
+  hass_janitor_logs:

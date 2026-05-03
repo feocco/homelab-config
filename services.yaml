@@ -18,3 +18,7 @@ services:
   homelab-functions:
     path: homelab-functions
     enabled: true
+
+  hass-janitor:
+    path: hass-janitor
+    enabled: true
