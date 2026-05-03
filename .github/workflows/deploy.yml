@@ -30,6 +30,10 @@ jobs:
             --exclude './*/.env' \
             --exclude './*/data' \
             -cf - . | tar -C /volume1/docker/homelab-config -xf -
+          find . -path './*/data/.gitkeep' -type f | while read -r keep_file; do
+            data_dir="${keep_file#./}"
+            mkdir -p "/volume1/docker/homelab-config/${data_dir%/.gitkeep}"
+          done
 
       - name: Render service environments
         env:
