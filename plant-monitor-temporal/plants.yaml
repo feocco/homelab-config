@@ -1,0 +1,63 @@
+plants:
+  - id: golden_pothos_office_shelf
+    plant_entity: plant.golden_pothos_office_shelf
+    name: Golden Pothos
+    location: Office shelf
+    species: golden_pothos
+    sensors:
+      moisture: sensor.soil_sensor_pothos_office_humidity
+      temperature: sensor.soil_sensor_pothos_office_temperature
+      battery: sensor.soil_sensor_pothos_office_battery
+      brightness: sensor.hue_motion_sensor_1_illuminance
+    watering:
+      switch: switch.watering_kit
+      max_seconds: 8
+      cooldown_hours: 48
+
+  - id: ficus_altissma_sun_room
+    plant_entity: plant.ficus_altissma_sun_room
+    name: Ficus Altissima
+    location: Sun room
+    species: ficus_altissima
+    sensors:
+      moisture: sensor.soil_sensor_rubber_plant_humidity
+      temperature: sensor.soil_sensor_rubber_plant_temperature
+      battery: sensor.soil_sensor_rubber_plant_battery
+      brightness: sensor.back_sun_room_illuminance
+    watering:
+      switch: switch.back_sun_room_watering_kit
+      max_seconds: 10
+      cooldown_hours: 72
+
+  - id: hanging_boston_fern
+    plant_entity: plant.hanging_boston_fern
+    name: Boston Fern
+    location: Hanging planter
+    species: boston_fern
+    sensors:
+      moisture: sensor.hanging_fern_humidity
+      temperature: sensor.hanging_fern_temperature
+      battery: sensor.hanging_fern_battery
+
+  - id: golden_pothos_office_hanging
+    plant_entity: plant.golden_pothos_office_hanging
+    name: Golden Pothos
+    location: Office hanging
+    species: golden_pothos
+    sensors:
+      moisture: sensor.soil_sensor_hanging_pothos_humidity
+      temperature: sensor.soil_sensor_hanging_pothos_temperature
+      battery: sensor.soil_sensor_hanging_pothos_battery
+      brightness: sensor.hue_motion_sensor_1_illuminance
+
+  - id: office_peperomia_jelly
+    plant_entity: plant.office_peperomia_jelly
+    name: Peperomia Jelly
+    location: Office
+    species: peperomia_jelly
+    sensors:
+      moisture: sensor.office_plant_humidity
+      temperature: sensor.office_plant_temperature
+      battery: sensor.office_plant_battery
+      brightness: sensor.hue_motion_sensor_1_illuminance
+
