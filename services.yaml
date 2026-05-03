@@ -6,3 +6,12 @@ services:
   plant-monitor:
     path: plant-monitor
     enabled: true
+
+  portainer:
+    path: portainer
+    enabled: true
+
+  # Staged for cutover from /volume1/docker/dashy-0.
+  dashy:
+    path: dashy
+    enabled: false

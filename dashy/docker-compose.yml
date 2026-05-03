@@ -1,0 +1,12 @@
+services:
+  dashy:
+    image: lissy93/dashy:latest
+    container_name: dashy
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - CONF_PATH=/app/user-data/conf.yml
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./user-data:/app/user-data

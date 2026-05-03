@@ -1,0 +1,57 @@
+---
+pageInfo:
+  title: Homelab Ops
+  description: Deployment, containers, and NAS operations
+
+sections:
+- name: Deployment
+  icon: fab fa-github
+  items:
+  - title: homelab-config Actions
+    description: Deploy workflow for NAS services
+    icon: fab fa-github
+    url: https://github.com/feocco/homelab-config/actions
+    target: newtab
+  - title: homelab-config Repo
+    description: Private NAS runtime configuration
+    icon: fab fa-github
+    url: https://github.com/feocco/homelab-config
+    target: newtab
+  - title: Dashy Config Repo
+    description: Legacy Dashy repository
+    icon: fab fa-github
+    url: https://github.com/feocco/dashy-0
+    target: newtab
+
+- name: Docker
+  icon: fab fa-docker
+  items:
+  - title: Portainer
+    description: Container, image, volume, and network UI
+    icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/portainer.png
+    url: https://nasfeo:9443/
+    target: newtab
+  - title: Synology Container Manager
+    description: NAS Docker package UI
+    icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/synology.png
+    url: http://nasfeo:5000/
+    target: newtab
+
+- name: Running Services
+  icon: fas fa-server
+  items:
+  - title: Dashy
+    description: Homelab dashboard
+    icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/dashy.png
+    url: http://nasfeo:8080/
+    target: newtab
+  - title: Plant Monitor
+    description: Home Assistant plant notifications
+    icon: fas fa-seedling
+    url: http://nasfeo:8088/
+    target: newtab
+  - title: Hello NAS
+    description: Deployment smoke test service
+    icon: fas fa-vial
+    url: http://nasfeo:8099/
+    target: newtab
