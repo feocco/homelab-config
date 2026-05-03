@@ -13,6 +13,7 @@ services:
       options:
         max-size: "10m"
         max-file: "1"
+        compress: "false"
 
 volumes:
   portainer_data:
