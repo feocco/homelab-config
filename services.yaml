@@ -14,3 +14,7 @@ services:
   dashy:
     path: dashy
     enabled: true
+
+  homelab-functions:
+    path: homelab-functions
+    enabled: true
