@@ -22,3 +22,7 @@ services:
   hass-janitor:
     path: hass-janitor
     enabled: true
+
+  temporal:
+    path: temporal
+    enabled: true
