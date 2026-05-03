@@ -28,7 +28,7 @@ sections:
   items:
   - title: Portainer
     description: Container, image, volume, and network UI
-    icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/portainer.png
+    icon: fab fa-docker
     url: https://nasfeo:9443/
     target: newtab
   - title: Synology Container Manager
