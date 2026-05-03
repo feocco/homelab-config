@@ -10,3 +10,8 @@ services:
       - "8080:8080"
     volumes:
       - ./user-data:/app/user-data
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"

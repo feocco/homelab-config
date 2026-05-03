@@ -26,3 +26,7 @@ services:
   temporal:
     path: temporal
     enabled: true
+
+  homelab-log-watcher:
+    path: homelab-log-watcher
+    enabled: true

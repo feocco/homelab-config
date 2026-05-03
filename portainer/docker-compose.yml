@@ -8,6 +8,11 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
 
 volumes:
   portainer_data:

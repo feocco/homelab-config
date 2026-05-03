@@ -10,3 +10,8 @@ services:
     ports:
       - "7233:7233"
       - "8233:8233"
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"

@@ -1,0 +1,17 @@
+services:
+  homelab-log-watcher:
+    image: ghcr.io/feocco/homelab-log-watcher:latest
+    container_name: homelab-log-watcher
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${SERVICE_PORT:-8093}:${SERVICE_PORT:-8093}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/app/state
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
