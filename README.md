@@ -81,3 +81,18 @@ sudo -n /usr/local/bin/homelab-deploy plant-monitor
 ```
 
 Runner setup is documented in `docs/github-runner.md`.
+
+## SRE Metadata
+
+`homelab-sre-agent/services.yaml` maps Docker containers and images back to the
+source repo, deploy config, issue repo, and SRE behavior for log investigations.
+When adding or renaming a repo-managed service, update this metadata in the same
+change as `services.yaml`.
+
+Set `sre.autofix: false` by default. Flip it to `true` only for a service that
+has a `homelab-sre-investigate` workflow, an `OPENAI_API_KEY` GitHub Actions
+secret, and a deliberate decision to allow draft PR creation.
+
+The SRE agent reloads this metadata for every incident from the mounted
+`/app/config/services.yaml`, so metadata-only deploys take effect without
+rebuilding the SRE agent image.
