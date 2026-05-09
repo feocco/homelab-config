@@ -1,0 +1,125 @@
+defaults:
+  issue_repo: feocco/homelab-config
+  deploy_repo: feocco/homelab-config
+
+services:
+  hello-nas:
+    containers:
+      - hello-nas
+    images:
+      - ghcr.io/feocco/hello-nas:*
+    source:
+      repo: feocco/hello-nas
+      path_hint: /Users/feocco/code/hello-nas
+    issue_repo: feocco/hello-nas
+    deploy:
+      path: hello-nas
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/hello-nas
+    labels:
+      - homelab-sre
+      - hello-nas
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
+
+  plant-monitor:
+    containers:
+      - plant-monitor
+      - plant-monitor-temporal
+    images:
+      - ghcr.io/feocco/plant-monitor:*
+    source:
+      repo: feocco/plant-monitor
+      path_hint: /Users/feocco/code/plant-monitor
+    issue_repo: feocco/plant-monitor
+    deploy:
+      path: plant-monitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/plant-monitor
+    labels:
+      - homelab-sre
+      - plant-monitor
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
+
+  homelab-functions:
+    containers:
+      - homelab-functions
+    images:
+      - ghcr.io/feocco/homelab-functions:*
+    source:
+      repo: feocco/homelab-functions
+      path_hint: /Users/feocco/code/homelab-functions
+    issue_repo: feocco/homelab-functions
+    deploy:
+      path: homelab-functions
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/homelab-functions
+    labels:
+      - homelab-sre
+      - homelab-functions
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
+
+  hass-janitor:
+    containers:
+      - hass-janitor
+    images:
+      - ghcr.io/feocco/hass-janitor:*
+    source:
+      repo: feocco/hass-janitor
+      path_hint: /Users/feocco/code/hass-janitor
+    issue_repo: feocco/hass-janitor
+    deploy:
+      path: hass-janitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/hass-janitor
+    labels:
+      - homelab-sre
+      - hass-janitor
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
+
+  homelab-log-watcher:
+    containers:
+      - homelab-log-watcher
+    images:
+      - ghcr.io/feocco/homelab-log-watcher:*
+    source:
+      repo: feocco/homelab-log-watcher
+      path_hint: /Users/feocco/code/homelab-log-watcher
+    issue_repo: feocco/homelab-log-watcher
+    deploy:
+      path: homelab-log-watcher
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/homelab-log-watcher
+    labels:
+      - homelab-sre
+      - homelab-log-watcher
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
+
+  homelab-sre-agent:
+    containers:
+      - homelab-sre-agent
+    images:
+      - ghcr.io/feocco/homelab-sre-agent:*
+    source:
+      repo: feocco/homelab-sre-agent
+      path_hint: /Users/feocco/code/homelab-sre-agent
+    issue_repo: feocco/homelab-sre-agent
+    deploy:
+      path: homelab-sre-agent
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/homelab-sre-agent
+    labels:
+      - homelab-sre
+      - homelab-sre-agent
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1

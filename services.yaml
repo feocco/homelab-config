@@ -34,3 +34,7 @@ services:
   homelab-log-watcher:
     path: homelab-log-watcher
     enabled: true
+
+  homelab-sre-agent:
+    path: homelab-sre-agent
+    enabled: true

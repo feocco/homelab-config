@@ -1,0 +1,19 @@
+services:
+  homelab-sre-agent:
+    image: ghcr.io/feocco/homelab-sre-agent:latest
+    container_name: homelab-sre-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${SERVICE_PORT:-8094}:${SERVICE_PORT:-8094}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/app/state
+      - ./services.yaml:/app/config/services.yaml:ro
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"
