@@ -9,7 +9,7 @@ services:
 
   plant-monitor-temporal:
     path: plant-monitor-temporal
-    enabled: true
+    enabled: false
 
   portainer:
     path: portainer
