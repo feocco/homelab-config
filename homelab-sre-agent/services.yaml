@@ -20,7 +20,7 @@ services:
       - hello-nas
     sre:
       enabled: true
-      autofix: false
+      autofix: true
       repo_daily_limit: 1
 
   plant-monitor:
