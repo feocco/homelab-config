@@ -41,7 +41,7 @@ services:
       - plant-monitor
     sre:
       enabled: true
-      autofix: false
+      autofix: true
       repo_daily_limit: 1
 
   homelab-functions:
@@ -61,7 +61,7 @@ services:
       - homelab-functions
     sre:
       enabled: true
-      autofix: false
+      autofix: true
       repo_daily_limit: 1
 
   hass-janitor:
@@ -81,7 +81,7 @@ services:
       - hass-janitor
     sre:
       enabled: true
-      autofix: false
+      autofix: true
       repo_daily_limit: 1
 
   homelab-log-watcher:
@@ -101,7 +101,7 @@ services:
       - homelab-log-watcher
     sre:
       enabled: true
-      autofix: false
+      autofix: true
       repo_daily_limit: 1
 
   homelab-sre-agent:
@@ -121,5 +121,5 @@ services:
       - homelab-sre-agent
     sre:
       enabled: true
-      autofix: false
+      autofix: true
       repo_daily_limit: 1
