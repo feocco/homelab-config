@@ -13,8 +13,10 @@ services.yaml
 plant-monitor/
   docker-compose.yml
   .env.example
+  .env.config
   plants.yaml
   data/
+service-secrets.yaml
 scripts/
   homelab-deploy
   install-deploy-script
@@ -43,6 +45,7 @@ homelab-config/
     .env
   plant-monitor/
     docker-compose.yml
+    .env.config
     .env
     plants.yaml
     data/
@@ -71,6 +74,27 @@ homelab-deploy --all
 
 On this Synology NAS, Compose v1 is installed, so the deploy script uses
 `docker-compose`.
+
+## Runtime Environment
+
+Tracked non-secret runtime values live in each service's `.env.config`. Actual
+tokens, private external URLs, and credentials stay out of git and are listed in
+`service-secrets.yaml`.
+
+The deploy workflow renders each NAS `.env` file from both sources:
+
+1. tracked `<service>/.env.config`
+2. GitHub Actions secrets named `<SERVICE_PREFIX>__<ENV_KEY>`
+
+When adding or changing runtime keys, update the service `.env.example`, add
+non-secret values to `.env.config`, list only sensitive values in
+`service-secrets.yaml`, then run:
+
+```bash
+./scripts/generate-service-secret-workflow-env
+./scripts/check-service-secrets
+./scripts/test-deploy-tooling
+```
 
 Manual deploy:
 

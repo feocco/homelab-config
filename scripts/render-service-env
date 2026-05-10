@@ -16,8 +16,8 @@ Usage:
   render-service-env <service> [--base-dir DIR] [--deploy-base-dir DIR] [--dry-run]
   render-service-env --all [--base-dir DIR] [--deploy-base-dir DIR] [--dry-run]
 
-Reads service-secrets.yaml to find required variable names and renders NAS
-runtime .env files from environment variables named:
+Renders NAS runtime .env files from tracked .env.config values plus
+service-secrets.yaml values provided by environment variables named:
 
   <SERVICE_PREFIX>__<VARIABLE_NAME>
 
@@ -78,7 +78,7 @@ fi
 
 render_service() {
   local service="$1"
-  local service_path service_dir prefix tmp_file count
+  local service_path service_dir prefix config_file tmp_file count config_count secret_count value
 
   service_path="$(service_secret_service_path "${SERVICES_FILE}" "${service}")"
   if [[ -z "${service_path}" ]]; then
@@ -86,15 +86,24 @@ render_service() {
     exit 2
   fi
 
-  if [[ -z "$(service_secret_keys "${MANIFEST_FILE}" "${service}")" ]]; then
-    echo "No secrets listed for ${service} in ${MANIFEST_FILE}" >&2
+  service_dir="${DEPLOY_BASE_DIR}/${service_path}"
+  prefix="$(service_secret_prefix "${service}")"
+  config_file="${BASE_DIR}/${service_path}/.env.config"
+
+  if [[ ! -f "${config_file}" && -z "$(service_secret_keys "${MANIFEST_FILE}" "${service}")" ]]; then
+    if [[ "${ALL}" == "true" ]]; then
+      return
+    fi
+    echo "No runtime env config or secrets listed for ${service}" >&2
     exit 2
   fi
 
-  service_dir="${DEPLOY_BASE_DIR}/${service_path}"
-  prefix="$(service_secret_prefix "${service}")"
-
   if [[ "${DRY_RUN}" == "true" ]]; then
+    if [[ -f "${config_file}" ]]; then
+      while IFS= read -r key; do
+        echo "Would render ${service}/${key} from tracked ${service_path}/.env.config"
+      done < <(service_secret_env_keys "${config_file}")
+    fi
     while IFS= read -r key; do
       secret_name="${prefix}__${key}"
       echo "Would render ${service}/${key} from ${secret_name}"
@@ -110,6 +119,16 @@ render_service() {
     rm -f "${tmp_file}"
   }
   trap cleanup EXIT
+
+  if [[ -f "${config_file}" ]]; then
+    while IFS= read -r key; do
+      if ! value="$(service_secret_env_value "${config_file}" "${key}")"; then
+        echo "Missing ${key} in ${config_file}" >&2
+        exit 2
+      fi
+      printf '%s=%s\n' "${key}" "${value}" >> "${tmp_file}"
+    done < <(service_secret_env_keys "${config_file}")
+  fi
 
   while IFS= read -r key; do
     secret_name="${prefix}__${key}"
@@ -127,14 +146,19 @@ render_service() {
   chmod 600 "${tmp_file}"
   mv "${tmp_file}" "${service_dir}/.env"
   trap - EXIT
-  count="$(service_secret_keys "${MANIFEST_FILE}" "${service}" | wc -l | tr -d ' ')"
+  config_count="0"
+  if [[ -f "${config_file}" ]]; then
+    config_count="$(service_secret_env_keys "${config_file}" | wc -l | tr -d ' ')"
+  fi
+  secret_count="$(service_secret_keys "${MANIFEST_FILE}" "${service}" | wc -l | tr -d ' ')"
+  count="$((config_count + secret_count))"
   echo "Rendered ${service}/.env with ${count} values"
 }
 
 if [[ "${ALL}" == "true" ]]; then
   while IFS= read -r service; do
     [[ -n "${service}" ]] && render_service "${service}"
-  done < <(service_secret_services "${MANIFEST_FILE}")
+  done < <(service_secret_runtime_services "${BASE_DIR}" "${SERVICES_FILE}" "${MANIFEST_FILE}")
 else
   render_service "${SERVICE}"
 fi
