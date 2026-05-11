@@ -20,7 +20,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: up{job=~"prometheus|node-exporter|cadvisor|blackbox-exporter"} == 0
+              expr: up{job=~"prometheus|node-exporter|cadvisor|blackbox-exporter"} == bool 0
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -63,7 +63,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: probe_success{job="blackbox-http"} == 0
+              expr: probe_success{job="blackbox-http"} == bool 0
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
