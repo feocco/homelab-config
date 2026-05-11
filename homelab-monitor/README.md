@@ -32,6 +32,6 @@ HTTP port from Dashy was not reachable.
 
 ## Version Notes
 
-cAdvisor is pinned to `v0.55.1` even though newer releases exist because
-`nasfeo` currently runs Docker `20.10.3`, and cAdvisor `v0.56.0` dropped support
-for Docker versions older than 25.0.
+cAdvisor is pinned to `gcr.io/cadvisor/cadvisor:v0.52.1` even though newer
+releases exist because `nasfeo` currently runs Docker `20.10.3`, and cAdvisor
+`v0.56.0` dropped support for Docker versions older than 25.0.

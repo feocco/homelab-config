@@ -21,7 +21,7 @@ services:
         compress: "false"
 
   grafana:
-    image: grafana/grafana-oss:13.0.1
+    image: grafana/grafana:13.0.1
     container_name: homelab-monitor-grafana
     restart: unless-stopped
     env_file:
@@ -72,7 +72,7 @@ services:
         compress: "false"
 
   cadvisor:
-    image: ghcr.io/google/cadvisor:v0.55.1
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
     container_name: homelab-monitor-cadvisor
     restart: unless-stopped
     privileged: true
