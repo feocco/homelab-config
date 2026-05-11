@@ -113,11 +113,14 @@ source repo, deploy config, issue repo, and SRE behavior for log investigations.
 When adding or renaming a repo-managed service, update this metadata in the same
 change as `services.yaml`.
 
-Set `sre.autofix: false` by default. Flip it to `true` only for a service that
-has the small `homelab-sre-investigate` dispatch wrapper, the required
-`OPENAI_API_KEY` and `SRE_GITHUB_TOKEN` GitHub Actions secrets, and a deliberate
-decision to allow draft PR creation. The wrapper should call the reusable
-workflow in `feocco/homelab-sre-agent` so SRE behavior stays centrally managed.
+Set `sre.enabled: true` only after deciding the service should create SRE
+issues. Unknown containers and metadata entries without `sre.enabled: true` are
+ignored by the SRE agent. Set `sre.autofix: false` by default. Flip it to
+`true` only for a service that has the small `homelab-sre-investigate` dispatch
+wrapper, the required `OPENAI_API_KEY` and `SRE_GITHUB_TOKEN` GitHub Actions
+secrets, and a deliberate decision to allow draft PR creation. The wrapper
+should call the reusable workflow in `feocco/homelab-sre-agent` so SRE behavior
+stays centrally managed.
 
 The SRE agent reloads this metadata for every incident from the mounted
 `/app/config/services.yaml`, so metadata-only deploys take effect without
