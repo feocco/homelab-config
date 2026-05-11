@@ -1,0 +1,88 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - prometheus:9090
+
+  - job_name: node-exporter
+    static_configs:
+      - targets:
+          - node-exporter:9100
+        labels:
+          host: nasfeo
+
+  - job_name: cadvisor
+    static_configs:
+      - targets:
+          - cadvisor:8080
+        labels:
+          host: nasfeo
+
+  - job_name: blackbox-exporter
+    static_configs:
+      - targets:
+          - blackbox-exporter:9115
+
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module:
+        - http_2xx
+    static_configs:
+      - targets:
+          - http://192.168.1.191:8080/
+        labels:
+          service: dashy
+      - targets:
+          - http://192.168.1.191:8088/health
+        labels:
+          service: plant-monitor
+      - targets:
+          - http://192.168.1.191:8091/health
+        labels:
+          service: homelab-functions
+      - targets:
+          - http://192.168.1.191:8092/health
+        labels:
+          service: hass-janitor
+      - targets:
+          - http://192.168.1.191:8093/health
+        labels:
+          service: homelab-log-watcher
+      - targets:
+          - http://192.168.1.191:8094/health
+        labels:
+          service: homelab-sre-agent
+      - targets:
+          - http://192.168.1.191:8099/health
+        labels:
+          service: hello-nas
+      - targets:
+          - http://192.168.1.191:8181/admin/
+        labels:
+          service: pi-hole
+      - targets:
+          - https://192.168.1.191:9443/
+        labels:
+          service: portainer
+      - targets:
+          - http://192.168.1.191:5000/
+        labels:
+          service: synology-dsm
+      - targets:
+          - http://192.168.1.159:8123/
+        labels:
+          service: home-assistant
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

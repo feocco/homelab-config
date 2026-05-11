@@ -30,3 +30,7 @@ services:
   homelab-sre-agent:
     path: homelab-sre-agent
     enabled: true
+
+  homelab-monitor:
+    path: homelab-monitor
+    enabled: true

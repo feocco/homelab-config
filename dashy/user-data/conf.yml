@@ -58,6 +58,11 @@ sections:
     icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/pi-hole.png
     url: http://nasfeo:8181/admin/
     target: newtab
+  - title: Grafana
+    description: Homelab metrics and alerts
+    icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/grafana.png
+    url: http://nasfeo:3000/
+    target: newtab
   - title: Raspberry Pi Connect
     description: Remote Pi Access
     icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/raspberry-pi.png

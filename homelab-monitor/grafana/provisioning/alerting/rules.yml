@@ -1,0 +1,480 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: Homelab critical
+    folder: Homelab
+    interval: 1m
+    rules:
+      - uid: homelab_target_down
+        title: Host or exporter target down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: up{job=~"prometheus|node-exporter|cadvisor|blackbox-exporter"} == 0
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: Alerting
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: A Prometheus scrape target is down.
+          description: Check Grafana target health and the corresponding exporter container.
+        labels:
+          severity: critical
+
+      - uid: homelab_http_probe_down
+        title: HTTP service probe down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: probe_success{job="blackbox-http"} == 0
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: Alerting
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: A self-hosted HTTP endpoint is failing its blackbox probe.
+          description: Check the service container, endpoint health path, and NAS networking.
+        labels:
+          severity: critical
+
+      - uid: homelab_cpu_pressure
+        title: NAS CPU pressure
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 90
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: NAS CPU busy is above 90 percent.
+          description: Capacity pressure is sustained; check container CPU by service.
+        labels:
+          severity: critical
+
+      - uid: homelab_load_pressure
+        title: NAS load pressure
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: node_load15 / count(count by (cpu)(node_cpu_seconds_total{mode="idle"})) > 1
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: NAS 15 minute load per CPU is above 1.0.
+          description: Sustained load indicates the NAS is saturated or blocked on work.
+        labels:
+          severity: critical
+
+      - uid: homelab_low_memory
+        title: NAS available memory low
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: node_memory_MemAvailable_bytes < 300 * 1024 * 1024
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: NAS available memory is below 300 MiB.
+          description: RAM is the primary capacity constraint on this NAS.
+        labels:
+          severity: critical
+
+      - uid: homelab_swap_activity
+        title: NAS swap activity
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: rate(node_vmstat_pswpin[5m]) + rate(node_vmstat_pswpout[5m]) > 0
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: NAS is actively swapping.
+          description: Sustained swap activity means the Docker host is under memory pressure.
+        labels:
+          severity: critical
+
+      - uid: homelab_root_disk_full
+        title: NAS root disk high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) > 85
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: NAS root filesystem is above 85 percent.
+          description: Root filesystem pressure can break package updates and service startup.
+        labels:
+          severity: critical
+
+      - uid: homelab_volume1_disk_full
+        title: NAS volume1 disk high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/volume1"} / node_filesystem_size_bytes{mountpoint="/volume1"}) > 90
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: NAS /volume1 filesystem is above 90 percent.
+          description: Data volume pressure can break container storage and backups.
+        labels:
+          severity: critical
+
+      - uid: homelab_container_oom
+        title: Container OOM killed
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: increase(container_oom_events_total{name!=""}[5m]) > 0
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: A Docker container had an OOM event.
+          description: Check container memory usage and NAS RAM pressure.
+        labels:
+          severity: critical
+
+      - uid: homelab_container_restart
+        title: Important container restarted
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: changes(container_start_time_seconds{name=~"plant-monitor|homelab-functions|hass-janitor|homelab-log-watcher|homelab-sre-agent|hello-nas|dashy|portainer|github-runner-homelab|pi-hole"}[15m]) > 0
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: An important Docker container restarted.
+          description: Check recent logs and deploy history for the affected service.
+        labels:
+          severity: critical
+
+      - uid: homelab_container_memory_high
+        title: Container memory high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: container_memory_working_set_bytes{name!=""} > 700 * 1024 * 1024
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: A Docker container is using more than 700 MiB RAM.
+          description: The NAS has limited RAM; inspect the container and its recent workload.
+        labels:
+          severity: critical
