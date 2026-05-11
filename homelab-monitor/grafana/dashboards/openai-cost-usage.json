@@ -664,7 +664,7 @@
   ],
   "preload": false,
   "refresh": "5m",
-  "schemaVersion": 43,
+  "schemaVersion": 42,
   "tags": [
     "cost",
     "openai",

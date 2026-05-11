@@ -1,20 +1,20 @@
 # OpenAI Cost Monitoring Next Steps
 
 The OpenAI cost exporter is deployed as part of `homelab-monitor`, but it needs
-an OpenAI Admin API key before it can report real costs.
+an OpenAI Admin API key with the `api.usage.read` scope before it can report
+real costs.
 
 ## Needed Human Step
 
 Create an OpenAI Admin API key from the OpenAI Platform organization admin
-area. A normal project API key is not enough for the organization usage and
-cost endpoints.
+area and grant it the `api.usage.read` scope. A normal project API key, or an
+Admin key without that scope, is not enough for the organization usage and cost
+endpoints.
 
 Once the Admin key exists, add it to the managed homelab secret flow:
 
-1. Add `OPENAI_ADMIN_KEY` to `homelab-monitor/.env`.
-2. Add `OPENAI_ADMIN_KEY` to the `homelab-monitor` section in
-   `service-secrets.yaml`.
-3. Run:
+1. Add or replace `OPENAI_ADMIN_KEY` in `homelab-monitor/.env`.
+2. Run:
 
 ```bash
 ./scripts/generate-service-secret-workflow-env
@@ -26,7 +26,9 @@ Once the Admin key exists, add it to the managed homelab secret flow:
 4. Commit and push the updated secret manifest/workflow files.
 
 After deployment, the Grafana dashboard should move from collector status
-`Not collecting` to `Collecting`.
+`Not collecting` to `Collecting`. `OPENAI_ORG_ID` can stay blank for the
+default personal organization unless OpenAI returns an organization selection
+error.
 
 ## Dashboard
 

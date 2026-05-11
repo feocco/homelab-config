@@ -6,7 +6,6 @@ import json
 import os
 import threading
 import time
-import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -75,7 +74,9 @@ def request_json(path: str, params: dict[str, Any], timeout_seconds: int) -> dic
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"openai_http_{exc.code}: {body}") from exc
+        if exc.code == 403 and "api.usage.read" in body:
+            raise RuntimeError("openai_http_403_missing_api_usage_read_scope") from exc
+        raise RuntimeError(f"openai_http_{exc.code}") from exc
 
 
 def fetch_paginated(path: str, params: dict[str, Any], timeout_seconds: int) -> list[dict[str, Any]]:
@@ -240,12 +241,16 @@ def refresh_if_needed(force: bool = False) -> None:
             STATE.success = True
             STATE.error_reason = ""
             STATE.last_success = time.time()
-    except Exception as exc:  # noqa: BLE001 - exporter must degrade to metrics.
+    except RuntimeError as exc:
         with STATE.lock:
             STATE.success = False
             STATE.error_reason = str(exc).splitlines()[0][:180] or exc.__class__.__name__
         print("OpenAI cost collection failed:", STATE.error_reason, flush=True)
-        traceback.print_exc()
+    except Exception as exc:  # noqa: BLE001 - exporter must degrade to metrics.
+        with STATE.lock:
+            STATE.success = False
+            STATE.error_reason = exc.__class__.__name__
+        print(f"OpenAI cost collection failed unexpectedly: {exc.__class__.__name__}", flush=True)
 
 
 def prom_escape(value: str) -> str:
@@ -361,7 +366,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        print(f"{self.address_string()} - {fmt % args}", flush=True)
+        if args and len(args) >= 2 and str(args[1]).startswith(("4", "5")):
+            print(f"{self.address_string()} - {fmt % args}", flush=True)
 
 
 def main() -> None:
