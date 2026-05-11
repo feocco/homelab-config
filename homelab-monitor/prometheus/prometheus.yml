@@ -27,6 +27,12 @@ scrape_configs:
       - targets:
           - blackbox-exporter:9115
 
+  - job_name: openai-cost-exporter
+    scrape_interval: 60s
+    static_configs:
+      - targets:
+          - openai-cost-exporter:9108
+
   - job_name: blackbox-http
     metrics_path: /probe
     params:

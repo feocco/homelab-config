@@ -8,6 +8,8 @@ Metrics-first Grafana and Prometheus stack for `nasfeo`.
 - Prometheus: internal only
 - Exporters: internal only
 - Phone alerts: Grafana webhook to `homelab-functions`
+- Homelab dashboard: `http://nasfeo:3000/d/homelab-monitoring/homelab-monitoring`
+- OpenAI cost dashboard: `http://nasfeo:3000/d/openai-cost-usage/openai-cost-usage`
 
 ## Monitored Surface
 
@@ -25,6 +27,11 @@ Metrics-first Grafana and Prometheus stack for `nasfeo`.
   - Portainer
   - Synology DSM
   - Home Assistant
+- OpenAI API cost and usage metrics through `openai-cost-exporter`.
+
+The OpenAI exporter runs without an Admin key, but reports
+`openai_cost_exporter_up 0` until `OPENAI_ADMIN_KEY` is added through the
+managed secret flow. See `OPENAI_COST_MONITORING_NEXT_STEPS.md`.
 
 `streamdeck-companion` and Raspberry Pi host metrics are intentionally deferred.
 The Pi at `192.168.1.250` responded to ICMP during planning, but the Companion
