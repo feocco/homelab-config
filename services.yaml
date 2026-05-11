@@ -7,10 +7,6 @@ services:
     path: plant-monitor
     enabled: true
 
-  plant-monitor-temporal:
-    path: plant-monitor-temporal
-    enabled: false
-
   portainer:
     path: portainer
     enabled: true
@@ -25,10 +21,6 @@ services:
 
   hass-janitor:
     path: hass-janitor
-    enabled: true
-
-  temporal:
-    path: temporal
     enabled: true
 
   homelab-log-watcher:

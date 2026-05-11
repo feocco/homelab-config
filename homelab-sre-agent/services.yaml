@@ -26,7 +26,6 @@ services:
   plant-monitor:
     containers:
       - plant-monitor
-      - plant-monitor-temporal
     images:
       - ghcr.io/feocco/plant-monitor:*
     source:
