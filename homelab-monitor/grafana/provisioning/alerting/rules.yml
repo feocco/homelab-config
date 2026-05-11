@@ -235,7 +235,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: rate(node_vmstat_pswpin[5m]) + rate(node_vmstat_pswpout[5m]) > 0
+              expr: rate(node_vmstat_pswpin[1m]) + rate(node_vmstat_pswpout[1m]) > 25
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -260,7 +260,7 @@ groups:
         for: 10m
         annotations:
           summary: NAS is actively swapping.
-          description: Sustained swap activity means the Docker host is under memory pressure.
+          description: Sustained swap activity above 25 pages/sec usually means RAM pressure or a runaway container.
         labels:
           severity: critical
 
