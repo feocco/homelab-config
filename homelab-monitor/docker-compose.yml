@@ -35,6 +35,7 @@ services:
       GF_LOG_LEVEL: ${GRAFANA_LOG_LEVEL:-info}
       GF_DATE_FORMATS_DEFAULT_TIMEZONE: ${TZ:-America/New_York}
       GF_UNIFIED_ALERTING_ENABLED: "true"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
     ports:
       - "${GRAFANA_HTTP_PORT:-3000}:3000"
     volumes:
