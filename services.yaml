@@ -15,6 +15,14 @@ services:
     path: dashy
     enabled: true
 
+  homarr:
+    path: homarr
+    enabled: true
+
+  netalertx:
+    path: netalertx
+    enabled: true
+
   homelab-functions:
     path: homelab-functions
     enabled: true

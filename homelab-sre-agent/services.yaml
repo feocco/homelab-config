@@ -123,6 +123,44 @@ services:
       autofix: true
       repo_daily_limit: 1
 
+  homarr:
+    containers:
+      - homarr
+    images:
+      - ghcr.io/homarr-labs/homarr:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/homelab-config/homarr
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: homarr
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/homarr
+    labels:
+      - homelab-sre
+      - homarr
+    sre:
+      enabled: false
+      autofix: false
+
+  netalertx:
+    containers:
+      - netalertx
+    images:
+      - ghcr.io/netalertx/netalertx:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/homelab-config/netalertx
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: netalertx
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/netalertx
+    labels:
+      - homelab-sre
+      - netalertx
+    sre:
+      enabled: false
+      autofix: false
+
   bedtime:
     containers:
       - bedtime
