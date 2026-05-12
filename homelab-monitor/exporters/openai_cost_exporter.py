@@ -10,7 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -39,6 +39,16 @@ def env_int(name: str, default: int) -> int:
     return int(value)
 
 
+def env_decimal(name: str, default: str) -> Decimal:
+    value = os.getenv(name, "").strip()
+    if not value:
+        value = default
+    try:
+        return Decimal(value)
+    except InvalidOperation:
+        return Decimal(default)
+
+
 def utc_now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
@@ -53,6 +63,13 @@ def unix_seconds(value: dt.datetime) -> int:
 
 def parse_group_by(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def cost_alert_thresholds() -> dict[str, Decimal]:
+    return {
+        "today": env_decimal("OPENAI_COST_DAILY_SPEND_SPIKE_THRESHOLD_USD", "5"),
+        "last_7d": env_decimal("OPENAI_COST_7D_SPEND_HIGH_THRESHOLD_USD", "30"),
+    }
 
 
 def request_json(path: str, params: dict[str, Any], timeout_seconds: int) -> dict[str, Any]:
@@ -299,6 +316,15 @@ def render_metrics() -> bytes:
     windows = costs.get("windows") or {}
     for window in ("today", "yesterday", "last_7d", "last_30d", "month_to_date"):
         lines.append(metric_line("openai_cost_usd", windows.get(window, Decimal("0")), {"window": window, "currency": currency}))
+
+    lines.extend(
+        [
+            "# HELP openai_cost_alert_threshold_usd Configured OpenAI API cost alert threshold in USD by window.",
+            "# TYPE openai_cost_alert_threshold_usd gauge",
+        ]
+    )
+    for window, threshold in cost_alert_thresholds().items():
+        lines.append(metric_line("openai_cost_alert_threshold_usd", threshold, {"window": window, "currency": "usd"}))
 
     lines.extend(
         [

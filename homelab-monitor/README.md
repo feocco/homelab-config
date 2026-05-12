@@ -29,9 +29,10 @@ Metrics-first Grafana and Prometheus stack for `nasfeo`.
   - Home Assistant
 - OpenAI API cost and usage metrics through `openai-cost-exporter`.
 
-The OpenAI exporter runs without an Admin key, but reports
-`openai_cost_exporter_up 0` until `OPENAI_ADMIN_KEY` is added through the
-managed secret flow. See `OPENAI_COST_MONITORING_NEXT_STEPS.md`.
+OpenAI cost collection requires `OPENAI_ADMIN_KEY` through the managed secret
+flow. Cost alert thresholds are non-secret config in `.env.config`:
+`OPENAI_COST_DAILY_SPEND_SPIKE_THRESHOLD_USD` and
+`OPENAI_COST_7D_SPEND_HIGH_THRESHOLD_USD`.
 
 `streamdeck-companion` and Raspberry Pi host metrics are intentionally deferred.
 The Pi at `192.168.1.250` responded to ICMP during planning, but the Companion
