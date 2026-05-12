@@ -29,6 +29,7 @@ scrape_configs:
 
   - job_name: openai-cost-exporter
     scrape_interval: 60s
+    scrape_timeout: 55s
     static_configs:
       - targets:
           - openai-cost-exporter:9108
