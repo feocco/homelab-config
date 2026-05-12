@@ -34,3 +34,7 @@ services:
   homelab-monitor:
     path: homelab-monitor
     enabled: true
+
+  bedtime:
+    path: bedtime
+    enabled: true

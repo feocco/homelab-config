@@ -1,0 +1,24 @@
+timezone: America/New_York
+night_window:
+  start: "21:45"
+  end: "04:00"
+presence_fresh_minutes: 20
+
+people:
+  - name: Joe
+    presence_start_entity: sensor.joe_s_side_of_the_bed_presence_start
+    presence_end_entity: sensor.joe_s_side_of_the_bed_presence_end
+  - name: Jess
+    presence_start_entity: sensor.jess_s_side_of_the_bed_presence_start
+    presence_end_entity: sensor.jess_s_side_of_the_bed_presence_end
+
+pixel:
+  battery_state_entity: sensor.pixel_10_pro_xl_battery_state
+  charger_type_entity: sensor.pixel_10_pro_xl_charger_type
+
+action:
+  script_entity: script.turn_off_all_lights
+
+notification:
+  title: Bedtime lights
+  message: It looks like bedtime. Turn off the lights?

@@ -122,3 +122,23 @@ services:
       enabled: true
       autofix: true
       repo_daily_limit: 1
+
+  bedtime:
+    containers:
+      - bedtime
+    images:
+      - ghcr.io/feocco/bedtime:*
+    source:
+      repo: feocco/bedtime
+      path_hint: /Users/feocco/code/bedtime
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: bedtime
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/bedtime
+    labels:
+      - homelab-sre
+      - bedtime
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
