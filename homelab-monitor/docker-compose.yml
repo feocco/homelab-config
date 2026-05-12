@@ -60,7 +60,7 @@ services:
       - --path.procfs=/host/proc
       - --path.rootfs=/rootfs
       - --path.sysfs=/host/sys
-      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|volume1/@docker/.+)($|/)
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|volume1/@docker/.+)($$|/)
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
