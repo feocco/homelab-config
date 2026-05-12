@@ -223,7 +223,7 @@ def collect_completions_usage(now: dt.datetime, lookback_days: int, timeout_seco
 
 def refresh_if_needed(force: bool = False) -> None:
     now_ts = time.time()
-    ttl = env_int("OPENAI_COST_CACHE_TTL_SECONDS", 3600)
+    ttl = env_int("OPENAI_COST_CACHE_TTL_SECONDS", 900)
     with STATE.lock:
         if not force and now_ts < STATE.next_refresh:
             return

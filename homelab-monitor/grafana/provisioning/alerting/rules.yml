@@ -478,3 +478,98 @@ groups:
           description: The NAS has limited RAM; inspect the container and its recent workload.
         labels:
           severity: critical
+
+  - orgId: 1
+    name: Homelab cost critical
+    folder: Homelab
+    interval: 1m
+    rules:
+      - uid: homelab_openai_daily_spend_spike
+        title: OpenAI daily spend spike
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: openai_cost_usd{window="today"} > bool 5
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: OpenAI spend today is above $5.
+          description: This alert fires when the refreshed today cost gauge crosses $5; it does not wait for the UTC day to close.
+        labels:
+          severity: critical
+          category: cost
+          service: openai
+
+      - uid: homelab_openai_7d_spend_high
+        title: OpenAI 7-day spend high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: openai_cost_usd{window="last_7d"} > bool 30
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: OpenAI spend over the last 7 days is above $30.
+          description: This alert fires when the refreshed rolling 7-day cost gauge crosses $30.
+        labels:
+          severity: critical
+          category: cost
+          service: openai
