@@ -9,10 +9,13 @@ services:
       RUNNER_NAME: nasfeo-homelab
       RUNNER_WORKDIR: /tmp/github-runner
       LABELS: nasfeo,docker,homelab
+      CONFIGURED_ACTIONS_RUNNER_FILES_DIR: /runner/data
+      DISABLE_AUTOMATIC_DEREGISTRATION: "true"
       ACCESS_TOKEN: ${GITHUB_RUNNER_ACCESS_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /volume1/docker/homelab-config:/volume1/docker/homelab-config
+      - ./data:/runner/data
       - ./work:/tmp/github-runner
     logging:
       driver: local

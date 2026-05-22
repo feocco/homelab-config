@@ -41,6 +41,14 @@ docker-compose up -d
 docker logs --tail=100 github-runner-homelab
 ```
 
+This runner is intentionally persistent. `CONFIGURED_ACTIONS_RUNNER_FILES_DIR`
+stores the runner registration files under `github-runner/data`, and
+`DISABLE_AUTOMATIC_DEREGISTRATION=true` prevents the image from removing the
+GitHub runner registration on normal restarts. If the container gets stuck with
+`Cannot configure the runner because it is already configured`, recreate the
+container from this Compose file instead of repeatedly restarting the old
+container layer.
+
 Confirm in GitHub:
 
 ```text
@@ -62,4 +70,3 @@ When `homelab-config/main` changes:
 3. The workflow syncs repo files to `/volume1/docker/homelab-config`, preserving
    `.env` and `data/`.
 4. `scripts/homelab-deploy --changed` deploys affected enabled services.
-
