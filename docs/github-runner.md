@@ -70,3 +70,12 @@ When `homelab-config/main` changes:
 3. The workflow syncs repo files to `/volume1/docker/homelab-config`, preserving
    `.env` and `data/`.
 4. `scripts/homelab-deploy --changed` deploys affected enabled services.
+
+## Missed Deploy Recovery
+
+If the runner was offline and a push deploy was cancelled, GitHub will not replay
+that cancelled run automatically. After the runner is back online, later
+successful deploy runs will sync the latest committed repo files, but they may
+not recreate the container from the cancelled service change. Trigger a targeted
+workflow dispatch for the affected service when the missed change should restart
+or recreate a container.
