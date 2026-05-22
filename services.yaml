@@ -17,11 +17,11 @@ services:
 
   homarr:
     path: homarr
-    enabled: true
+    enabled: false
 
   netalertx:
     path: netalertx
-    enabled: true
+    enabled: false
 
   homelab-functions:
     path: homelab-functions
@@ -41,7 +41,7 @@ services:
 
   homelab-monitor:
     path: homelab-monitor
-    enabled: true
+    enabled: false
 
   bedtime:
     path: bedtime
