@@ -10,7 +10,7 @@
 - Added GitHub Actions workflow in `feocco/plant-monitor` to build and push the image to GHCR.
 - Confirmed the first GHCR build completed successfully.
 - Confirmed plant monitor runs on NAS with `docker-compose`.
-- Confirmed passwordless sudo works for `/usr/local/bin/homelab-deploy plant-monitor`.
+- Previously confirmed passwordless sudo worked for `/usr/local/bin/homelab-deploy plant-monitor`.
 - Added `services.yaml` manifest pattern.
 - Added repo-owned `scripts/homelab-deploy`.
 - Added repo-owned `scripts/install-deploy-script`.
@@ -50,8 +50,8 @@ Install/update the deploy script on the NAS:
 cd /volume1/docker/homelab-config
 git pull
 sudo scripts/install-deploy-script
-sudo -n /usr/local/bin/homelab-deploy --list
-sudo -n /usr/local/bin/homelab-deploy plant-monitor
+./scripts/homelab-deploy --list
+./scripts/homelab-deploy plant-monitor
 ```
 
 ## Open Decisions

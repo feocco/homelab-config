@@ -8,7 +8,7 @@ services:
     volumes:
       - hass_janitor_logs:/app/logs
     ports:
-      - "${SERVICE_PORT:-8092}:${SERVICE_PORT:-8092}"
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${SERVICE_PORT:-8092}:${SERVICE_PORT:-8092}"
     logging:
       driver: local
       options:

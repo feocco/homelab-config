@@ -1,6 +1,6 @@
 services:
   netalertx:
-    image: ghcr.io/netalertx/netalertx:latest
+    image: ghcr.io/netalertx/netalertx:latest@sha256:656da7fc9f9fa5429cc75a33b0eb073fe538fd58b3d370f229fa0e4725f065b7
     container_name: netalertx
     restart: unless-stopped
     network_mode: host

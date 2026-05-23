@@ -3,6 +3,8 @@ services:
     image: ghcr.io/myoung34/docker-github-actions-runner:2.334.0
     container_name: github-runner-homelab
     restart: unless-stopped
+    env_file:
+      - /volume1/docker/homelab-secrets/github-runner.env
     environment:
       REPO_URL: https://github.com/feocco/homelab-config
       RUNNER_SCOPE: repo
@@ -11,7 +13,6 @@ services:
       LABELS: nasfeo,docker,homelab
       CONFIGURED_ACTIONS_RUNNER_FILES_DIR: /runner/data
       DISABLE_AUTOMATIC_DEREGISTRATION: "true"
-      ACCESS_TOKEN: ${GITHUB_RUNNER_ACCESS_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /volume1/docker/homelab-config:/volume1/docker/homelab-config

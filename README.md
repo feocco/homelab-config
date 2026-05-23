@@ -42,7 +42,6 @@ homelab-config/
   services.yaml
   github-runner/
     docker-compose.yml
-    .env
   plant-monitor/
     docker-compose.yml
     .env.config
@@ -101,10 +100,27 @@ Manual deploy:
 ```bash
 cd /volume1/docker/homelab-config
 git pull
-sudo -n /usr/local/bin/homelab-deploy plant-monitor
+./scripts/homelab-deploy plant-monitor
 ```
 
 Runner setup is documented in `docs/github-runner.md`.
+
+## Security Posture
+
+Runtime `.env` files are persistent and are still the normal way to configure
+services on the NAS. Service `.env` files live beside their Compose files and
+are excluded from git. Higher-impact infrastructure credentials, such as the
+GitHub runner registration token, live outside the repo-mounted runtime tree
+under `/volume1/docker/homelab-secrets`.
+
+Published service ports should bind to the narrowest useful host interface. Use
+`HOST_BIND_ADDR=192.168.1.191` for normal LAN-only access on the NAS instead of
+Docker's default all-interface bind. Use `127.0.0.1` only when the service is
+accessed through an SSH tunnel, reverse proxy, or another local-only path.
+
+Containers with `/var/run/docker.sock` access can effectively control Docker on
+the NAS even when the socket mount is marked read-only. Treat those services as
+trusted infrastructure and keep their HTTP APIs bound narrowly and token-gated.
 
 ## SRE Metadata
 

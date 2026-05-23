@@ -8,4 +8,9 @@ HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" plant-moni
 HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --all --dry-run
 "${REPO_DIR}/scripts/check-service-secrets" --base-dir "${REPO_DIR}"
 
+if grep -R '\${{ github.event.inputs\.' "${REPO_DIR}/.github/workflows"; then
+  echo "Deploy workflows must not interpolate github.event.inputs directly into shell scripts." >&2
+  exit 1
+fi
+
 echo "Deploy tooling checks passed."

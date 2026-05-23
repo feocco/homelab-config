@@ -8,11 +8,24 @@ on:
       service:
         description: Service to deploy, or "all"
         required: true
+        type: choice
         default: plant-monitor
+        options:
+          - all
+          - bedtime
+          - dashy
+          - hass-janitor
+          - hello-nas
+          - homelab-functions
+          - homelab-log-watcher
+          - homelab-sre-agent
+          - plant-monitor
+          - portainer
       force_recreate:
         description: Force recreate containers
         required: false
-        default: "false"
+        type: boolean
+        default: false
 
 jobs:
   deploy:
@@ -84,19 +97,32 @@ jobs:
             --deploy-base-dir /volume1/docker/homelab-config
 
       - name: Deploy requested service
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.service != 'all'
+        if: github.event_name == 'workflow_dispatch' && inputs.service != 'all'
+        env:
+          SERVICE_INPUT: ${{ inputs.service }}
+          FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
         run: |
+          case "${SERVICE_INPUT}" in
+            bedtime|dashy|hass-janitor|hello-nas|homelab-functions|homelab-log-watcher|homelab-sre-agent|plant-monitor|portainer)
+              ;;
+            *)
+              echo "Unsupported service: ${SERVICE_INPUT}" >&2
+              exit 2
+              ;;
+          esac
           args=()
-          if [ "${{ github.event.inputs.force_recreate }}" = "true" ]; then
+          if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
           fi
-          ./scripts/homelab-deploy "${{ github.event.inputs.service }}" "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
+          ./scripts/homelab-deploy "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
 
       - name: Deploy all services
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'all'
+        if: github.event_name == 'workflow_dispatch' && inputs.service == 'all'
+        env:
+          FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
         run: |
           args=()
-          if [ "${{ github.event.inputs.force_recreate }}" = "true" ]; then
+          if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
           fi
           ./scripts/homelab-deploy --all "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config

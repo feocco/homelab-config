@@ -1,6 +1,6 @@
 services:
   homarr:
-    image: ghcr.io/homarr-labs/homarr:latest
+    image: ghcr.io/homarr-labs/homarr:latest@sha256:fc96436bf80000bed8989d6606fc1ac0929bf4809bb4594168ad4b327e8f2c5f
     container_name: homarr
     restart: unless-stopped
     env_file:

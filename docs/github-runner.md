@@ -7,8 +7,8 @@ the containerized runner is the lower-maintenance option.
 ## Authentication
 
 Use a fine-grained GitHub token first. GitHub App auth is supported by the runner
-image, but it adds app creation, private-key handling, and installation setup.
-That is not worth it for the first repo-scoped runner.
+image and is a good future hardening step, but it adds app creation, private-key
+handling, and installation setup.
 
 Token target:
 
@@ -27,9 +27,10 @@ On the NAS:
 ```bash
 cd /volume1/docker/homelab-config
 git pull
-cd github-runner
-cp .env.example .env
-vi .env
+sudo mkdir -p /volume1/docker/homelab-secrets
+sudo cp github-runner/.env.example /volume1/docker/homelab-secrets/github-runner.env
+sudo vi /volume1/docker/homelab-secrets/github-runner.env
+sudo chmod 600 /volume1/docker/homelab-secrets/github-runner.env
 ```
 
 Start the runner:
@@ -48,6 +49,12 @@ GitHub runner registration on normal restarts. If the container gets stuck with
 `Cannot configure the runner because it is already configured`, recreate the
 container from this Compose file instead of repeatedly restarting the old
 container layer.
+
+The runner token env file intentionally lives outside
+`/volume1/docker/homelab-config`. The runner container mounts the homelab-config
+runtime tree so deploy jobs can sync and render service config; keeping the
+runner token outside that tree prevents ordinary deploy jobs from reading it by
+path.
 
 Confirm in GitHub:
 
