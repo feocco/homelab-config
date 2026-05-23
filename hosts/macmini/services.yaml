@@ -1,6 +1,6 @@
 host:
   name: macmini
-  deploy_base_dir: /Users/feocco/homelab-config-runtime
+  deploy_base_dir: ${HOME}/homelab-config-runtime
   bind_addr: 192.168.1.43
 
 services:

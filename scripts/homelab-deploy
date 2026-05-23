@@ -99,6 +99,7 @@ fi
 if [[ -z "${DEPLOY_BASE_DIR}" ]]; then
   DEPLOY_BASE_DIR="${BASE_DIR}"
 fi
+DEPLOY_BASE_DIR="$(service_secret_expand_path "${DEPLOY_BASE_DIR}")"
 
 service_entries() {
   awk '

@@ -9,7 +9,7 @@ path is proven.
 ```text
 host: macmini
 lan_ip: 192.168.1.43
-runtime_path: /Users/feocco/homelab-config-runtime
+runtime_path: ${HOME}/homelab-config-runtime
 runner_labels: self-hosted,macmini,docker,homelab
 ```
 
@@ -26,7 +26,7 @@ ssh -o BatchMode=yes feocco@192.168.1.43 'hostname; sw_vers; docker version; doc
 On the Mac mini:
 
 ```bash
-mkdir -p /Users/feocco/homelab-config-runtime
+mkdir -p "${HOME}/homelab-config-runtime"
 ```
 
 Install a native macOS GitHub Actions runner for `feocco/homelab-config` and add

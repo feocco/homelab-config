@@ -155,17 +155,18 @@ jobs:
 
       - name: Sync checkout to runtime path
         run: |
-          mkdir -p /Users/feocco/homelab-config-runtime
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          mkdir -p "${MACMINI_RUNTIME_DIR}"
           tar \
             --exclude './.git' \
             --exclude './services/*/.env' \
             --exclude './services/*/data' \
-            -cf - . | tar -C /Users/feocco/homelab-config-runtime -xf -
+            -cf - . | tar -C "${MACMINI_RUNTIME_DIR}" -xf -
           find . -path './services/*/data/.gitkeep' -type f | while read -r keep_file; do
             data_dir="${keep_file#./}"
-            mkdir -p "/Users/feocco/homelab-config-runtime/${data_dir%/.gitkeep}"
+            mkdir -p "${MACMINI_RUNTIME_DIR}/${data_dir%/.gitkeep}"
           done
-          ./scripts/migrate-host-runtime-layout /Users/feocco/homelab-config-runtime
+          ./scripts/migrate-host-runtime-layout "${MACMINI_RUNTIME_DIR}"
 
       - name: Render service environments
         env:
@@ -201,9 +202,10 @@ jobs:
           PLANT_MONITOR__SERVICE_CALLBACK_TOKEN: ${{ secrets.PLANT_MONITOR__SERVICE_CALLBACK_TOKEN }}
           # END GENERATED SERVICE SECRETS
         run: |
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
           ./scripts/render-service-env --host macmini --all \
             --base-dir "${{ github.workspace }}" \
-            --deploy-base-dir /Users/feocco/homelab-config-runtime
+            --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
 
       - name: Deploy changed services
         if: github.event_name == 'push'
@@ -211,9 +213,10 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
           AFTER_SHA: ${{ github.sha }}
         run: |
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
           ./scripts/homelab-deploy --host macmini --changed \
             --base-dir "${{ github.workspace }}" \
-            --deploy-base-dir /Users/feocco/homelab-config-runtime
+            --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
 
       - name: Deploy requested service
         if: github.event_name == 'workflow_dispatch' && inputs.service != 'all'
@@ -233,7 +236,8 @@ jobs:
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
           fi
-          ./scripts/homelab-deploy --host macmini "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir /Users/feocco/homelab-config-runtime
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          ./scripts/homelab-deploy --host macmini "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
 
       - name: Deploy all services
         if: github.event_name == 'workflow_dispatch' && inputs.service == 'all'
@@ -244,4 +248,5 @@ jobs:
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
           fi
-          ./scripts/homelab-deploy --host macmini --all "${args[@]}" --deploy-base-dir /Users/feocco/homelab-config-runtime
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          ./scripts/homelab-deploy --host macmini --all "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"

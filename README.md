@@ -64,7 +64,7 @@ Each host has its own deploy whitelist:
 ```yaml
 host:
   name: macmini
-  deploy_base_dir: /Users/feocco/homelab-config-runtime
+  deploy_base_dir: ${HOME}/homelab-config-runtime
 
 services:
   plant-monitor:
@@ -119,7 +119,7 @@ git pull
 Manual deploy on the Mac mini:
 
 ```bash
-cd /Users/feocco/homelab-config-runtime
+cd "${HOME}/homelab-config-runtime"
 ./scripts/homelab-deploy --host macmini hello-nas
 ```
 

@@ -99,10 +99,11 @@ Use the runner name `macmini-homelab` and labels:
 macmini,docker,homelab
 ```
 
-Create the Mac runtime tree before the first deploy:
+Create the Mac runtime tree before the first deploy. Run this as the same user
+that runs the GitHub Actions runner:
 
 ```bash
-mkdir -p /Users/feocco/homelab-config-runtime
+mkdir -p "${HOME}/homelab-config-runtime"
 ```
 
 Confirm Docker works from the same user account that runs the runner:
