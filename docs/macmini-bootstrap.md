@@ -49,3 +49,8 @@ Then verify:
 ```bash
 curl -fsS http://192.168.1.43:8099/health
 ```
+
+Note: the Mac mini canary binds `HOST_BIND_ADDR=0.0.0.0`. OrbStack listened on
+`192.168.1.43` when configured with the LAN IP directly, but HTTP requests did
+not complete. Binding all interfaces is the working v1 path until Tailscale or a
+reverse proxy gives us a cleaner Mac-specific bind target.

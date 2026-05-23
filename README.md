@@ -136,9 +136,11 @@ The NAS GitHub runner registration cache and Actions workdir live outside the
 repo-mounted tree under `/volume1/docker/homelab-runner`.
 
 Published service ports should bind to the narrowest useful host interface. Use
-the host LAN IP for normal LAN-only access instead of Docker's default
-all-interface bind: `192.168.1.191` for `nasfeo` and `192.168.1.43` for
-`macmini`. Use `127.0.0.1` only when the service is accessed through an SSH
+the host LAN IP for normal LAN-only access on Linux/Synology instead of Docker's
+default all-interface bind. The NAS uses `192.168.1.191`. The Mac mini canary
+currently uses `0.0.0.0` because OrbStack did not successfully serve traffic
+when bound directly to `192.168.1.43`; revisit this when adding Tailscale or a
+reverse proxy. Use `127.0.0.1` only when the service is accessed through an SSH
 tunnel, reverse proxy, or another local-only path.
 
 Containers with `/var/run/docker.sock` access can effectively control Docker on
