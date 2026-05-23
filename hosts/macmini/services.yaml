@@ -1,7 +1,7 @@
 host:
-  name: nasfeo
-  deploy_base_dir: /volume1/docker/homelab-config
-  bind_addr: 192.168.1.191
+  name: macmini
+  deploy_base_dir: /Users/feocco/homelab-config-runtime
+  bind_addr: 192.168.1.43
 
 services:
   hello-nas:
@@ -10,44 +10,28 @@ services:
 
   plant-monitor:
     path: services/plant-monitor
-    enabled: true
-
-  portainer:
-    path: services/portainer
-    enabled: true
+    enabled: false
 
   dashy:
     path: services/dashy
-    enabled: true
-
-  homarr:
-    path: services/homarr
-    enabled: false
-
-  netalertx:
-    path: services/netalertx
     enabled: false
 
   homelab-functions:
     path: services/homelab-functions
-    enabled: true
+    enabled: false
 
   hass-janitor:
     path: services/hass-janitor
-    enabled: true
+    enabled: false
 
   homelab-log-watcher:
     path: services/homelab-log-watcher
-    enabled: true
+    enabled: false
 
   homelab-sre-agent:
     path: services/homelab-sre-agent
-    enabled: true
-
-  homelab-monitor:
-    path: services/homelab-monitor
     enabled: false
 
   bedtime:
     path: services/bedtime
-    enabled: true
+    enabled: false

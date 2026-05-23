@@ -11,5 +11,5 @@ Deploy checks:
 
 ```bash
 ./scripts/check-service-secrets
-./scripts/homelab-deploy bedtime --dry-run --base-dir /Users/feocco/homelab-config --deploy-base-dir /Users/feocco/homelab-config
+./scripts/homelab-deploy --host nasfeo bedtime --dry-run --base-dir /Users/feocco/code/homelab-config --deploy-base-dir /Users/feocco/code/homelab-config
 ```

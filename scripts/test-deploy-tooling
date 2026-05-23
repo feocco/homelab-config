@@ -3,9 +3,24 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --list
-HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" plant-monitor --dry-run
-HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --all --dry-run
+HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host nasfeo --list
+HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host nasfeo plant-monitor --dry-run --deploy-base-dir "${REPO_DIR}"
+HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host nasfeo --all --dry-run --deploy-base-dir "${REPO_DIR}"
+HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host macmini --list
+HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host macmini hello-nas --dry-run --deploy-base-dir "${REPO_DIR}"
+"${REPO_DIR}/scripts/render-service-env" --host nasfeo --all --base-dir "${REPO_DIR}" --deploy-base-dir "${REPO_DIR}" --dry-run >/dev/null
+"${REPO_DIR}/scripts/render-service-env" --host macmini hello-nas --base-dir "${REPO_DIR}" --deploy-base-dir "${REPO_DIR}" --dry-run >/dev/null
+tmp_runtime="$(mktemp -d)"
+mkdir -p "${tmp_runtime}/legacy-service/data" "${tmp_runtime}/services/legacy-service/data"
+touch "${tmp_runtime}/services/legacy-service/data/.gitkeep"
+echo "state" > "${tmp_runtime}/legacy-service/data/state.txt"
+rm -rf "${tmp_runtime}/services/legacy-service/data"
+mkdir -p "${tmp_runtime}/services/legacy-service/data"
+touch "${tmp_runtime}/services/legacy-service/data/.gitkeep"
+rm -rf "${tmp_runtime}/services/legacy-service/data"
+"${REPO_DIR}/scripts/migrate-host-runtime-layout" "${tmp_runtime}" >/dev/null
+test -f "${tmp_runtime}/services/legacy-service/data/state.txt"
+rm -rf "${tmp_runtime}"
 "${REPO_DIR}/scripts/check-service-secrets" --base-dir "${REPO_DIR}"
 
 if grep -R '\${{ github.event.inputs\.' "${REPO_DIR}/.github/workflows"; then

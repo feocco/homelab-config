@@ -13,14 +13,14 @@ endpoints.
 
 Once the Admin key exists, add it to the managed homelab secret flow:
 
-1. Add or replace `OPENAI_ADMIN_KEY` in `homelab-monitor/.env`.
+1. Add or replace `OPENAI_ADMIN_KEY` in `services/homelab-monitor/.env`.
 2. Run:
 
 ```bash
 ./scripts/generate-service-secret-workflow-env
 ./scripts/set-service-secrets homelab-monitor --repo feocco/homelab-config
 ./scripts/check-service-secrets
-./scripts/homelab-deploy homelab-monitor --dry-run --deploy-base-dir /Users/feocco/homelab-config
+./scripts/homelab-deploy --host nasfeo homelab-monitor --dry-run --deploy-base-dir /Users/feocco/homelab-config
 ```
 
 4. Commit and push the updated secret manifest/workflow files.

@@ -13,8 +13,8 @@ services:
       path_hint: /Users/feocco/code/hello-nas
     issue_repo: feocco/hello-nas
     deploy:
-      path: hello-nas
-    runbook_url: https://github.com/feocco/homelab-config/tree/main/hello-nas
+      path: services/hello-nas
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/hello-nas
     labels:
       - homelab-sre
       - hello-nas
@@ -33,8 +33,8 @@ services:
       path_hint: /Users/feocco/code/plant-monitor
     issue_repo: feocco/plant-monitor
     deploy:
-      path: plant-monitor
-    runbook_url: https://github.com/feocco/homelab-config/tree/main/plant-monitor
+      path: services/plant-monitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/plant-monitor
     labels:
       - homelab-sre
       - plant-monitor
@@ -53,8 +53,8 @@ services:
       path_hint: /Users/feocco/code/homelab-functions
     issue_repo: feocco/homelab-functions
     deploy:
-      path: homelab-functions
-    runbook_url: https://github.com/feocco/homelab-config/tree/main/homelab-functions
+      path: services/homelab-functions
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homelab-functions
     labels:
       - homelab-sre
       - homelab-functions
@@ -73,8 +73,8 @@ services:
       path_hint: /Users/feocco/code/hass-janitor
     issue_repo: feocco/hass-janitor
     deploy:
-      path: hass-janitor
-    runbook_url: https://github.com/feocco/homelab-config/tree/main/hass-janitor
+      path: services/hass-janitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/hass-janitor
     labels:
       - homelab-sre
       - hass-janitor
@@ -93,8 +93,8 @@ services:
       path_hint: /Users/feocco/code/homelab-log-watcher
     issue_repo: feocco/homelab-log-watcher
     deploy:
-      path: homelab-log-watcher
-    runbook_url: https://github.com/feocco/homelab-config/tree/main/homelab-log-watcher
+      path: services/homelab-log-watcher
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homelab-log-watcher
     labels:
       - homelab-sre
       - homelab-log-watcher
@@ -113,8 +113,8 @@ services:
       path_hint: /Users/feocco/code/homelab-sre-agent
     issue_repo: feocco/homelab-sre-agent
     deploy:
-      path: homelab-sre-agent
-    runbook_url: https://github.com/feocco/homelab-config/tree/main/homelab-sre-agent
+      path: services/homelab-sre-agent
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homelab-sre-agent
     labels:
       - homelab-sre
       - homelab-sre-agent
@@ -130,11 +130,11 @@ services:
       - ghcr.io/homarr-labs/homarr:*
     source:
       repo: feocco/homelab-config
-      path_hint: /Users/feocco/homelab-config/homarr
+      path_hint: /Users/feocco/homelab-config/services/homarr
     issue_repo: feocco/homelab-config
     deploy:
-      path: homarr
-    runbook_url: https://github.com/feocco/homelab-config/tree/main/homarr
+      path: services/homarr
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homarr
     labels:
       - homelab-sre
       - homarr
@@ -149,11 +149,11 @@ services:
       - ghcr.io/netalertx/netalertx:*
     source:
       repo: feocco/homelab-config
-      path_hint: /Users/feocco/homelab-config/netalertx
+      path_hint: /Users/feocco/homelab-config/services/netalertx
     issue_repo: feocco/homelab-config
     deploy:
-      path: netalertx
-    runbook_url: https://github.com/feocco/homelab-config/tree/main/netalertx
+      path: services/netalertx
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/netalertx
     labels:
       - homelab-sre
       - netalertx
@@ -171,8 +171,8 @@ services:
       path_hint: /Users/feocco/code/bedtime
     issue_repo: feocco/homelab-config
     deploy:
-      path: bedtime
-    runbook_url: https://github.com/feocco/homelab-config/tree/main/bedtime
+      path: services/bedtime
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/bedtime
     labels:
       - homelab-sre
       - bedtime
