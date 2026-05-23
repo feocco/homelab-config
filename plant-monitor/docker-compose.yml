@@ -9,7 +9,7 @@ services:
       - ./plants.yaml:/app/plants.yaml:ro
       - ./data:/app/data
     ports:
-      - "${SERVICE_PORT:-8088}:${SERVICE_PORT:-8088}"
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${SERVICE_PORT:-8088}:${SERVICE_PORT:-8088}"
     logging:
       driver: local
       options:

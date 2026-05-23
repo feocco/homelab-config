@@ -6,8 +6,10 @@ services:
     environment:
       - NODE_ENV=production
       - CONF_PATH=/app/user-data/conf.yml
+    env_file:
+      - .env
     ports:
-      - "8080:8080"
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${DASHY_HTTP_PORT:-8080}:8080"
     volumes:
       - ./user-data:/app/user-data
     logging:

@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     ports:
-      - "${HOST_PORT:-8099}:8080"
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${HOST_PORT:-8099}:8080"
     logging:
       driver: local
       options:

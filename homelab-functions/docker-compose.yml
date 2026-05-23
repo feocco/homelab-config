@@ -8,7 +8,7 @@ services:
     volumes:
       - ./data:/app/data
     ports:
-      - "${SERVICE_PORT:-8091}:${SERVICE_PORT:-8091}"
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${SERVICE_PORT:-8091}:${SERVICE_PORT:-8091}"
     logging:
       driver: local
       options:
