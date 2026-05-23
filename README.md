@@ -111,7 +111,9 @@ Runtime `.env` files are persistent and are still the normal way to configure
 services on the NAS. Service `.env` files live beside their Compose files and
 are excluded from git. Higher-impact infrastructure credentials, such as the
 GitHub runner registration token, live outside the repo-mounted runtime tree
-under `/volume1/docker/homelab-secrets`.
+under `/volume1/docker/homelab-secrets`. The GitHub runner registration cache
+and Actions workdir live outside the repo-mounted tree under
+`/volume1/docker/homelab-runner`.
 
 Published service ports should bind to the narrowest useful host interface. Use
 `HOST_BIND_ADDR=192.168.1.191` for normal LAN-only access on the NAS instead of

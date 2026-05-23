@@ -28,6 +28,7 @@ On the NAS:
 cd /volume1/docker/homelab-config
 git pull
 sudo mkdir -p /volume1/docker/homelab-secrets
+sudo mkdir -p /volume1/docker/homelab-runner/data /volume1/docker/homelab-runner/work
 sudo cp github-runner/.env.example /volume1/docker/homelab-secrets/github-runner.env
 sudo vi /volume1/docker/homelab-secrets/github-runner.env
 sudo chmod 600 /volume1/docker/homelab-secrets/github-runner.env
@@ -43,7 +44,8 @@ docker logs --tail=100 github-runner-homelab
 ```
 
 This runner is intentionally persistent. `CONFIGURED_ACTIONS_RUNNER_FILES_DIR`
-stores the runner registration files under `github-runner/data`, and
+stores the runner registration files under `/volume1/docker/homelab-runner/data`,
+and the job workspace lives under `/volume1/docker/homelab-runner/work`.
 `DISABLE_AUTOMATIC_DEREGISTRATION=true` prevents the image from removing the
 GitHub runner registration on normal restarts. If the container gets stuck with
 `Cannot configure the runner because it is already configured`, recreate the
@@ -53,8 +55,19 @@ container layer.
 The runner token env file intentionally lives outside
 `/volume1/docker/homelab-config`. The runner container mounts the homelab-config
 runtime tree so deploy jobs can sync and render service config; keeping the
-runner token outside that tree prevents ordinary deploy jobs from reading it by
-path.
+runner token, runner registration cache, and runner workdir outside that tree
+prevents ordinary deploy jobs from reading those files by path.
+
+If the runner has a stale GitHub session, stop it and reset only the external
+registration cache:
+
+```bash
+cd /volume1/docker/homelab-config/github-runner
+docker-compose down
+sudo mv /volume1/docker/homelab-runner/data "/volume1/docker/homelab-runner/data.bak-$(date +%Y%m%d-%H%M%S)"
+sudo mkdir -p /volume1/docker/homelab-runner/data /volume1/docker/homelab-runner/work
+docker-compose up -d
+```
 
 Confirm in GitHub:
 

@@ -16,8 +16,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /volume1/docker/homelab-config:/volume1/docker/homelab-config
-      - ./data:/runner/data
-      - ./work:/tmp/github-runner
+      - /volume1/docker/homelab-runner/data:/runner/data
+      - /volume1/docker/homelab-runner/work:/tmp/github-runner
     logging:
       driver: local
       options:
