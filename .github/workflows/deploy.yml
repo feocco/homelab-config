@@ -250,3 +250,7 @@ jobs:
           fi
           MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
           ./scripts/homelab-deploy --host macmini --all "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
+
+      - name: Apply Tailscale Serve config
+        run: |
+          ./scripts/apply-tailscale-serve --host macmini --base-dir "${{ github.workspace }}"

@@ -44,13 +44,13 @@ gh workflow run Deploy \
   -f force_recreate=true
 ```
 
-Then verify:
+Then verify over Tailscale:
 
 ```bash
-curl -fsS http://192.168.1.43:8099/health
+curl -fsS http://maclabs-mac-mini.taildf3445.ts.net:8099/health
 ```
 
-Note: the Mac mini canary binds `HOST_BIND_ADDR=0.0.0.0`. OrbStack listened on
-`192.168.1.43` when configured with the LAN IP directly, but HTTP requests did
-not complete. Binding all interfaces is the working v1 path until Tailscale or a
-reverse proxy gives us a cleaner Mac-specific bind target.
+Mac mini services should bind Docker ports to `127.0.0.1` and expose selected
+ports through Tailscale Serve. OrbStack listened on `192.168.1.43` when
+configured with the LAN IP directly, but HTTP requests did not complete. The
+working v1 pattern is local-only Docker ports plus Tailnet-only Tailscale Serve.

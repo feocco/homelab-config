@@ -137,11 +137,9 @@ repo-mounted tree under `/volume1/docker/homelab-runner`.
 
 Published service ports should bind to the narrowest useful host interface. Use
 the host LAN IP for normal LAN-only access on Linux/Synology instead of Docker's
-default all-interface bind. The NAS uses `192.168.1.191`. The Mac mini canary
-currently uses `0.0.0.0` because OrbStack did not successfully serve traffic
-when bound directly to `192.168.1.43`; revisit this when adding Tailscale or a
-reverse proxy. Use `127.0.0.1` only when the service is accessed through an SSH
-tunnel, reverse proxy, or another local-only path.
+default all-interface bind. The NAS uses `192.168.1.191`. Mac mini services
+should bind containers to `127.0.0.1` and expose selected ports through
+Tailscale Serve using `hosts/macmini/tailscale-serve.yaml`.
 
 Containers with `/var/run/docker.sock` access can effectively control Docker on
 the NAS even when the socket mount is marked read-only. Treat those services as

@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_DIR="${HOMELAB_CONFIG_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+HOST="macmini"
+DRY_RUN="false"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  apply-tailscale-serve [--host HOST] [--base-dir DIR] [--dry-run]
+
+Applies host Tailscale Serve mappings from hosts/<host>/tailscale-serve.yaml.
+Only a small YAML subset is supported:
+
+services:
+  service-name:
+    enabled: true
+    http_port: 8099
+    target: http://127.0.0.1:8099
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host)
+      HOST="${2:?--host requires a value}"
+      shift 2
+      ;;
+    --base-dir)
+      BASE_DIR="${2:?--base-dir requires a value}"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+CONFIG_FILE="${BASE_DIR}/hosts/${HOST}/tailscale-serve.yaml"
+
+if [[ ! -f "${CONFIG_FILE}" ]]; then
+  echo "No Tailscale Serve config for ${HOST}."
+  exit 0
+fi
+
+if ! command -v tailscale >/dev/null 2>&1; then
+  echo "tailscale CLI is required to apply ${CONFIG_FILE}" >&2
+  exit 2
+fi
+
+entries() {
+  awk '
+    function emit() {
+      if (name != "") {
+        print name "|" enabled "|" http_port "|" target
+      }
+    }
+    /^services:[[:space:]]*$/ {
+      in_services=1
+      next
+    }
+    in_services && /^  [^[:space:]].*:[[:space:]]*$/ {
+      emit()
+      name=$1
+      sub(/:$/, "", name)
+      enabled="false"
+      http_port=""
+      target=""
+      next
+    }
+    in_services && /^    enabled:/ {
+      enabled=$2
+      next
+    }
+    in_services && /^    http_port:/ {
+      http_port=$2
+      next
+    }
+    in_services && /^    target:/ {
+      target=$2
+      next
+    }
+    END {
+      emit()
+    }
+  ' "${CONFIG_FILE}"
+}
+
+while IFS='|' read -r service enabled http_port target; do
+  [[ -n "${service}" ]] || continue
+  if [[ -z "${http_port}" ]]; then
+    echo "Missing http_port for ${service} in ${CONFIG_FILE}" >&2
+    exit 2
+  fi
+
+  case "${enabled}" in
+    true)
+      if [[ -z "${target}" ]]; then
+        echo "Missing target for enabled service ${service} in ${CONFIG_FILE}" >&2
+        exit 2
+      fi
+      if [[ "${DRY_RUN}" == "true" ]]; then
+        echo "Would expose ${service} on Tailnet HTTP port ${http_port} -> ${target}"
+      else
+        tailscale serve --bg --http="${http_port}" "${target}"
+      fi
+      ;;
+    false)
+      if [[ "${DRY_RUN}" == "true" ]]; then
+        echo "Would disable Tailnet HTTP port ${http_port} for ${service}"
+      else
+        tailscale serve --http="${http_port}" off
+      fi
+      ;;
+    *)
+      echo "Invalid enabled value for ${service}: ${enabled}" >&2
+      exit 2
+      ;;
+  esac
+done < <(entries)

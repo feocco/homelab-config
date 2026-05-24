@@ -10,6 +10,7 @@ HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host mac
 HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host macmini hello-nas --dry-run --deploy-base-dir "${REPO_DIR}"
 "${REPO_DIR}/scripts/render-service-env" --host nasfeo --all --base-dir "${REPO_DIR}" --deploy-base-dir "${REPO_DIR}" --dry-run >/dev/null
 "${REPO_DIR}/scripts/render-service-env" --host macmini hello-nas --base-dir "${REPO_DIR}" --deploy-base-dir "${REPO_DIR}" --dry-run >/dev/null
+"${REPO_DIR}/scripts/apply-tailscale-serve" --host macmini --base-dir "${REPO_DIR}" --dry-run >/dev/null
 tmp_runtime="$(mktemp -d)"
 mkdir -p "${tmp_runtime}/legacy-service/data" "${tmp_runtime}/services/legacy-service/data"
 touch "${tmp_runtime}/services/legacy-service/data/.gitkeep"
