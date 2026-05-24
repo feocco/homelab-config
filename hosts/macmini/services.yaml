@@ -10,28 +10,28 @@ services:
 
   plant-monitor:
     path: services/plant-monitor
-    enabled: false
+    enabled: true
 
   dashy:
     path: services/dashy
-    enabled: false
+    enabled: true
 
   homelab-functions:
     path: services/homelab-functions
-    enabled: false
+    enabled: true
 
   hass-janitor:
     path: services/hass-janitor
-    enabled: false
+    enabled: true
 
   homelab-log-watcher:
     path: services/homelab-log-watcher
-    enabled: false
+    enabled: true
 
   homelab-sre-agent:
     path: services/homelab-sre-agent
-    enabled: false
+    enabled: true
 
   bedtime:
     path: services/bedtime
-    enabled: false
+    enabled: true

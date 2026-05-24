@@ -16,11 +16,14 @@
 - Added repo-owned `scripts/install-deploy-script`.
 - Added self-hosted runner deploy workflow scaffold.
 - Added Dockerized GitHub runner Compose config.
+- Proved Mac mini runner and Tailnet-only `hello-nas` canary deploy.
+- Adopted split placement: NAS for stable infra, Mac mini for app/compute services.
 
 ## Blocked
 
 - Local GitHub CLI token cannot inspect package metadata because it does not have `read:packages`.
-- Dockerized self-hosted GitHub Actions runner is not started yet.
+- Disabled heavier infra (`homarr`, `netalertx`, `homelab-monitor`) remains a
+  later enablement task.
 
 ## Next Manual Checks
 
@@ -61,3 +64,5 @@ sudo scripts/install-deploy-script
 - App repo visibility: per-repo choice; public is fine.
 - NAS config repo: private.
 - Deployment method: self-hosted runners per Docker host.
+- Future service placement: default app/compute services to `macmini`; keep
+  storage-adjacent and NAS infrastructure on `nasfeo`.

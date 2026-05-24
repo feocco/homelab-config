@@ -35,6 +35,24 @@ docs/
 4. The target host pulls the image.
 5. The target host runs the service with Docker Compose.
 
+## Host Placement
+
+Use the NAS for stable infrastructure and storage-adjacent services. Use the
+Mac mini for app and compute services.
+
+Current placement:
+
+- `nasfeo`: `portainer`, the NAS GitHub runner, Pi-hole outside this repo, and
+  `homelab-log-watcher` for NAS container logs.
+- `macmini`: `hello-nas`, `bedtime`, `dashy`, `hass-janitor`,
+  `homelab-functions`, `plant-monitor`, `homelab-log-watcher`, and
+  `homelab-sre-agent`.
+- Disabled for later: `homarr`, `netalertx`, and `homelab-monitor`.
+
+One log watcher should run on each Docker host. The central SRE agent runs on
+the Mac mini, so the NAS must be able to reach the Mac mini over Tailscale for
+incident webhooks.
+
 ## Service Pattern
 
 Use one folder per service. Do not use one giant Compose file unless services
@@ -125,6 +143,11 @@ cd "${HOME}/homelab-config-runtime"
 
 Runner setup is documented in `docs/github-runner.md`.
 
+Disabling a service in `hosts/<host>/services.yaml` only removes it from future
+deploys. It does not stop an already-running container. When migrating a
+service between hosts, stop the old host container manually after the new host
+is verified.
+
 ## Security Posture
 
 Runtime `.env` files are persistent and are still the normal way to configure
@@ -140,6 +163,11 @@ the host LAN IP for normal LAN-only access on Linux/Synology instead of Docker's
 default all-interface bind. The NAS uses `192.168.1.191`. Mac mini services
 should bind containers to `127.0.0.1` and expose selected ports through
 Tailscale Serve using `hosts/macmini/tailscale-serve.yaml`.
+
+NAS-to-Mac service calls should use the Mac mini Tailnet name when they cross
+hosts. Mac containers that need another Mac-hosted service should use
+`host.docker.internal` so OrbStack can route back to the host-local published
+port.
 
 Containers with `/var/run/docker.sock` access can effectively control Docker on
 the NAS even when the socket mount is marked read-only. Treat those services as

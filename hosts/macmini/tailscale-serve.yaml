@@ -3,3 +3,27 @@ services:
     enabled: true
     http_port: 8099
     target: http://127.0.0.1:8099
+  dashy:
+    enabled: true
+    http_port: 8080
+    target: http://127.0.0.1:8080
+  plant-monitor:
+    enabled: true
+    http_port: 8088
+    target: http://127.0.0.1:8088
+  homelab-functions:
+    enabled: true
+    http_port: 8091
+    target: http://127.0.0.1:8091
+  hass-janitor:
+    enabled: true
+    http_port: 8092
+    target: http://127.0.0.1:8092
+  homelab-log-watcher:
+    enabled: true
+    http_port: 8093
+    target: http://127.0.0.1:8093
+  homelab-sre-agent:
+    enabled: true
+    http_port: 8094
+    target: http://127.0.0.1:8094
