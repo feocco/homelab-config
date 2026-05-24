@@ -1,6 +1,7 @@
 services:
   hello-nas:
     image: ghcr.io/feocco/hello-nas:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
     container_name: hello-nas
     restart: unless-stopped
     env_file:

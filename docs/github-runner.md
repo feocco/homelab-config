@@ -1,8 +1,12 @@
-# GitHub Runner
+# GitHub Runners
 
 The NAS uses a Dockerized GitHub Actions runner instead of a native DSM runner.
 The native path required missing system tools such as `ldd` and `ldconfig`, so
 the containerized runner is the lower-maintenance option.
+
+The Mac mini should use a native macOS GitHub Actions runner with labels
+`self-hosted`, `homelab`, `docker`, and `macmini`. Keep the NAS runner labels as
+`self-hosted`, `nasfeo`, `docker`, and `homelab`.
 
 ## Authentication
 
@@ -20,7 +24,7 @@ Permission: Administration read/write
 If the fine-grained token does not work with the runner image, use a classic PAT
 with `repo` scope as the fallback.
 
-## Install
+## NAS Install
 
 On the NAS:
 
@@ -81,15 +85,44 @@ Expected labels:
 nasfeo,docker,homelab
 ```
 
+## Mac Mini Install
+
+Bootstrap SSH key access first, then install a native macOS runner from GitHub:
+
+```text
+homelab-config -> Settings -> Actions -> Runners -> New self-hosted runner -> macOS
+```
+
+Use the runner name `macmini-homelab` and labels:
+
+```text
+macmini,docker,homelab
+```
+
+Create the Mac runtime tree before the first deploy. Run this as the same user
+that runs the GitHub Actions runner:
+
+```bash
+mkdir -p "${HOME}/homelab-config-runtime"
+```
+
+Confirm Docker works from the same user account that runs the runner:
+
+```bash
+docker version
+docker compose version
+```
+
 ## Deploy Flow
 
 When `homelab-config/main` changes:
 
-1. GitHub sends the job to the NAS runner.
+1. GitHub sends host-specific jobs to the matching runner.
 2. The runner checks out the repo.
-3. The workflow syncs repo files to `/volume1/docker/homelab-config`, preserving
+3. The workflow syncs repo files to the host runtime path, preserving service
    `.env` and `data/`.
-4. `scripts/homelab-deploy --changed` deploys affected enabled services.
+4. `scripts/homelab-deploy --host <host> --changed` deploys affected enabled
+   services for that host.
 
 ## Missed Deploy Recovery
 

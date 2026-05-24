@@ -5,6 +5,15 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      host:
+        description: Host to deploy, or "all"
+        required: true
+        type: choice
+        default: nasfeo
+        options:
+          - all
+          - nasfeo
+          - macmini
       service:
         description: Service to deploy, or "all"
         required: true
@@ -16,9 +25,12 @@ on:
           - dashy
           - hass-janitor
           - hello-nas
+          - homarr
           - homelab-functions
           - homelab-log-watcher
+          - homelab-monitor
           - homelab-sre-agent
+          - netalertx
           - plant-monitor
           - portainer
       force_recreate:
@@ -28,8 +40,10 @@ on:
         default: false
 
 jobs:
-  deploy:
+  deploy-nasfeo:
+    name: Deploy nasfeo
     runs-on: [self-hosted, nasfeo]
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.host == 'nasfeo' || inputs.host == 'all'))
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -38,15 +52,17 @@ jobs:
 
       - name: Sync checkout to runtime path
         run: |
+          mkdir -p /volume1/docker/homelab-config
           tar \
             --exclude './.git' \
-            --exclude './*/.env' \
-            --exclude './*/data' \
+            --exclude './services/*/.env' \
+            --exclude './services/*/data' \
             -cf - . | tar -C /volume1/docker/homelab-config -xf -
-          find . -path './*/data/.gitkeep' -type f | while read -r keep_file; do
+          find . -path './services/*/data/.gitkeep' -type f | while read -r keep_file; do
             data_dir="${keep_file#./}"
             mkdir -p "/volume1/docker/homelab-config/${data_dir%/.gitkeep}"
           done
+          ./scripts/migrate-host-runtime-layout /volume1/docker/homelab-config
 
       - name: Render service environments
         env:
@@ -82,7 +98,7 @@ jobs:
           PLANT_MONITOR__SERVICE_CALLBACK_TOKEN: ${{ secrets.PLANT_MONITOR__SERVICE_CALLBACK_TOKEN }}
           # END GENERATED SERVICE SECRETS
         run: |
-          ./scripts/render-service-env --all \
+          ./scripts/render-service-env --host nasfeo --all \
             --base-dir "${{ github.workspace }}" \
             --deploy-base-dir /volume1/docker/homelab-config
 
@@ -92,7 +108,7 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
           AFTER_SHA: ${{ github.sha }}
         run: |
-          ./scripts/homelab-deploy --changed \
+          ./scripts/homelab-deploy --host nasfeo --changed \
             --base-dir "${{ github.workspace }}" \
             --deploy-base-dir /volume1/docker/homelab-config
 
@@ -103,7 +119,7 @@ jobs:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|dashy|hass-janitor|hello-nas|homelab-functions|homelab-log-watcher|homelab-sre-agent|plant-monitor|portainer)
+            bedtime|dashy|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|netalertx|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
@@ -114,7 +130,7 @@ jobs:
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
           fi
-          ./scripts/homelab-deploy "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
+          ./scripts/homelab-deploy --host nasfeo "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
 
       - name: Deploy all services
         if: github.event_name == 'workflow_dispatch' && inputs.service == 'all'
@@ -125,4 +141,116 @@ jobs:
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
           fi
-          ./scripts/homelab-deploy --all "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
+          ./scripts/homelab-deploy --host nasfeo --all "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
+
+  deploy-macmini:
+    name: Deploy macmini
+    runs-on: [self-hosted, macmini]
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.host == 'macmini' || inputs.host == 'all'))
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Sync checkout to runtime path
+        run: |
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          mkdir -p "${MACMINI_RUNTIME_DIR}"
+          tar \
+            --exclude './.git' \
+            --exclude './services/*/.env' \
+            --exclude './services/*/data' \
+            -cf - . | tar -C "${MACMINI_RUNTIME_DIR}" -xf -
+          find . -path './services/*/data/.gitkeep' -type f | while read -r keep_file; do
+            data_dir="${keep_file#./}"
+            mkdir -p "${MACMINI_RUNTIME_DIR}/${data_dir%/.gitkeep}"
+          done
+          ./scripts/migrate-host-runtime-layout "${MACMINI_RUNTIME_DIR}"
+
+      - name: Render service environments
+        env:
+          # BEGIN GENERATED SERVICE SECRETS
+          BEDTIME__HA_LONG_LIVED_TOKEN: ${{ secrets.BEDTIME__HA_LONG_LIVED_TOKEN }}
+          BEDTIME__HA_URL: ${{ secrets.BEDTIME__HA_URL }}
+          BEDTIME__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.BEDTIME__HOMELAB_FUNCTIONS_TOKEN }}
+          HASS_JANITOR__HASS_JANITOR_API_TOKEN: ${{ secrets.HASS_JANITOR__HASS_JANITOR_API_TOKEN }}
+          HASS_JANITOR__HA_BASE_URL: ${{ secrets.HASS_JANITOR__HA_BASE_URL }}
+          HASS_JANITOR__HA_TOKEN: ${{ secrets.HASS_JANITOR__HA_TOKEN }}
+          HASS_JANITOR__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HASS_JANITOR__HOMELAB_FUNCTIONS_TOKEN }}
+          HOMARR__SECRET_ENCRYPTION_KEY: ${{ secrets.HOMARR__SECRET_ENCRYPTION_KEY }}
+          HOMELAB_FUNCTIONS__HA_LONG_LIVED_TOKEN: ${{ secrets.HOMELAB_FUNCTIONS__HA_LONG_LIVED_TOKEN }}
+          HOMELAB_FUNCTIONS__HA_URL: ${{ secrets.HOMELAB_FUNCTIONS__HA_URL }}
+          HOMELAB_FUNCTIONS__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_FUNCTIONS__HOMELAB_FUNCTIONS_TOKEN }}
+          HOMELAB_LOG_WATCHER__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__HOMELAB_FUNCTIONS_TOKEN }}
+          HOMELAB_LOG_WATCHER__LOG_WATCHER_ACTION_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__LOG_WATCHER_ACTION_TOKEN }}
+          HOMELAB_LOG_WATCHER__LOG_WATCHER_INCIDENT_WEBHOOK_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__LOG_WATCHER_INCIDENT_WEBHOOK_TOKEN }}
+          HOMELAB_MONITOR__GRAFANA_ADMIN_PASSWORD: ${{ secrets.HOMELAB_MONITOR__GRAFANA_ADMIN_PASSWORD }}
+          HOMELAB_MONITOR__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_MONITOR__HOMELAB_FUNCTIONS_TOKEN }}
+          HOMELAB_MONITOR__OPENAI_ADMIN_KEY: ${{ secrets.HOMELAB_MONITOR__OPENAI_ADMIN_KEY }}
+          HOMELAB_SRE_AGENT__AWS_ACCESS_KEY_ID: ${{ secrets.HOMELAB_SRE_AGENT__AWS_ACCESS_KEY_ID }}
+          HOMELAB_SRE_AGENT__AWS_SECRET_ACCESS_KEY: ${{ secrets.HOMELAB_SRE_AGENT__AWS_SECRET_ACCESS_KEY }}
+          HOMELAB_SRE_AGENT__GITHUB_APP_PRIVATE_KEY_B64: ${{ secrets.HOMELAB_SRE_AGENT__GITHUB_APP_PRIVATE_KEY_B64 }}
+          HOMELAB_SRE_AGENT__GITHUB_TOKEN: ${{ secrets.HOMELAB_SRE_AGENT__GITHUB_TOKEN }}
+          HOMELAB_SRE_AGENT__HA_LONG_LIVED_TOKEN: ${{ secrets.HOMELAB_SRE_AGENT__HA_LONG_LIVED_TOKEN }}
+          HOMELAB_SRE_AGENT__HA_URL: ${{ secrets.HOMELAB_SRE_AGENT__HA_URL }}
+          HOMELAB_SRE_AGENT__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_SRE_AGENT__HOMELAB_FUNCTIONS_TOKEN }}
+          HOMELAB_SRE_AGENT__SRE_INCIDENT_TOKEN: ${{ secrets.HOMELAB_SRE_AGENT__SRE_INCIDENT_TOKEN }}
+          PLANT_MONITOR__HA_LONG_LIVED_TOKEN: ${{ secrets.PLANT_MONITOR__HA_LONG_LIVED_TOKEN }}
+          PLANT_MONITOR__HA_URL: ${{ secrets.PLANT_MONITOR__HA_URL }}
+          PLANT_MONITOR__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.PLANT_MONITOR__HOMELAB_FUNCTIONS_TOKEN }}
+          PLANT_MONITOR__SERVICE_CALLBACK_TOKEN: ${{ secrets.PLANT_MONITOR__SERVICE_CALLBACK_TOKEN }}
+          # END GENERATED SERVICE SECRETS
+        run: |
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          ./scripts/render-service-env --host macmini --all \
+            --base-dir "${{ github.workspace }}" \
+            --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
+
+      - name: Deploy changed services
+        if: github.event_name == 'push'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          ./scripts/homelab-deploy --host macmini --changed \
+            --base-dir "${{ github.workspace }}" \
+            --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
+
+      - name: Deploy requested service
+        if: github.event_name == 'workflow_dispatch' && inputs.service != 'all'
+        env:
+          SERVICE_INPUT: ${{ inputs.service }}
+          FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
+        run: |
+          case "${SERVICE_INPUT}" in
+            bedtime|dashy|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|netalertx|plant-monitor|portainer)
+              ;;
+            *)
+              echo "Unsupported service: ${SERVICE_INPUT}" >&2
+              exit 2
+              ;;
+          esac
+          args=()
+          if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
+            args+=(--force-recreate)
+          fi
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          ./scripts/homelab-deploy --host macmini "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
+
+      - name: Deploy all services
+        if: github.event_name == 'workflow_dispatch' && inputs.service == 'all'
+        env:
+          FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
+        run: |
+          args=()
+          if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
+            args+=(--force-recreate)
+          fi
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          ./scripts/homelab-deploy --host macmini --all "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
+
+      - name: Apply Tailscale Serve config
+        run: |
+          ./scripts/apply-tailscale-serve --host macmini --base-dir "${{ github.workspace }}"
