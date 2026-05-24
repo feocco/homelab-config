@@ -6,11 +6,11 @@ host:
 services:
   hello-nas:
     path: services/hello-nas
-    enabled: true
+    enabled: false
 
   plant-monitor:
     path: services/plant-monitor
-    enabled: true
+    enabled: false
 
   portainer:
     path: services/portainer
@@ -18,7 +18,7 @@ services:
 
   dashy:
     path: services/dashy
-    enabled: true
+    enabled: false
 
   homarr:
     path: services/homarr
@@ -30,11 +30,11 @@ services:
 
   homelab-functions:
     path: services/homelab-functions
-    enabled: true
+    enabled: false
 
   hass-janitor:
     path: services/hass-janitor
-    enabled: true
+    enabled: false
 
   homelab-log-watcher:
     path: services/homelab-log-watcher
@@ -42,7 +42,7 @@ services:
 
   homelab-sre-agent:
     path: services/homelab-sre-agent
-    enabled: true
+    enabled: false
 
   homelab-monitor:
     path: services/homelab-monitor
@@ -50,4 +50,4 @@ services:
 
   bedtime:
     path: services/bedtime
-    enabled: true
+    enabled: false
