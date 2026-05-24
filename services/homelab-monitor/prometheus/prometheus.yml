@@ -11,16 +11,16 @@ scrape_configs:
   - job_name: node-exporter
     static_configs:
       - targets:
-          - node-exporter:9100
+          - host.docker.internal:9100
         labels:
-          host: nasfeo
+          host: macmini
 
-  - job_name: cadvisor
+  - job_name: docker-stats-exporter
     static_configs:
       - targets:
-          - cadvisor:8080
+          - docker-stats-exporter:9109
         labels:
-          host: nasfeo
+          host: macmini
 
   - job_name: blackbox-exporter
     static_configs:
@@ -41,49 +41,70 @@ scrape_configs:
         - http_2xx
     static_configs:
       - targets:
-          - http://192.168.1.191:8080/
+          - http://host.docker.internal:8080/
         labels:
           service: dashy
+          host: macmini
       - targets:
-          - http://192.168.1.191:8088/health
+          - http://host.docker.internal:8088/health
         labels:
           service: plant-monitor
+          host: macmini
       - targets:
-          - http://192.168.1.191:8091/health
+          - http://host.docker.internal:8091/health
         labels:
           service: homelab-functions
+          host: macmini
       - targets:
-          - http://192.168.1.191:8092/health
+          - http://host.docker.internal:8092/health
         labels:
           service: hass-janitor
+          host: macmini
       - targets:
-          - http://192.168.1.191:8093/health
+          - http://host.docker.internal:8093/health
         labels:
           service: homelab-log-watcher
+          host: macmini
       - targets:
-          - http://192.168.1.191:8094/health
+          - http://host.docker.internal:8094/health
         labels:
           service: homelab-sre-agent
+          host: macmini
       - targets:
-          - http://192.168.1.191:8099/health
+          - http://host.docker.internal:8099/health
         labels:
           service: hello-nas
+          host: macmini
+      - targets:
+          - http://host.docker.internal:7575/
+        labels:
+          service: homarr
+          host: macmini
+      - targets:
+          - http://host.docker.internal:3000/api/health
+        labels:
+          service: grafana
+          host: macmini
       - targets:
           - http://192.168.1.191:8181/admin/
         labels:
           service: pi-hole
+          host: nasfeo
       - targets:
           - https://192.168.1.191:9443/
         labels:
           service: portainer
+          host: nasfeo
       - targets:
           - http://192.168.1.191:5000/
         labels:
           service: synology-dsm
+          host: nasfeo
       - targets:
           - http://192.168.1.159:8123/
         labels:
           service: home-assistant
+          host: homeassistant
     relabel_configs:
       - source_labels:
           - __address__

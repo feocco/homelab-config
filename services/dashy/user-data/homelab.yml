@@ -8,12 +8,12 @@ sections:
   icon: fab fa-github
   items:
   - title: homelab-config Actions
-    description: Deploy workflow for NAS services
+    description: Deploy workflow for homelab services
     icon: fab fa-github
     url: https://github.com/feocco/homelab-config/actions
     target: newtab
   - title: homelab-config Repo
-    description: Private NAS runtime configuration
+    description: Private homelab runtime configuration
     icon: fab fa-github
     url: https://github.com/feocco/homelab-config
     target: newtab
@@ -39,12 +39,17 @@ sections:
   - title: Grafana
     description: Homelab metrics and alerts
     icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/grafana.png
-    url: http://nasfeo:3000/d/homelab-monitoring/homelab-monitoring
+    url: http://maclabs-mac-mini.taildf3445.ts.net:3000/d/homelab-monitoring/homelab-monitoring
     target: newtab
   - title: OpenAI Cost / Usage
     description: OpenAI API spend and usage dashboard
     icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/openai.png
-    url: http://nasfeo:3000/d/openai-cost-usage/openai-cost-usage
+    url: http://maclabs-mac-mini.taildf3445.ts.net:3000/d/openai-cost-usage/openai-cost-usage
+    target: newtab
+  - title: Homarr
+    description: Homelab app dashboard
+    icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/homarr.png
+    url: http://maclabs-mac-mini.taildf3445.ts.net:7575/
     target: newtab
 
 - name: Running Services
@@ -53,15 +58,15 @@ sections:
   - title: Dashy
     description: Homelab dashboard
     icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/dashy.png
-    url: http://nasfeo:8080/
+    url: http://maclabs-mac-mini.taildf3445.ts.net:8080/
     target: newtab
   - title: Plant Monitor
     description: Home Assistant plant notifications
     icon: fas fa-seedling
-    url: http://nasfeo:8088/
+    url: http://maclabs-mac-mini.taildf3445.ts.net:8088/
     target: newtab
   - title: Hello NAS
     description: Deployment smoke test service
     icon: fas fa-vial
-    url: http://nasfeo:8099/
+    url: http://maclabs-mac-mini.taildf3445.ts.net:8099/
     target: newtab

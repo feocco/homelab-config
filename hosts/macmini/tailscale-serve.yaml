@@ -27,3 +27,11 @@ services:
     enabled: true
     http_port: 8094
     target: http://127.0.0.1:8094
+  homarr:
+    enabled: true
+    http_port: 7575
+    target: http://127.0.0.1:7575
+  homelab-monitor:
+    enabled: true
+    http_port: 3000
+    target: http://127.0.0.1:3000

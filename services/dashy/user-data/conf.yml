@@ -61,7 +61,12 @@ sections:
   - title: Grafana
     description: Homelab metrics and alerts
     icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/grafana.png
-    url: http://nasfeo:3000/d/homelab-monitoring/homelab-monitoring
+    url: http://maclabs-mac-mini.taildf3445.ts.net:3000/d/homelab-monitoring/homelab-monitoring
+    target: newtab
+  - title: Homarr
+    description: Homelab app dashboard
+    icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/homarr.png
+    url: http://maclabs-mac-mini.taildf3445.ts.net:7575/
     target: newtab
   - title: Raspberry Pi Connect
     description: Remote Pi Access
@@ -104,7 +109,7 @@ sections:
   - title: OpenAI Cost / Usage
     description: Grafana dashboard for OpenAI API spend and usage
     icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/openai.png
-    url: http://nasfeo:3000/d/openai-cost-usage/openai-cost-usage
+    url: http://maclabs-mac-mini.taildf3445.ts.net:3000/d/openai-cost-usage/openai-cost-usage
     target: newtab
   - title: GCP Console
     description: Google Cloud Platform Management

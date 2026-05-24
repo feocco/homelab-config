@@ -18,12 +18,14 @@
 - Added Dockerized GitHub runner Compose config.
 - Proved Mac mini runner and Tailnet-only `hello-nas` canary deploy.
 - Adopted split placement: NAS for stable infra, Mac mini for app/compute services.
+- Re-enabled `homarr` and `homelab-monitor` placement on Mac mini, with
+  native Mac host metrics and Docker socket container metrics for monitoring.
 
 ## Blocked
 
 - Local GitHub CLI token cannot inspect package metadata because it does not have `read:packages`.
-- Disabled heavier infra (`homarr`, `netalertx`, `homelab-monitor`) remains a
-  later enablement task.
+- `netalertx` remains disabled until Mac mini host networking and scan
+  interface details are validated.
 
 ## Next Manual Checks
 
@@ -66,3 +68,5 @@ sudo scripts/install-deploy-script
 - Deployment method: self-hosted runners per Docker host.
 - Future service placement: default app/compute services to `macmini`; keep
   storage-adjacent and NAS infrastructure on `nasfeo`.
+- Monitoring placement: `homelab-monitor` and `homarr` run on `macmini`;
+  `netalertx` stays deferred.

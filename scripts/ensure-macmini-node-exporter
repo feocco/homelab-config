@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DRY_RUN="false"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ensure-macmini-node-exporter [--dry-run]
+
+Installs and starts Homebrew node_exporter on macOS, bound to 127.0.0.1:9100
+for scraping from Docker containers through host.docker.internal.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ "${DRY_RUN}" == "true" ]]; then
+  echo "Would install Homebrew node_exporter if missing."
+  echo "Would write the Homebrew node_exporter args file with --web.listen-address=127.0.0.1:9100."
+  echo "Would restart the node_exporter brew service and verify /metrics."
+  exit 0
+fi
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "node_exporter host setup is only supported on macOS." >&2
+  exit 2
+fi
+
+if ! command -v brew >/dev/null 2>&1; then
+  echo "Homebrew is required to install node_exporter." >&2
+  exit 2
+fi
+
+brew_prefix="$(brew --prefix)"
+args_file="${brew_prefix}/etc/node_exporter.args"
+
+if ! brew list --versions node_exporter >/dev/null 2>&1; then
+  brew install node_exporter
+fi
+
+mkdir -p "$(dirname "${args_file}")"
+printf '%s\n' '--web.listen-address=127.0.0.1:9100' > "${args_file}"
+
+if ! brew services restart node_exporter; then
+  brew services start node_exporter
+fi
+
+for attempt in $(seq 1 30); do
+  if curl -fsS --max-time 2 http://127.0.0.1:9100/metrics | grep -q '^node_exporter_build_info'; then
+    echo "node_exporter is listening on 127.0.0.1:9100"
+    exit 0
+  fi
+  sleep 1
+done
+
+echo "node_exporter did not become healthy on 127.0.0.1:9100 within 30 seconds." >&2
+brew services list | grep -E '(^Name|node_exporter)' >&2 || true
+exit 1

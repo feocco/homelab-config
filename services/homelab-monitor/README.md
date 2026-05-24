@@ -1,20 +1,20 @@
 # Homelab Monitor
 
-Metrics-first Grafana and Prometheus stack for `nasfeo`.
+Metrics-first Grafana and Prometheus stack for `macmini`.
 
 ## Runtime
 
-- Grafana: `http://nasfeo:3000`
+- Grafana: `http://maclabs-mac-mini.taildf3445.ts.net:3000`
 - Prometheus: internal only
 - Exporters: internal only
-- Phone alerts: Grafana webhook to `homelab-functions`
-- Homelab dashboard: `http://nasfeo:3000/d/homelab-monitoring/homelab-monitoring`
-- OpenAI cost dashboard: `http://nasfeo:3000/d/openai-cost-usage/openai-cost-usage`
+- Phone alerts: Grafana webhook to Mac-hosted `homelab-functions`
+- Homelab dashboard: `http://maclabs-mac-mini.taildf3445.ts.net:3000/d/homelab-monitoring/homelab-monitoring`
+- OpenAI cost dashboard: `http://maclabs-mac-mini.taildf3445.ts.net:3000/d/openai-cost-usage/openai-cost-usage`
 
 ## Monitored Surface
 
-- NAS host metrics through node_exporter.
-- Docker/container metrics through cAdvisor.
+- Mac mini host metrics through native Homebrew `node_exporter`.
+- Docker/container metrics through the local Docker socket `docker-stats-exporter`.
 - HTTP availability through blackbox_exporter:
   - Dashy
   - Plant Monitor
@@ -23,6 +23,8 @@ Metrics-first Grafana and Prometheus stack for `nasfeo`.
   - homelab-log-watcher
   - homelab-sre-agent
   - Hello NAS
+  - Homarr
+  - Grafana
   - Pi-hole
   - Portainer
   - Synology DSM
@@ -38,8 +40,13 @@ flow. Cost alert thresholds are non-secret config in `.env.config`:
 The Pi at `192.168.1.250` responded to ICMP during planning, but the Companion
 HTTP port from Dashy was not reachable.
 
-## Version Notes
+## Mac Mini Notes
 
-cAdvisor is pinned to `gcr.io/cadvisor/cadvisor:v0.52.1` even though newer
-releases exist because `nasfeo` currently runs Docker `20.10.3`, and cAdvisor
-`v0.56.0` dropped support for Docker versions older than 25.0.
+The deploy workflow runs `scripts/ensure-macmini-node-exporter` before starting
+the Compose stack. That script installs Homebrew `node_exporter`, writes
+`--web.listen-address=127.0.0.1:9100`, restarts the brew service, and verifies
+the `/metrics` endpoint. Prometheus scrapes it from inside Docker through
+`host.docker.internal:9100`.
+
+The old Linux/NAS containerized `node-exporter` and cAdvisor services are not
+used on Mac mini because their host mounts target Linux and Synology paths.

@@ -32,6 +32,14 @@ services:
     path: services/homelab-sre-agent
     enabled: true
 
+  homarr:
+    path: services/homarr
+    enabled: true
+
+  homelab-monitor:
+    path: services/homelab-monitor
+    enabled: true
+
   bedtime:
     path: services/bedtime
     enabled: true

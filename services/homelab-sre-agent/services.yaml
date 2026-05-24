@@ -21,7 +21,7 @@ services:
     sre:
       enabled: true
       autofix: true
-      repo_daily_limit: 1
+      repo_daily_limit: 5
 
   plant-monitor:
     containers:
@@ -41,7 +41,7 @@ services:
     sre:
       enabled: true
       autofix: true
-      repo_daily_limit: 1
+      repo_daily_limit: 5
 
   homelab-functions:
     containers:
@@ -61,7 +61,7 @@ services:
     sre:
       enabled: true
       autofix: true
-      repo_daily_limit: 1
+      repo_daily_limit: 5
 
   hass-janitor:
     containers:
@@ -81,7 +81,7 @@ services:
     sre:
       enabled: true
       autofix: true
-      repo_daily_limit: 1
+      repo_daily_limit: 5
 
   homelab-log-watcher:
     containers:
@@ -101,7 +101,7 @@ services:
     sre:
       enabled: true
       autofix: true
-      repo_daily_limit: 1
+      repo_daily_limit: 5
 
   homelab-sre-agent:
     containers:
@@ -121,7 +121,7 @@ services:
     sre:
       enabled: true
       autofix: true
-      repo_daily_limit: 1
+      repo_daily_limit: 5
 
   homarr:
     containers:
@@ -138,6 +138,32 @@ services:
     labels:
       - homelab-sre
       - homarr
+    sre:
+      enabled: false
+      autofix: false
+
+  homelab-monitor:
+    containers:
+      - homelab-monitor-prometheus
+      - homelab-monitor-grafana
+      - homelab-monitor-blackbox-exporter
+      - homelab-monitor-docker-stats-exporter
+      - homelab-monitor-openai-cost-exporter
+    images:
+      - prom/prometheus:*
+      - grafana/grafana:*
+      - prom/blackbox-exporter:*
+      - python:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/homelab-monitor
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/homelab-monitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homelab-monitor
+    labels:
+      - homelab-sre
+      - homelab-monitor
     sre:
       enabled: false
       autofix: false
