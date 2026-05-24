@@ -20,7 +20,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: up{job=~"prometheus|node-exporter|cadvisor|blackbox-exporter"} == bool 0
+              expr: up{job=~"prometheus|node-exporter|docker-stats-exporter|blackbox-exporter|openai-cost-exporter"} == bool 0
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -45,7 +45,7 @@ groups:
         for: 5m
         annotations:
           summary: A Prometheus scrape target is down.
-          description: Check Grafana target health and the corresponding exporter container.
+          description: Check Grafana target health, native node_exporter, and the corresponding exporter container.
         labels:
           severity: critical
 
@@ -88,12 +88,12 @@ groups:
         for: 5m
         annotations:
           summary: A self-hosted HTTP endpoint is failing its blackbox probe.
-          description: Check the service container, endpoint health path, and NAS networking.
+          description: Check the service container, endpoint health path, and Mac mini or NAS networking.
         labels:
           severity: critical
 
       - uid: homelab_cpu_pressure
-        title: NAS CPU pressure
+        title: Mac mini CPU pressure
         condition: C
         data:
           - refId: A
@@ -130,13 +130,13 @@ groups:
         execErrState: Error
         for: 15m
         annotations:
-          summary: NAS CPU busy is above 90 percent.
+          summary: Mac mini CPU busy is above 90 percent.
           description: Capacity pressure is sustained; check container CPU by service.
         labels:
           severity: critical
 
       - uid: homelab_load_pressure
-        title: NAS load pressure
+        title: Mac mini load pressure
         condition: C
         data:
           - refId: A
@@ -173,13 +173,13 @@ groups:
         execErrState: Error
         for: 15m
         annotations:
-          summary: NAS 15 minute load per CPU is above 1.0.
-          description: Sustained load indicates the NAS is saturated or blocked on work.
+          summary: Mac mini 15 minute load per CPU is above 1.0.
+          description: Sustained load indicates the Mac mini is saturated or blocked on work.
         labels:
           severity: critical
 
       - uid: homelab_low_memory
-        title: NAS available memory low
+        title: Mac mini available memory low
         condition: C
         data:
           - refId: A
@@ -192,7 +192,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: node_memory_MemAvailable_bytes < 300 * 1024 * 1024
+              expr: node_memory_free_bytes + node_memory_inactive_bytes + node_memory_purgeable_bytes < 1024 * 1024 * 1024
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -216,13 +216,13 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: NAS available memory is below 300 MiB.
-          description: RAM is the primary capacity constraint on this NAS.
+          summary: Mac mini available memory is below 1 GiB.
+          description: Available memory is low; inspect container memory and active workloads.
         labels:
           severity: critical
 
       - uid: homelab_swap_activity
-        title: NAS swap activity
+        title: Mac mini swap activity
         condition: C
         data:
           - refId: A
@@ -235,7 +235,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: rate(node_vmstat_pswpin[1m]) + rate(node_vmstat_pswpout[1m]) > 25
+              expr: rate(node_memory_swapped_in_bytes_total[5m]) + rate(node_memory_swapped_out_bytes_total[5m]) > 50 * 1024 * 1024
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -259,13 +259,13 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: NAS is actively swapping.
-          description: Sustained swap activity above 25 pages/sec usually means RAM pressure or a runaway container.
+          summary: Mac mini is actively swapping.
+          description: Sustained swap activity above 50 MiB/s usually means memory pressure or a runaway container.
         labels:
           severity: critical
 
       - uid: homelab_root_disk_full
-        title: NAS root disk high
+        title: Mac mini root disk high
         condition: C
         data:
           - refId: A
@@ -278,7 +278,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) > 85
+              expr: max(100 * (1 - node_filesystem_avail_bytes{mountpoint=~"/|/System/Volumes/Data"} / node_filesystem_size_bytes{mountpoint=~"/|/System/Volumes/Data"})) > 85
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -302,51 +302,8 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: NAS root filesystem is above 85 percent.
+          summary: Mac mini root filesystem is above 85 percent.
           description: Root filesystem pressure can break package updates and service startup.
-        labels:
-          severity: critical
-
-      - uid: homelab_volume1_disk_full
-        title: NAS volume1 disk high
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange:
-              from: 600
-              to: 0
-            datasourceUid: prometheus
-            model:
-              datasource:
-                type: prometheus
-                uid: prometheus
-              editorMode: code
-              expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/volume1"} / node_filesystem_size_bytes{mountpoint="/volume1"}) > 90
-              instant: true
-              intervalMs: 1000
-              maxDataPoints: 43200
-              refId: A
-          - refId: C
-            relativeTimeRange:
-              from: 600
-              to: 0
-            datasourceUid: __expr__
-            model:
-              datasource:
-                type: __expr__
-                uid: __expr__
-              expression: A
-              intervalMs: 1000
-              maxDataPoints: 43200
-              reducer: last
-              refId: C
-              type: reduce
-        noDataState: OK
-        execErrState: Error
-        for: 5m
-        annotations:
-          summary: NAS /volume1 filesystem is above 90 percent.
-          description: Data volume pressure can break container storage and backups.
         labels:
           severity: critical
 
@@ -364,7 +321,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: increase(container_oom_events_total{name!=""}[5m]) > 0
+              expr: homelab_docker_container_oom_killed{name!=""} == bool 1
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -389,7 +346,7 @@ groups:
         for: 0s
         annotations:
           summary: A Docker container had an OOM event.
-          description: Check container memory usage and NAS RAM pressure.
+          description: Check container memory usage and Mac mini RAM pressure.
         labels:
           severity: critical
 
@@ -407,7 +364,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: changes(container_start_time_seconds{name=~"plant-monitor|homelab-functions|hass-janitor|homelab-log-watcher|homelab-sre-agent|hello-nas|dashy|portainer|github-runner-homelab|pi-hole"}[15m]) > 0
+              expr: changes(homelab_docker_container_start_time_seconds{name=~"plant-monitor|homelab-functions|hass-janitor|homelab-log-watcher|homelab-sre-agent|hello-nas|dashy|homarr|bedtime|homelab-monitor-(prometheus|grafana|blackbox-exporter|openai-cost-exporter|docker-stats-exporter)"}[15m]) > 0
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -450,7 +407,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: container_memory_working_set_bytes{name!=""} > 700 * 1024 * 1024
+              expr: homelab_docker_container_memory_usage_bytes{name!=""} > 700 * 1024 * 1024
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -475,7 +432,7 @@ groups:
         for: 15m
         annotations:
           summary: A Docker container is using more than 700 MiB RAM.
-          description: The NAS has limited RAM; inspect the container and its recent workload.
+          description: Inspect the container and its recent workload.
         labels:
           severity: critical
 

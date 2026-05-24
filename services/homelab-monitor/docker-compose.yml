@@ -29,7 +29,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://nasfeo:3000/}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://maclabs-mac-mini.taildf3445.ts.net:3000/}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_LOG_LEVEL: ${GRAFANA_LOG_LEVEL:-info}
@@ -51,51 +51,6 @@ services:
         max-file: "1"
         compress: "false"
 
-  node-exporter:
-    image: prom/node-exporter:v1.11.1
-    container_name: homelab-monitor-node-exporter
-    restart: unless-stopped
-    pid: host
-    command:
-      - --path.procfs=/host/proc
-      - --path.rootfs=/rootfs
-      - --path.sysfs=/host/sys
-      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|volume1/@docker/.+)($$|/)
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    logging:
-      driver: local
-      options:
-        max-size: "10m"
-        max-file: "1"
-        compress: "false"
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.52.1
-    container_name: homelab-monitor-cadvisor
-    restart: unless-stopped
-    privileged: true
-    command:
-      - --docker_only=true
-      - --housekeeping_interval=15s
-      - --max_housekeeping_interval=30s
-      - --store_container_labels=false
-    devices:
-      - /dev/kmsg:/dev/kmsg
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /volume1/@docker:/var/lib/docker:ro
-    logging:
-      driver: local
-      options:
-        max-size: "10m"
-        max-file: "1"
-        compress: "false"
-
   blackbox-exporter:
     image: prom/blackbox-exporter:v0.28.0
     container_name: homelab-monitor-blackbox-exporter
@@ -104,6 +59,29 @@ services:
       - --config.file=/etc/blackbox_exporter/config.yml
     volumes:
       - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"
+
+  docker-stats-exporter:
+    image: python:3.13.13-alpine3.22
+    container_name: homelab-monitor-docker-stats-exporter
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DOCKER_STATS_EXPORTER_PORT: ${DOCKER_STATS_EXPORTER_PORT:-9109}
+      DOCKER_STATS_EXPORTER_CACHE_TTL_SECONDS: ${DOCKER_STATS_EXPORTER_CACHE_TTL_SECONDS:-15}
+      DOCKER_HOST: unix:///var/run/docker.sock
+    command:
+      - python
+      - /app/docker_stats_exporter.py
+    volumes:
+      - ./exporters/docker_stats_exporter.py:/app/docker_stats_exporter.py:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     logging:
       driver: local
       options:

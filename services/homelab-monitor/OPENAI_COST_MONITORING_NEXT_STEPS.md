@@ -20,7 +20,7 @@ Once the Admin key exists, add it to the managed homelab secret flow:
 ./scripts/generate-service-secret-workflow-env
 ./scripts/set-service-secrets homelab-monitor --repo feocco/homelab-config
 ./scripts/check-service-secrets
-./scripts/homelab-deploy --host nasfeo homelab-monitor --dry-run --deploy-base-dir /Users/feocco/homelab-config
+./scripts/homelab-deploy --host macmini homelab-monitor --dry-run --deploy-base-dir /Users/feocco/code/homelab-config
 ```
 
 4. Commit and push the updated secret manifest/workflow files.
@@ -35,7 +35,7 @@ error.
 Grafana URL:
 
 ```text
-http://nasfeo:3000/d/openai-cost-usage/openai-cost-usage
+http://maclabs-mac-mini.taildf3445.ts.net:3000/d/openai-cost-usage/openai-cost-usage
 ```
 
 ## Exported Metrics

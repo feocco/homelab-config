@@ -11,6 +11,18 @@ HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host mac
 "${REPO_DIR}/scripts/render-service-env" --host nasfeo --all --base-dir "${REPO_DIR}" --deploy-base-dir "${REPO_DIR}" --dry-run >/dev/null
 "${REPO_DIR}/scripts/render-service-env" --host macmini plant-monitor --base-dir "${REPO_DIR}" --deploy-base-dir "${REPO_DIR}" --dry-run >/dev/null
 "${REPO_DIR}/scripts/apply-tailscale-serve" --host macmini --base-dir "${REPO_DIR}" --dry-run >/dev/null
+"${REPO_DIR}/scripts/ensure-macmini-node-exporter" --dry-run >/dev/null
+bash -n "${REPO_DIR}/scripts/check-macmini-monitor-health"
+python3 - \
+  "${REPO_DIR}/services/homelab-monitor/exporters/openai_cost_exporter.py" \
+  "${REPO_DIR}/services/homelab-monitor/exporters/docker_stats_exporter.py" <<'PY'
+import ast
+import pathlib
+import sys
+
+for arg in sys.argv[1:]:
+    ast.parse(pathlib.Path(arg).read_text(), filename=arg)
+PY
 tmp_runtime="$(mktemp -d)"
 mkdir -p "${tmp_runtime}/legacy-service/data" "${tmp_runtime}/services/legacy-service/data"
 touch "${tmp_runtime}/services/legacy-service/data/.gitkeep"

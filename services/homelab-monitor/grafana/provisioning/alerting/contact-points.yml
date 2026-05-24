@@ -7,7 +7,7 @@ contactPoints:
       - uid: homelab-phone-webhook
         type: webhook
         settings:
-          url: http://192.168.1.191:8091/v1/notify/joe
+          url: $__env{HOMELAB_FUNCTIONS_NOTIFY_URL}
           httpMethod: POST
           authorization_scheme: Bearer
           authorization_credentials: $__env{HOMELAB_FUNCTIONS_TOKEN}

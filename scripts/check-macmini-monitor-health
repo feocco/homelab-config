@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_URL="${MACMINI_TAILNET_BASE_URL:-http://maclabs-mac-mini.taildf3445.ts.net}"
+GRAFANA_URL="${GRAFANA_URL:-${BASE_URL}:3000}"
+HOMARR_URL="${HOMARR_URL:-${BASE_URL}:7575}"
+DASHY_URL="${DASHY_URL:-${BASE_URL}:8080}"
+ENV_FILE="${HOMELAB_MONITOR_ENV_FILE:-services/homelab-monitor/.env}"
+
+load_env_value() {
+  local key="$1"
+  local file="$2"
+  [[ -f "${file}" ]] || return 1
+  awk -F= -v key="${key}" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "${file}"
+}
+
+if [[ -z "${GRAFANA_ADMIN_USER:-}" ]]; then
+  GRAFANA_ADMIN_USER="$(load_env_value GRAFANA_ADMIN_USER "${ENV_FILE}" || true)"
+fi
+if [[ -z "${GRAFANA_ADMIN_USER:-}" ]]; then
+  GRAFANA_ADMIN_USER="admin"
+fi
+if [[ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
+  GRAFANA_ADMIN_PASSWORD="$(load_env_value GRAFANA_ADMIN_PASSWORD "${ENV_FILE}" || true)"
+fi
+
+check_http() {
+  local name="$1"
+  local url="$2"
+  echo "Checking ${name}: ${url}"
+  curl -fsS --max-time 15 "${url}" >/dev/null
+}
+
+grafana_prometheus_api() {
+  local path="$1"
+  curl -fsS --max-time 20 \
+    -u "${GRAFANA_ADMIN_USER}:${GRAFANA_ADMIN_PASSWORD}" \
+    "${GRAFANA_URL}/api/datasources/proxy/uid/prometheus${path}"
+}
+
+check_prometheus_targets() {
+  local expected_jobs='["prometheus","blackbox-exporter","openai-cost-exporter","node-exporter","docker-stats-exporter"]'
+  local payload
+  echo "Checking Prometheus target health through Grafana datasource proxy"
+  payload="$(grafana_prometheus_api '/api/v1/targets?state=active')"
+  PROMETHEUS_TARGETS_PAYLOAD="${payload}" python3 - "${expected_jobs}" <<'PY'
+import json
+import os
+import sys
+
+expected = set(json.loads(sys.argv[1]))
+payload = json.loads(os.environ["PROMETHEUS_TARGETS_PAYLOAD"])
+targets = payload.get("data", {}).get("activeTargets", [])
+seen = {}
+for target in targets:
+    labels = target.get("labels") or {}
+    job = labels.get("job")
+    if job in expected:
+        seen[job] = target.get("health")
+
+missing = sorted(expected - set(seen))
+down = sorted(job for job, health in seen.items() if health != "up")
+if missing or down:
+    if missing:
+        print("Missing Prometheus jobs: " + ", ".join(missing), file=sys.stderr)
+    if down:
+        print("Unhealthy Prometheus jobs: " + ", ".join(down), file=sys.stderr)
+    sys.exit(1)
+print("Prometheus jobs healthy: " + ", ".join(sorted(seen)))
+PY
+}
+
+check_promql() {
+  local query="$1"
+  local payload
+  echo "Checking PromQL: ${query}"
+  local encoded
+  encoded="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.urlencode({"query": sys.argv[1]}))' "${query}")"
+  payload="$(grafana_prometheus_api "/api/v1/query?${encoded}")"
+  PROMETHEUS_QUERY_PAYLOAD="${payload}" python3 - "${query}" <<'PY'
+import json
+import os
+import sys
+
+query = sys.argv[1]
+payload = json.loads(os.environ["PROMETHEUS_QUERY_PAYLOAD"])
+if payload.get("status") != "success":
+    print(f"PromQL failed for {query}: {payload}", file=sys.stderr)
+    sys.exit(1)
+result = payload.get("data", {}).get("result", [])
+if not result:
+    print(f"PromQL returned no series for {query}", file=sys.stderr)
+    sys.exit(1)
+print(f"PromQL returned {len(result)} series")
+PY
+}
+
+check_http "Grafana API health" "${GRAFANA_URL}/api/health"
+check_http "Homarr" "${HOMARR_URL}/"
+check_http "Dashy" "${DASHY_URL}/"
+
+if [[ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
+  check_prometheus_targets
+  check_promql 'openai_cost_usd'
+  check_promql 'node_cpu_seconds_total'
+  check_promql 'homelab_docker_container_memory_usage_bytes'
+else
+  echo "Skipping Prometheus API checks; set GRAFANA_ADMIN_PASSWORD or keep ${ENV_FILE} populated."
+fi
+
+echo "Mac mini monitoring health checks passed."

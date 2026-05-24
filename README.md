@@ -45,9 +45,9 @@ Current placement:
 - `nasfeo`: `portainer`, the NAS GitHub runner, Pi-hole outside this repo, and
   `homelab-log-watcher` for NAS container logs.
 - `macmini`: `hello-nas`, `bedtime`, `dashy`, `hass-janitor`,
-  `homelab-functions`, `plant-monitor`, `homelab-log-watcher`, and
-  `homelab-sre-agent`.
-- Disabled for later: `homarr`, `netalertx`, and `homelab-monitor`.
+  `homelab-functions`, `homarr`, `homelab-monitor`, `plant-monitor`,
+  `homelab-log-watcher`, and `homelab-sre-agent`.
+- Disabled for later: `netalertx`.
 
 One log watcher should run on each Docker host. The central SRE agent runs on
 the Mac mini, so the NAS must be able to reach the Mac mini over Tailscale for

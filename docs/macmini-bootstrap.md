@@ -64,12 +64,20 @@ The Mac mini is expected to run:
 - `dashy`
 - `hass-janitor`
 - `homelab-functions`
+- `homarr`
+- `homelab-monitor`
 - `plant-monitor`
 - `homelab-log-watcher`
 - `homelab-sre-agent`
 
 The NAS keeps Portainer, the NAS runner, Pi-hole outside this repo, and its own
-`homelab-log-watcher`.
+`homelab-log-watcher`. `netalertx` remains disabled until its Mac mini host
+networking and scan interface are validated.
+
+`homelab-monitor` uses native Homebrew `node_exporter` on Mac mini for host
+metrics and a Docker socket exporter for high-level container stats. Grafana is
+exposed only through Tailscale Serve at
+`http://maclabs-mac-mini.taildf3445.ts.net:3000`.
 
 ## Tailscale Dependency
 
