@@ -1,6 +1,7 @@
 services:
   hass-janitor:
     image: ghcr.io/feocco/hass-janitor:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
     container_name: hass-janitor
     restart: unless-stopped
     env_file:

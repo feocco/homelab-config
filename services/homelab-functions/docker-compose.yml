@@ -1,6 +1,7 @@
 services:
   homelab-functions:
     image: ghcr.io/feocco/homelab-functions:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
     container_name: homelab-functions
     restart: unless-stopped
     env_file:
