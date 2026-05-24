@@ -142,6 +142,25 @@ services:
       enabled: false
       autofix: false
 
+  dashy-redirect:
+    containers:
+      - dashy-redirect
+    images:
+      - nginx:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/dashy-redirect
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/dashy-redirect
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/dashy-redirect
+    labels:
+      - homelab-sre
+      - dashy-redirect
+    sre:
+      enabled: false
+      autofix: false
+
   homelab-monitor:
     containers:
       - homelab-monitor-prometheus

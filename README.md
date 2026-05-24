@@ -42,8 +42,8 @@ Mac mini for app and compute services.
 
 Current placement:
 
-- `nasfeo`: `portainer`, the NAS GitHub runner, Pi-hole outside this repo, and
-  `homelab-log-watcher` for NAS container logs.
+- `nasfeo`: `portainer`, the NAS GitHub runner, Pi-hole outside this repo,
+  `dashy-redirect`, and `homelab-log-watcher` for NAS container logs.
 - `macmini`: `hello-nas`, `bedtime`, `dashy`, `hass-janitor`,
   `homelab-functions`, `homarr`, `homelab-monitor`, `plant-monitor`,
   `homelab-log-watcher`, and `homelab-sre-agent`.
