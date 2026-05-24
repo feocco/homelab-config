@@ -31,6 +31,7 @@ on:
           - homelab-log-watcher
           - homelab-monitor
           - homelab-sre-agent
+          - mealie
           - netalertx
           - plant-monitor
           - portainer
@@ -94,7 +95,7 @@ jobs:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|netalertx|plant-monitor|portainer)
+            bedtime|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|mealie|netalertx|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
@@ -175,6 +176,8 @@ jobs:
           HOMELAB_SRE_AGENT__HA_URL: ${{ secrets.HOMELAB_SRE_AGENT__HA_URL }}
           HOMELAB_SRE_AGENT__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_SRE_AGENT__HOMELAB_FUNCTIONS_TOKEN }}
           HOMELAB_SRE_AGENT__SRE_INCIDENT_TOKEN: ${{ secrets.HOMELAB_SRE_AGENT__SRE_INCIDENT_TOKEN }}
+          MEALIE__CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.MEALIE__CLOUDFLARE_TUNNEL_TOKEN }}
+          MEALIE__POSTGRES_PASSWORD: ${{ secrets.MEALIE__POSTGRES_PASSWORD }}
           PLANT_MONITOR__HA_LONG_LIVED_TOKEN: ${{ secrets.PLANT_MONITOR__HA_LONG_LIVED_TOKEN }}
           PLANT_MONITOR__HA_URL: ${{ secrets.PLANT_MONITOR__HA_URL }}
           PLANT_MONITOR__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.PLANT_MONITOR__HOMELAB_FUNCTIONS_TOKEN }}
@@ -204,7 +207,7 @@ jobs:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|netalertx|plant-monitor|portainer)
+            bedtime|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|mealie|netalertx|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2

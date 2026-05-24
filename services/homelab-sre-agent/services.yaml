@@ -225,3 +225,26 @@ services:
       enabled: true
       autofix: false
       repo_daily_limit: 1
+
+  mealie:
+    containers:
+      - mealie
+      - mealie-postgres
+      - mealie-cloudflared
+    images:
+      - ghcr.io/mealie-recipes/mealie:*
+      - postgres:*
+      - cloudflare/cloudflared:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/mealie
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/mealie
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/mealie
+    labels:
+      - homelab-sre
+      - mealie
+    sre:
+      enabled: false
+      autofix: false

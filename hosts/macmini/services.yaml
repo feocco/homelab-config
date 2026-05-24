@@ -43,3 +43,7 @@ services:
   bedtime:
     path: services/bedtime
     enabled: true
+
+  mealie:
+    path: services/mealie
+    enabled: true
