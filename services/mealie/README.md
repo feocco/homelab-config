@@ -28,6 +28,10 @@ http://mealie:9000
 The tunnel token is stored as the GitHub Actions secret
 `MEALIE__CLOUDFLARE_TUNNEL_TOKEN`.
 
+Use a URL-safe value for `MEALIE__POSTGRES_PASSWORD`, such as a hex string.
+Mealie builds a Postgres connection URL from this value; characters that have
+special meaning in URLs can prevent the app from starting.
+
 Cloudflare Access protects `mealie.feocco.com` before traffic reaches Mealie.
 The initial Access policy allows `Joefeocco@gmail.com` with the one-time PIN
 identity provider. Add family members to the same Access application policy
