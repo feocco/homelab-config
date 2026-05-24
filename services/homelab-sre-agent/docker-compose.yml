@@ -1,6 +1,7 @@
 services:
   homelab-sre-agent:
     image: ghcr.io/feocco/homelab-sre-agent:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
     container_name: homelab-sre-agent
     restart: unless-stopped
     env_file:

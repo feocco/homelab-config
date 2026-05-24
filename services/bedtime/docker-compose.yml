@@ -1,6 +1,7 @@
 services:
   bedtime:
     image: ghcr.io/feocco/bedtime:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
     container_name: bedtime
     restart: unless-stopped
     env_file:

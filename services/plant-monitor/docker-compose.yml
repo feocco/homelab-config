@@ -1,6 +1,7 @@
 services:
   plant-monitor:
     image: ghcr.io/feocco/plant-monitor:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
     container_name: plant-monitor
     restart: unless-stopped
     env_file:

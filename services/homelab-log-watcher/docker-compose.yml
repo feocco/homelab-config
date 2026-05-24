@@ -1,6 +1,7 @@
 services:
   homelab-log-watcher:
     image: ghcr.io/feocco/homelab-log-watcher:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
     container_name: homelab-log-watcher
     restart: unless-stopped
     env_file:
