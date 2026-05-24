@@ -70,7 +70,8 @@ The Mac mini is expected to run:
 - `homelab-log-watcher`
 - `homelab-sre-agent`
 
-The NAS keeps Portainer, the NAS runner, Pi-hole outside this repo, and its own
+The NAS keeps Portainer, the NAS runner, Pi-hole outside this repo, a tiny
+`dashy-redirect` compatibility service for `http://nasfeo:8080/`, and its own
 `homelab-log-watcher`. `netalertx` remains disabled until its Mac mini host
 networking and scan interface are validated.
 

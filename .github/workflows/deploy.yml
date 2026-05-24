@@ -23,6 +23,7 @@ on:
           - all
           - bedtime
           - dashy
+          - dashy-redirect
           - hass-janitor
           - hello-nas
           - homarr
@@ -93,7 +94,7 @@ jobs:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|dashy|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|netalertx|plant-monitor|portainer)
+            bedtime|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|netalertx|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
@@ -203,7 +204,7 @@ jobs:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|dashy|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|netalertx|plant-monitor|portainer)
+            bedtime|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|netalertx|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2

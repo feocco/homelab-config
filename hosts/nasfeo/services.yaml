@@ -20,6 +20,10 @@ services:
     path: services/dashy
     enabled: false
 
+  dashy-redirect:
+    path: services/dashy-redirect
+    enabled: true
+
   homarr:
     path: services/homarr
     enabled: false
