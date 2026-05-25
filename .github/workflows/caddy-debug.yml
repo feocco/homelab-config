@@ -1,0 +1,21 @@
+name: Caddy Debug
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: [self-hosted, macmini]
+    steps:
+      - name: Inspect Caddy
+        run: |
+          set -x
+          hostname
+          ifconfig | grep 'inet '
+          docker ps -a --filter name=caddy
+          docker logs --tail 100 caddy || true
+          docker inspect caddy --format '{{.State.Status}} {{.State.ExitCode}} {{.State.Error}}' || true
+          lsof -nP -iTCP:80 -sTCP:LISTEN || true
+          curl -I --max-time 5 http://127.0.0.1/ || true
+          curl -I --max-time 5 http://192.168.1.43/ || true
+          curl -I --max-time 5 http://homarr.home.arpa/ || true
