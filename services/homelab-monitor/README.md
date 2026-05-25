@@ -4,12 +4,13 @@ Metrics-first Grafana and Prometheus stack for `macmini`.
 
 ## Runtime
 
-- Grafana: `http://maclabs-mac-mini.taildf3445.ts.net:3000`
+- Grafana: `http://grafana.home.arpa`
+- Grafana Tailscale fallback: `http://maclabs-mac-mini.taildf3445.ts.net:3000`
 - Prometheus: internal only
 - Exporters: internal only
 - Phone alerts: Grafana webhook to Mac-hosted `homelab-functions`
-- Homelab dashboard: `http://maclabs-mac-mini.taildf3445.ts.net:3000/d/homelab-monitoring/homelab-monitoring`
-- OpenAI cost dashboard: `http://maclabs-mac-mini.taildf3445.ts.net:3000/d/openai-cost-usage/openai-cost-usage`
+- Homelab dashboard: `http://grafana.home.arpa/d/homelab-monitoring/homelab-monitoring`
+- OpenAI cost dashboard: `http://grafana.home.arpa/d/openai-cost-usage/openai-cost-usage`
 
 ## Monitored Surface
 

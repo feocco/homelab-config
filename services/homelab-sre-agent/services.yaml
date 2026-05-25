@@ -123,6 +123,25 @@ services:
       autofix: true
       repo_daily_limit: 5
 
+  caddy:
+    containers:
+      - caddy
+    images:
+      - caddy:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/caddy
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/caddy
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/caddy
+    labels:
+      - homelab-sre
+      - caddy
+    sre:
+      enabled: false
+      autofix: false
+
   homarr:
     containers:
       - homarr

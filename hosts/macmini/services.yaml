@@ -16,6 +16,10 @@ services:
     path: services/dashy
     enabled: true
 
+  caddy:
+    path: services/caddy
+    enabled: true
+
   homelab-functions:
     path: services/homelab-functions
     enabled: true

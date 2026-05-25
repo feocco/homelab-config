@@ -39,17 +39,17 @@ sections:
   - title: Grafana
     description: Homelab metrics and alerts
     icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/grafana.png
-    url: http://maclabs-mac-mini.taildf3445.ts.net:3000/d/homelab-monitoring/homelab-monitoring
+    url: http://grafana.home.arpa/d/homelab-monitoring/homelab-monitoring
     target: newtab
   - title: OpenAI Cost / Usage
     description: OpenAI API spend and usage dashboard
     icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/openai.png
-    url: http://maclabs-mac-mini.taildf3445.ts.net:3000/d/openai-cost-usage/openai-cost-usage
+    url: http://grafana.home.arpa/d/openai-cost-usage/openai-cost-usage
     target: newtab
   - title: Homarr
     description: Homelab app dashboard
     icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/homarr.png
-    url: http://maclabs-mac-mini.taildf3445.ts.net:7575/
+    url: http://homarr.home.arpa/
     target: newtab
 
 - name: Running Services
@@ -58,7 +58,7 @@ sections:
   - title: Dashy
     description: Homelab dashboard
     icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/dashy.png
-    url: http://maclabs-mac-mini.taildf3445.ts.net:8080/
+    url: http://dashy.home.arpa/
     target: newtab
   - title: Plant Monitor
     description: Home Assistant plant notifications
