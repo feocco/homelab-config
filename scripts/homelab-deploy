@@ -192,7 +192,9 @@ deploy_service() {
 
   (
     cd "${service_dir}"
-    compose pull
+    if ! compose pull; then
+      echo "Image pull failed for ${service}; continuing with cached image if available." >&2
+    fi
     if [[ "${FORCE_RECREATE}" == "true" ]]; then
       compose up -d --force-recreate
     else
