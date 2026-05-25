@@ -196,6 +196,13 @@ jobs:
             --base-dir "${{ github.workspace }}" \
             --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
 
+      - name: Use noninteractive Docker config
+        run: |
+          DOCKER_CONFIG_DIR="${RUNNER_TEMP:-/tmp}/docker-config"
+          mkdir -p "${DOCKER_CONFIG_DIR}"
+          printf '{}\n' > "${DOCKER_CONFIG_DIR}/config.json"
+          echo "DOCKER_CONFIG=${DOCKER_CONFIG_DIR}" >> "${GITHUB_ENV}"
+
       - name: Deploy changed services
         if: github.event_name == 'push'
         env:
