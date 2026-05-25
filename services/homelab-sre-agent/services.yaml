@@ -267,3 +267,23 @@ services:
     sre:
       enabled: false
       autofix: false
+
+  mealie-planner:
+    containers:
+      - mealie-planner
+    images:
+      - ghcr.io/feocco/mealie-planner:*
+    source:
+      repo: feocco/mealie-planner
+      path_hint: /Users/feocco/code/mealie-planner
+    issue_repo: feocco/mealie-planner
+    deploy:
+      path: services/mealie-planner
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/mealie-planner
+    labels:
+      - homelab-sre
+      - mealie-planner
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1

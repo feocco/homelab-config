@@ -51,3 +51,7 @@ services:
   mealie:
     path: services/mealie
     enabled: true
+
+  mealie-planner:
+    path: services/mealie-planner
+    enabled: true

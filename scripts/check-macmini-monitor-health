@@ -104,6 +104,8 @@ if [[ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
   check_promql 'openai_cost_usd'
   check_promql 'node_cpu_seconds_total'
   check_promql 'homelab_docker_container_memory_usage_bytes'
+  check_promql 'probe_success{job="blackbox-http",service="mealie-planner"}'
+  check_promql 'homelab_docker_container_start_time_seconds{name="mealie-planner"}'
 else
   echo "Skipping Prometheus API checks; set GRAFANA_ADMIN_PASSWORD or keep ${ENV_FILE} populated."
 fi
