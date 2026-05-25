@@ -209,7 +209,11 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
           AFTER_SHA: ${{ github.sha }}
         run: |
-          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          RUNNER_HOME="${HOME}"
+          export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
+          mkdir -p "${HOME}/.docker"
+          printf '{}\n' > "${HOME}/.docker/config.json"
+          MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
           ./scripts/homelab-deploy --host macmini --changed \
             --base-dir "${{ github.workspace }}" \
             --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
@@ -232,7 +236,11 @@ jobs:
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
           fi
-          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          RUNNER_HOME="${HOME}"
+          export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
+          mkdir -p "${HOME}/.docker"
+          printf '{}\n' > "${HOME}/.docker/config.json"
+          MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
           ./scripts/homelab-deploy --host macmini "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
 
       - name: Verify Caddy listener
@@ -256,7 +264,11 @@ jobs:
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
           fi
-          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          RUNNER_HOME="${HOME}"
+          export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
+          mkdir -p "${HOME}/.docker"
+          printf '{}\n' > "${HOME}/.docker/config.json"
+          MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
           ./scripts/homelab-deploy --host macmini --all "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
 
       - name: Apply Tailscale Serve config
