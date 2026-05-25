@@ -230,9 +230,9 @@ jobs:
           docker logs --tail 100 caddy
           docker inspect caddy --format '{{.State.Status}} {{.State.ExitCode}} {{.State.Error}}'
           lsof -nP -iTCP:80 -sTCP:LISTEN || true
-          curl -I --max-time 5 http://127.0.0.1/
           curl -I --max-time 5 http://192.168.1.43/
           curl -I --max-time 5 http://homarr.home.arpa/
+          curl -I --max-time 5 http://127.0.0.1/ || true
 
       - name: Deploy all services
         if: github.event_name == 'workflow_dispatch' && inputs.service == 'all'
