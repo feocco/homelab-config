@@ -2,9 +2,8 @@
 
 Homarr is the primary homelab dashboard during the Dashy migration.
 
-- URL: `http://maclabs-mac-mini.taildf3445.ts.net:7575/`
-- Dashy remains available at `http://maclabs-mac-mini.taildf3445.ts.net:8080/`
-  and through the NAS redirect at `http://nasfeo:8080/`
+- Primary LAN URL: `http://homarr.home.arpa`
+- Tailscale fallback: `http://maclabs-mac-mini.taildf3445.ts.net:7575/`
 - Docker socket access is intentionally not mounted
 - Persistent application data is stored in `./data`
 
