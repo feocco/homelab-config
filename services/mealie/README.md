@@ -48,6 +48,10 @@ Mealie's documentation warns that PostgreSQL major-version upgrades require
 manual steps. Do not change the Postgres major image tag without planning a
 database upgrade or dump/restore.
 
+Backup TODO: fold Mealie into the broader homelab backup strategy. At minimum,
+that plan needs scheduled PostgreSQL dumps plus `data/app` archives, restore
+testing, retention policy, and off-host storage.
+
 ## AI Provider
 
 Configure the AI provider inside Mealie after first login, under the relevant

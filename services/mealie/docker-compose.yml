@@ -1,17 +1,19 @@
 services:
   mealie:
-    image: ghcr.io/mealie-recipes/mealie:v3.18.0
+    image: ghcr.io/mealie-recipes/mealie:v3.19.0
     container_name: mealie
     restart: unless-stopped
     environment:
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
       ALLOW_PASSWORD_LOGIN: ${ALLOW_PASSWORD_LOGIN:-true}
       API_DOCS: ${API_DOCS:-false}
-      BASE_URL: ${BASE_URL:-https://mealie.feoc.co}
+      BASE_URL: ${BASE_URL:-https://mealie.feocco.com}
       DB_ENGINE: postgres
       DEFAULT_EMAIL: ${DEFAULT_EMAIL}
       DEFAULT_GROUP: ${DEFAULT_GROUP:-Home}
       DEFAULT_HOUSEHOLD: ${DEFAULT_HOUSEHOLD:-Family}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_WORKERS: ${OPENAI_WORKERS:-10}
       PGID: ${PGID:-1000}
       POSTGRES_DB: ${POSTGRES_DB:-mealie}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -19,6 +21,13 @@ services:
       POSTGRES_SERVER: mealie-postgres
       POSTGRES_USER: ${POSTGRES_USER:-mealie}
       PUID: ${PUID:-1000}
+      SMTP_AUTH_STRATEGY: ${SMTP_AUTH_STRATEGY:-TLS}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Mealie}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
       TZ: ${TZ:-America/New_York}
     ports:
       - "${HOST_BIND_ADDR:-127.0.0.1}:${MEALIE_HTTP_PORT:-9925}:9000"
