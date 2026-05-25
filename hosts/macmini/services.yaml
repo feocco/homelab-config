@@ -55,3 +55,7 @@ services:
   mealie-planner:
     path: services/mealie-planner
     enabled: true
+
+  instacart-history-service:
+    path: services/instacart-history-service
+    enabled: true

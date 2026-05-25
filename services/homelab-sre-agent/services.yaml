@@ -287,3 +287,23 @@ services:
       enabled: true
       autofix: false
       repo_daily_limit: 1
+
+  instacart-history-service:
+    containers:
+      - instacart-history-service
+    images:
+      - ghcr.io/feocco/instacart-history-service:*
+    source:
+      repo: feocco/instacart-history-service
+      path_hint: /Users/feocco/code/instacart-history-service
+    issue_repo: feocco/instacart-history-service
+    deploy:
+      path: services/instacart-history-service
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/instacart-history-service
+    labels:
+      - homelab-sre
+      - instacart-history-service
+    sre:
+      enabled: false
+      autofix: false
+      repo_daily_limit: 1

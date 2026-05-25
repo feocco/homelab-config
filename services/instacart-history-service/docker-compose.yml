@@ -1,0 +1,18 @@
+services:
+  instacart-history-service:
+    image: ghcr.io/feocco/instacart-history-service:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
+    container_name: instacart-history-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${INSTACART_HISTORY_PORT:-8100}:8080"
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"
