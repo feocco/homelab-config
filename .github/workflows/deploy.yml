@@ -32,6 +32,7 @@ on:
           - homelab-log-watcher
           - homelab-monitor
           - homelab-sre-agent
+          - instacart-history-service
           - mealie
           - mealie-planner
           - netalertx
@@ -97,7 +98,7 @@ jobs:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|mealie|mealie-planner|netalertx|plant-monitor|portainer)
+            bedtime|caddy|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|mealie|mealie-planner|netalertx|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
@@ -230,7 +231,7 @@ jobs:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|mealie|mealie-planner|netalertx|plant-monitor|portainer)
+            bedtime|caddy|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|mealie|mealie-planner|netalertx|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
