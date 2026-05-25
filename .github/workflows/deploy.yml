@@ -33,6 +33,7 @@ on:
           - homelab-monitor
           - homelab-sre-agent
           - mealie
+          - mealie-planner
           - netalertx
           - plant-monitor
           - portainer
