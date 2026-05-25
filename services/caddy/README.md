@@ -22,3 +22,7 @@ Network 9.3. Choose `Host (A)`, then enter the hostname and Mac mini LAN IP.
 
 The service is HTTP-only. `home.arpa` is local-only, so normal public ACME
 certificates are not available for these names.
+
+The container publishes Caddy on `0.0.0.0:80` because Docker on macOS does not
+reliably expose ports when the publish address is pinned to the LAN IP. UniFi
+DNS still points clients at the Mac mini LAN address.
