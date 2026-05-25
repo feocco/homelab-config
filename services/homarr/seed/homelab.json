@@ -1,0 +1,264 @@
+{
+  "board": {
+    "name": "Homelab",
+    "columnCount": 12,
+    "isPublic": false,
+    "tileWidth": 1,
+    "tileHeight": 1,
+    "descriptionDisplayMode": "hidden"
+  },
+  "sections": [
+    {
+      "name": "Daily Ops",
+      "apps": [
+        {
+          "name": "Home Assistant",
+          "description": "Primary home automation UI",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/home-assistant.png",
+          "href": "http://homeassistant.local:8123/",
+          "pingUrl": "http://192.168.1.159:8123/",
+          "pingEnabled": false
+        },
+        {
+          "name": "Homarr",
+          "description": "Primary homelab dashboard",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/homarr.png",
+          "href": "http://maclabs-mac-mini.taildf3445.ts.net:7575/",
+          "pingUrl": "http://maclabs-mac-mini.taildf3445.ts.net:7575/",
+          "pingEnabled": true
+        },
+        {
+          "name": "Dashy",
+          "description": "Legacy dashboard and fallback launcher",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/dashy.png",
+          "href": "http://maclabs-mac-mini.taildf3445.ts.net:8080/",
+          "pingUrl": "http://maclabs-mac-mini.taildf3445.ts.net:8080/",
+          "pingEnabled": true
+        },
+        {
+          "name": "Grafana",
+          "description": "Homelab metrics and critical alerts",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/grafana.png",
+          "href": "http://maclabs-mac-mini.taildf3445.ts.net:3000/d/homelab-monitoring/homelab-monitoring",
+          "pingUrl": "http://maclabs-mac-mini.taildf3445.ts.net:3000/api/health",
+          "pingEnabled": true
+        },
+        {
+          "name": "OpenAI Cost / Usage",
+          "description": "OpenAI API spend and usage dashboard",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/openai.png",
+          "href": "http://maclabs-mac-mini.taildf3445.ts.net:3000/d/openai-cost-usage/openai-cost-usage",
+          "pingUrl": "http://maclabs-mac-mini.taildf3445.ts.net:3000/api/health",
+          "pingEnabled": true
+        },
+        {
+          "name": "Synology DSM",
+          "description": "NAS management console",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/synology.png",
+          "href": "http://nasfeo:5000/",
+          "pingUrl": "http://192.168.1.191:5000/",
+          "pingEnabled": false
+        },
+        {
+          "name": "Portainer",
+          "description": "Docker UI on nasfeo",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/portainer.png",
+          "href": "https://nasfeo:9443/",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "Pi-hole",
+          "description": "Network ad blocker",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/pi-hole.png",
+          "href": "http://nasfeo:8181/admin/",
+          "pingUrl": "http://192.168.1.191:8181/admin/",
+          "pingEnabled": false
+        },
+        {
+          "name": "UniFi Wireless",
+          "description": "UniFi clients and network management",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/unifi.png",
+          "href": "https://unifi.ui.com/consoles/28704E855D7B00000000084C60F90000000008BD34F50000000066D9E198:941721887/network/default/clients/main",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "Homelab Deploy",
+          "description": "GitHub Actions deploy workflow",
+          "iconUrl": "https://www.google.com/s2/favicons?domain=github.com&sz=64",
+          "href": "https://github.com/feocco/homelab-config/actions",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "homelab-config Repo",
+          "description": "Private Docker runtime configuration",
+          "iconUrl": "https://www.google.com/s2/favicons?domain=github.com&sz=64",
+          "href": "https://github.com/feocco/homelab-config",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "homelab-functions",
+          "description": "Notification and Home Assistant helper API",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/python.png",
+          "href": "http://maclabs-mac-mini.taildf3445.ts.net:8091/health",
+          "pingUrl": "http://maclabs-mac-mini.taildf3445.ts.net:8091/health",
+          "pingEnabled": true
+        }
+      ]
+    },
+    {
+      "name": "Runtime Services",
+      "apps": [
+        {
+          "name": "Plant Monitor",
+          "description": "Home Assistant plant notifications",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/home-assistant.png",
+          "href": "http://maclabs-mac-mini.taildf3445.ts.net:8088/",
+          "pingUrl": "http://maclabs-mac-mini.taildf3445.ts.net:8088/health",
+          "pingEnabled": true
+        },
+        {
+          "name": "Hello NAS",
+          "description": "Deployment smoke test service",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/docker.png",
+          "href": "http://maclabs-mac-mini.taildf3445.ts.net:8099/",
+          "pingUrl": "http://maclabs-mac-mini.taildf3445.ts.net:8099/health",
+          "pingEnabled": true
+        },
+        {
+          "name": "hass-janitor",
+          "description": "Home Assistant backup and janitor checks",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/home-assistant.png",
+          "href": "http://maclabs-mac-mini.taildf3445.ts.net:8092/health",
+          "pingUrl": "http://maclabs-mac-mini.taildf3445.ts.net:8092/health",
+          "pingEnabled": true
+        },
+        {
+          "name": "homelab-log-watcher",
+          "description": "Docker log watcher health",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/docker.png",
+          "href": "http://maclabs-mac-mini.taildf3445.ts.net:8093/health",
+          "pingUrl": "http://maclabs-mac-mini.taildf3445.ts.net:8093/health",
+          "pingEnabled": true
+        },
+        {
+          "name": "homelab-sre-agent",
+          "description": "Central SRE incident API",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/grafana.png",
+          "href": "http://maclabs-mac-mini.taildf3445.ts.net:8094/health",
+          "pingUrl": "http://maclabs-mac-mini.taildf3445.ts.net:8094/health",
+          "pingEnabled": true
+        }
+      ]
+    },
+    {
+      "name": "Cloud & Cost",
+      "apps": [
+        {
+          "name": "AWS Console",
+          "description": "Amazon Web Services management",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/aws.png",
+          "href": "https://console.aws.amazon.com/",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "GCP Console",
+          "description": "Google Cloud Platform management",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/google-cloud.png",
+          "href": "https://console.cloud.google.com/",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "Google AI Studio",
+          "description": "Gemini API and prototyping",
+          "iconUrl": "https://www.google.com/s2/favicons?domain=aistudio.google.com&sz=64",
+          "href": "https://aistudio.google.com/",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "Replit",
+          "description": "Cloud IDE and app hosting",
+          "iconUrl": "https://www.google.com/s2/favicons?domain=replit.com&sz=64",
+          "href": "https://replit.com/~",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "Personal Website / S3",
+          "description": "Personal site storage and publishing",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/aws.png",
+          "href": "https://console.aws.amazon.com/s3/home",
+          "pingUrl": null,
+          "pingEnabled": false
+        }
+      ]
+    },
+    {
+      "name": "Devices & Access",
+      "apps": [
+        {
+          "name": "Google Home",
+          "description": "Google Home web console",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/google-home.png",
+          "href": "https://home.google.com/u/0/",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "Prusa Connect",
+          "description": "Prusa MK4 dashboard",
+          "iconUrl": "https://www.google.com/s2/favicons?domain=connect.prusa3d.com&sz=64",
+          "href": "https://connect.prusa3d.com/printer/ba4076e6-0624-4eee-a959-8fd81869b7ae/dashboard/",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "Raspberry Pi Connect",
+          "description": "Remote Pi access",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/raspberry-pi.png",
+          "href": "https://connect.raspberrypi.com/devices",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "BitFocus Companion",
+          "description": "StreamDeck control",
+          "iconUrl": "https://www.google.com/s2/favicons?domain=bitfocus.io&sz=64",
+          "href": "http://streamdeck-companion:8000/buttons/1",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "SSH to NAS",
+          "description": "ssh feocco@nasfeo",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/terminal.png",
+          "href": "ssh://feocco@nasfeo",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "SSH to Mac",
+          "description": "ssh feocco@maclabs-mac-mini",
+          "iconUrl": "https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/terminal.png",
+          "href": "ssh://feocco@maclabs-mac-mini.taildf3445.ts.net",
+          "pingUrl": null,
+          "pingEnabled": false
+        },
+        {
+          "name": "Dashy Config Repo",
+          "description": "Legacy Dashy repository",
+          "iconUrl": "https://www.google.com/s2/favicons?domain=github.com&sz=64",
+          "href": "https://github.com/feocco/dashy-0",
+          "pingUrl": null,
+          "pingEnabled": false
+        }
+      ]
+    }
+  ]
+}
