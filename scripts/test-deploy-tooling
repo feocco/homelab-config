@@ -35,6 +35,90 @@ rm -rf "${tmp_runtime}/services/legacy-service/data"
 "${REPO_DIR}/scripts/migrate-host-runtime-layout" "${tmp_runtime}" >/dev/null
 test -f "${tmp_runtime}/services/legacy-service/data/state.txt"
 rm -rf "${tmp_runtime}"
+
+guard_tmp="$(mktemp -d)"
+guard_repo="${guard_tmp}/repo"
+guard_runtime="${guard_tmp}/runtime"
+guard_fakebin="${guard_tmp}/bin"
+mkdir -p \
+  "${guard_repo}/scripts" \
+  "${guard_repo}/hosts/macmini" \
+  "${guard_repo}/services/demo" \
+  "${guard_runtime}/services/demo" \
+  "${guard_fakebin}"
+cp "${REPO_DIR}/scripts/homelab-deploy" "${guard_repo}/scripts/homelab-deploy"
+cp "${REPO_DIR}/scripts/lib-service-secrets" "${guard_repo}/scripts/lib-service-secrets"
+chmod +x "${guard_repo}/scripts/homelab-deploy"
+cat > "${guard_repo}/hosts/macmini/services.yaml" <<EOF
+host:
+  name: macmini
+  deploy_base_dir: ${guard_runtime}
+
+services:
+  demo:
+    path: services/demo
+    enabled: true
+EOF
+cat > "${guard_runtime}/services/demo/docker-compose.yml" <<'EOF'
+services:
+  demo:
+    image: ghcr.io/feocco/demo:latest
+EOF
+cat > "${guard_fakebin}/docker-compose" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "${guard_tmp}/compose.log"
+EOF
+cat > "${guard_fakebin}/docker" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "ps" ]; then
+  echo "CONTAINER ID   IMAGE   NAMES"
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "${guard_fakebin}/docker-compose" "${guard_fakebin}/docker"
+(
+  cd "${guard_repo}"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Tooling Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+touch "${guard_repo}/dirty.txt"
+if PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}" >"${guard_tmp}/dirty.out" 2>&1; then
+  echo "Dirty non-dry-run deploy should fail." >&2
+  exit 1
+fi
+grep -q "dirty worktree" "${guard_tmp}/dirty.out"
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${guard_runtime}" >/dev/null
+grep -q '"git_dirty": true' "${guard_runtime}/.homelab-deploy-state/macmini/demo.json"
+grep -q -- '--remove-orphans' "${guard_tmp}/compose.log"
+rm -f "${guard_repo}/dirty.txt" "${guard_tmp}/compose.log"
+(
+  cd "${guard_repo}"
+  git checkout -b feature/canary >/dev/null
+)
+if PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}" >"${guard_tmp}/branch.out" 2>&1; then
+  echo "Non-main deploy without --canary should fail." >&2
+  exit 1
+fi
+grep -q "without --canary" "${guard_tmp}/branch.out"
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --canary --deploy-base-dir "${guard_runtime}" >/dev/null
+grep -q '"canary": true' "${guard_runtime}/.homelab-deploy-state/macmini/demo.json"
+(
+  cd "${guard_repo}"
+  git checkout main >/dev/null
+)
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}" >/dev/null
+grep -q '"git_branch": "main"' "${guard_runtime}/.homelab-deploy-state/macmini/demo.json"
+rm -rf "${guard_tmp}"
 "${REPO_DIR}/scripts/check-service-secrets" --base-dir "${REPO_DIR}"
 
 if grep -R '\${{ github.event.inputs\.' "${REPO_DIR}/.github/workflows"; then

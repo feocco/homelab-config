@@ -24,6 +24,7 @@ scripts/
   homelab-deploy
   install-deploy-script
 docs/
+  overview.md
   setup-status.md
 ```
 
@@ -142,6 +143,9 @@ cd "${HOME}/homelab-config-runtime"
 ```
 
 Runner setup is documented in `docs/github-runner.md`.
+For the high-level system map, start with `docs/overview.md`.
+For source-of-truth rules around dirty deploys, branch canaries, and runtime
+drift, read `docs/deployment-source-of-truth.md`.
 
 Disabling a service in `hosts/<host>/services.yaml` only removes it from future
 deploys. It does not stop an already-running container. When migrating a
