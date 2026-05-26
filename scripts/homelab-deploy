@@ -10,6 +10,8 @@ MODE=""
 SERVICE=""
 DRY_RUN="false"
 FORCE_RECREATE="false"
+ALLOW_DIRTY="false"
+CANARY="false"
 
 source "${SCRIPT_DIR}/lib-service-secrets"
 
@@ -17,10 +19,10 @@ usage() {
   cat <<'EOF'
 Usage:
   homelab-deploy [--host HOST] --list
-  homelab-deploy [--host HOST] --all [--dry-run] [--force-recreate]
+  homelab-deploy [--host HOST] --all [--dry-run] [--force-recreate] [--canary] [--allow-dirty]
   homelab-deploy [--host HOST] --changed [--dry-run] [--base-dir DIR] [--deploy-base-dir DIR]
-  homelab-deploy [--host HOST] <service> [--dry-run] [--force-recreate] [--deploy-base-dir DIR]
-  homelab-deploy [--host HOST] --service <service> [--dry-run] [--force-recreate] [--deploy-base-dir DIR]
+  homelab-deploy [--host HOST] <service> [--dry-run] [--force-recreate] [--canary] [--allow-dirty] [--deploy-base-dir DIR]
+  homelab-deploy [--host HOST] --service <service> [--dry-run] [--force-recreate] [--canary] [--allow-dirty] [--deploy-base-dir DIR]
 EOF
 }
 
@@ -53,6 +55,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --force-recreate)
       FORCE_RECREATE="true"
+      shift
+      ;;
+    --allow-dirty)
+      ALLOW_DIRTY="true"
+      shift
+      ;;
+    --canary)
+      CANARY="true"
       shift
       ;;
     --base-dir)
@@ -100,6 +110,88 @@ if [[ -z "${DEPLOY_BASE_DIR}" ]]; then
   DEPLOY_BASE_DIR="${BASE_DIR}"
 fi
 DEPLOY_BASE_DIR="$(service_secret_expand_path "${DEPLOY_BASE_DIR}")"
+
+git_branch() {
+  if [[ -n "${GITHUB_REF_NAME:-}" ]]; then
+    echo "${GITHUB_REF_NAME}"
+    return
+  fi
+  git -C "${BASE_DIR}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"
+}
+
+git_sha() {
+  git -C "${BASE_DIR}" rev-parse HEAD 2>/dev/null || echo "unknown"
+}
+
+git_dirty_state() {
+  if ! git -C "${BASE_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "true"
+    return
+  fi
+
+  if ! git -C "${BASE_DIR}" diff --quiet --ignore-submodules -- ||
+    ! git -C "${BASE_DIR}" diff --cached --quiet --ignore-submodules -- ||
+    [[ -n "$(git -C "${BASE_DIR}" ls-files --others --exclude-standard)" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+GIT_BRANCH="$(git_branch)"
+GIT_SHA="$(git_sha)"
+GIT_DIRTY="$(git_dirty_state)"
+
+require_deploy_allowed() {
+  if [[ "${DRY_RUN}" == "true" || "${MODE}" == "list" ]]; then
+    return 0
+  fi
+
+  if [[ "${GIT_DIRTY}" == "true" && "${ALLOW_DIRTY}" != "true" ]]; then
+    cat >&2 <<EOF
+Refusing non-dry-run deploy from a dirty worktree.
+
+main is the durable production source of truth. Commit and push first, or rerun
+with --allow-dirty only for an explicit emergency runtime edit.
+EOF
+    exit 3
+  fi
+
+  if [[ "${GIT_BRANCH}" != "main" ]]; then
+    echo "Warning: deploying from non-main branch '${GIT_BRANCH}'." >&2
+    echo "Branch deploys are temporary canaries until merged and redeployed from main." >&2
+    if [[ "${CANARY}" != "true" && "${ALLOW_DIRTY}" != "true" ]]; then
+      cat >&2 <<EOF
+Refusing non-main deploy without --canary.
+
+Use --canary for a temporary branch deploy, or merge the change to main before
+deploying durable production config.
+EOF
+      exit 3
+    fi
+  fi
+}
+
+write_deploy_state() {
+  local service="$1"
+  local state_dir="${DEPLOY_BASE_DIR}/.homelab-deploy-state/${HOST}"
+  local state_file="${state_dir}/${service}.json"
+  local deployed_at
+
+  deployed_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  mkdir -p "${state_dir}"
+  cat > "${state_file}" <<EOF
+{
+  "service": "${service}",
+  "host": "${HOST}",
+  "git_branch": "${GIT_BRANCH}",
+  "git_sha": "${GIT_SHA}",
+  "git_dirty": ${GIT_DIRTY},
+  "canary": ${CANARY},
+  "deployed_at": "${deployed_at}"
+}
+EOF
+}
 
 service_entries() {
   awk '
@@ -196,12 +288,13 @@ deploy_service() {
       echo "Image pull failed for ${service}; continuing with cached image if available." >&2
     fi
     if [[ "${FORCE_RECREATE}" == "true" ]]; then
-      compose up -d --force-recreate
+      compose up -d --force-recreate --remove-orphans
     else
-      compose up -d
+      compose up -d --remove-orphans
     fi
     docker ps --filter "name=${service}"
   )
+  write_deploy_state "${service}"
 }
 
 compose() {
@@ -237,11 +330,13 @@ case "${MODE}" in
     enabled_service_names
     ;;
   all)
+    require_deploy_allowed
     while read -r service; do
       [[ -n "${service}" ]] && deploy_service "${service}"
     done < <(enabled_service_names)
     ;;
   changed)
+    require_deploy_allowed
     targets="$(changed_services | sort -u)"
     if [[ -z "${targets}" ]]; then
       echo "No enabled services to deploy on ${HOST}."
@@ -252,6 +347,7 @@ case "${MODE}" in
     done <<< "${targets}"
     ;;
   service)
+    require_deploy_allowed
     deploy_service "${SERVICE}"
     ;;
   *)

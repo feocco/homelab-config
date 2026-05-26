@@ -43,6 +43,11 @@ on:
         required: false
         type: boolean
         default: false
+      canary:
+        description: Allow temporary deployment from a non-main branch
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   deploy-nasfeo:
@@ -96,6 +101,7 @@ jobs:
         env:
           SERVICE_INPUT: ${{ inputs.service }}
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
+          CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
             bedtime|caddy|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|mealie|mealie-planner|netalertx|plant-monitor|portainer)
@@ -109,16 +115,23 @@ jobs:
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
           fi
+          if [ "${CANARY_INPUT}" = "true" ]; then
+            args+=(--canary)
+          fi
           ./scripts/homelab-deploy --host nasfeo "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
 
       - name: Deploy all services
         if: github.event_name == 'workflow_dispatch' && inputs.service == 'all'
         env:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
+          CANARY_INPUT: ${{ inputs.canary }}
         run: |
           args=()
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
+          fi
+          if [ "${CANARY_INPUT}" = "true" ]; then
+            args+=(--canary)
           fi
           ./scripts/homelab-deploy --host nasfeo --all "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
 
@@ -229,6 +242,7 @@ jobs:
         env:
           SERVICE_INPUT: ${{ inputs.service }}
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
+          CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
             bedtime|caddy|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|mealie|mealie-planner|netalertx|plant-monitor|portainer)
@@ -241,6 +255,9 @@ jobs:
           args=()
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
+          fi
+          if [ "${CANARY_INPUT}" = "true" ]; then
+            args+=(--canary)
           fi
           RUNNER_HOME="${HOME}"
           export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
@@ -265,10 +282,14 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.service == 'all'
         env:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
+          CANARY_INPUT: ${{ inputs.canary }}
         run: |
           args=()
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
+          fi
+          if [ "${CANARY_INPUT}" = "true" ]; then
+            args+=(--canary)
           fi
           RUNNER_HOME="${HOME}"
           export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
