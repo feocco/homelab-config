@@ -59,3 +59,7 @@ services:
   instacart-history-service:
     path: services/instacart-history-service
     enabled: true
+
+  dog-bowl-monitor:
+    path: services/dog-bowl-monitor
+    enabled: true

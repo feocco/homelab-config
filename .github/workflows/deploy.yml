@@ -25,6 +25,7 @@ on:
           - caddy
           - dashy
           - dashy-redirect
+          - dog-bowl-monitor
           - hass-janitor
           - hello-nas
           - homarr
@@ -104,7 +105,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|mealie|mealie-planner|netalertx|plant-monitor|portainer)
+            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|mealie|mealie-planner|netalertx|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
@@ -170,6 +171,10 @@ jobs:
           BEDTIME__HA_LONG_LIVED_TOKEN: ${{ secrets.BEDTIME__HA_LONG_LIVED_TOKEN }}
           BEDTIME__HA_URL: ${{ secrets.BEDTIME__HA_URL }}
           BEDTIME__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.BEDTIME__HOMELAB_FUNCTIONS_TOKEN }}
+          DOG_BOWL_MONITOR__HA_LONG_LIVED_TOKEN: ${{ secrets.DOG_BOWL_MONITOR__HA_LONG_LIVED_TOKEN }}
+          DOG_BOWL_MONITOR__HA_URL: ${{ secrets.DOG_BOWL_MONITOR__HA_URL }}
+          DOG_BOWL_MONITOR__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.DOG_BOWL_MONITOR__HOMELAB_FUNCTIONS_TOKEN }}
+          DOG_BOWL_MONITOR__OPENAI_API_KEY: ${{ secrets.DOG_BOWL_MONITOR__OPENAI_API_KEY }}
           HASS_JANITOR__HASS_JANITOR_API_TOKEN: ${{ secrets.HASS_JANITOR__HASS_JANITOR_API_TOKEN }}
           HASS_JANITOR__HA_BASE_URL: ${{ secrets.HASS_JANITOR__HA_BASE_URL }}
           HASS_JANITOR__HA_TOKEN: ${{ secrets.HASS_JANITOR__HA_TOKEN }}
@@ -245,7 +250,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|mealie|mealie-planner|netalertx|plant-monitor|portainer)
+            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|mealie|mealie-planner|netalertx|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2

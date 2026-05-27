@@ -39,3 +39,7 @@ services:
     enabled: true
     http_port: 8100
     target: http://127.0.0.1:8100
+  dog-bowl-monitor:
+    enabled: true
+    http_port: 8101
+    target: http://127.0.0.1:8101

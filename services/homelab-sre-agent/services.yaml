@@ -307,3 +307,23 @@ services:
       enabled: false
       autofix: false
       repo_daily_limit: 1
+
+  dog-bowl-monitor:
+    containers:
+      - dog-bowl-monitor
+    images:
+      - ghcr.io/feocco/dog-bowl-monitor:*
+    source:
+      repo: feocco/dog-bowl-monitor
+      path_hint: /Users/feocco/code/dog-bowl-monitor
+    issue_repo: feocco/dog-bowl-monitor
+    deploy:
+      path: services/dog-bowl-monitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/dog-bowl-monitor
+    labels:
+      - homelab-sre
+      - dog-bowl-monitor
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
