@@ -61,3 +61,29 @@ plants:
       battery: sensor.office_plant_battery
       brightness: sensor.hue_motion_sensor_1_illuminance
 
+  - id: front_porch_garden_box
+    plant_entity:
+    name: Front Porch Garden Box
+    location: Front porch
+    species: outdoor_mixed_vegetable_container
+    sensors:
+      moisture: sensor.porch_garden_1_soil_moisture
+      battery: sensor.porch_garden_1_battery
+
+  - id: front_porch_hanging_basket
+    plant_entity:
+    name: Front Porch Hanging Basket
+    location: Front porch
+    species: outdoor_mixed_annual_hanging_basket
+    sensors:
+      moisture: sensor.soil_5_soil_moisture
+      battery: sensor.soil_5_battery
+
+  - id: back_porch_fuchsia_hanging_basket
+    plant_entity:
+    name: Back Porch Fuchsia Hanging Basket
+    location: Back porch
+    species: fuchsia_hanging_basket
+    sensors:
+      moisture: sensor.soil_6_soil_moisture
+      battery: sensor.soil_6_battery
