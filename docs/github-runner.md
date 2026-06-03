@@ -10,32 +10,90 @@ The Mac mini should use a native macOS GitHub Actions runner with labels
 
 ## Authentication
 
-Use a fine-grained GitHub token first. GitHub App auth is supported by the runner
-image and is a good future hardening step, but it adds app creation, private-key
-handling, and installation setup.
+Use a dedicated GitHub App for the NAS runner. This avoids refreshing a personal
+access token every 30 days and keeps runner registration scoped to this repo.
 
-Token target:
+Create the app with:
 
 ```text
-Repository: feocco/homelab-config
-Permission: Administration read/write
+Name: homelab-runner
+Homepage URL: https://github.com/feocco/homelab-config
+Webhooks: disabled
+Repository access: only feocco/homelab-config
+Repository permission: Administration read/write
 ```
 
-If the fine-grained token does not work with the runner image, use a classic PAT
-with `repo` scope as the fallback.
+Install the app on `feocco/homelab-config`, download a private key, and keep the
+private key only on the NAS in
+`/volume1/docker/homelab-secrets/github-runner.env`.
+
+The runner image expects `APP_ID`, `APP_LOGIN`, and `APP_PRIVATE_KEY`.
+`APP_PRIVATE_KEY` must be stored as one line with literal `\n` separators. The
+image converts those separators back into real PEM newlines before requesting a
+GitHub App installation token.
 
 ## NAS Install
 
-On the NAS:
+From the MacBook, write the NAS env file without printing the private key. Set
+`APP_ID` to the GitHub App's numeric app id and `PRIVATE_KEY_PATH` to the
+downloaded `.pem` file:
+
+```bash
+APP_ID=replace_me
+PRIVATE_KEY_PATH="${HOME}/Downloads/homelab-runner.private-key.pem"
+escaped_pem="$(
+  python3 - "$PRIVATE_KEY_PATH" <<'PY'
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).read_text().rstrip("\n").replace("\n", "\\n"))
+PY
+)"
+
+ssh -t feocco@nasfeo 'set -eu
+sudo mkdir -p /volume1/docker/homelab-secrets
+sudo tee /volume1/docker/homelab-secrets/github-runner.env >/dev/null
+sudo chmod 600 /volume1/docker/homelab-secrets/github-runner.env
+sudo chown root:root /volume1/docker/homelab-secrets/github-runner.env
+' <<EOF
+APP_ID=${APP_ID}
+APP_LOGIN=feocco
+APP_PRIVATE_KEY=${escaped_pem}
+EOF
+unset escaped_pem
+```
+
+Prepare the runner directories on the NAS:
 
 ```bash
 cd /volume1/docker/homelab-config
 git pull
-sudo mkdir -p /volume1/docker/homelab-secrets
 sudo mkdir -p /volume1/docker/homelab-runner/data /volume1/docker/homelab-runner/work
-sudo cp github-runner/.env.example /volume1/docker/homelab-secrets/github-runner.env
-sudo vi /volume1/docker/homelab-secrets/github-runner.env
-sudo chmod 600 /volume1/docker/homelab-secrets/github-runner.env
+```
+
+Before restarting the runner, validate that the GitHub App can create a runner
+registration token. This command prints only the HTTP status and deletes the
+registration token response:
+
+```bash
+ssh feocco@nasfeo 'set -eu
+image=ghcr.io/myoung34/docker-github-actions-runner:2.334.0
+app_token=$(docker run --rm \
+  --env-file /volume1/docker/homelab-secrets/github-runner.env \
+  --entrypoint bash \
+  "$image" \
+  -lc '"'"'nl="
+"; APP_PRIVATE_KEY="${APP_PRIVATE_KEY//\\n/${nl}}" bash /app_token.sh'"'"')
+code=$(curl -sS -o /tmp/github-runner-registration-token.json -w "%{http_code}" \
+  -X POST \
+  -H "Authorization: Bearer ${app_token}" \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  https://api.github.com/repos/feocco/homelab-config/actions/runners/registration-token)
+rm -f /tmp/github-runner-registration-token.json
+test "$code" = "201"
+echo "GitHub App runner registration token check: $code"
+'
 ```
 
 Start the runner:
@@ -56,10 +114,10 @@ GitHub runner registration on normal restarts. If the container gets stuck with
 container from this Compose file instead of repeatedly restarting the old
 container layer.
 
-The runner token env file intentionally lives outside
+The runner auth env file intentionally lives outside
 `/volume1/docker/homelab-config`. The runner container mounts the homelab-config
-runtime tree so deploy jobs can sync and render service config; keeping the
-runner token, runner registration cache, and runner workdir outside that tree
+runtime tree so deploy jobs can sync and render service config; keeping the app
+private key, runner registration cache, and runner workdir outside that tree
 prevents ordinary deploy jobs from reading those files by path.
 
 If the runner has a stale GitHub session, stop it and reset only the external
@@ -83,6 +141,18 @@ Expected labels:
 
 ```text
 nasfeo,docker,homelab
+```
+
+The NAS runner env file should remain locked down:
+
+```bash
+ssh feocco@nasfeo 'sudo stat -c "%a %U:%G %n" /volume1/docker/homelab-secrets/github-runner.env'
+```
+
+Expected:
+
+```text
+600 root:root /volume1/docker/homelab-secrets/github-runner.env
 ```
 
 ## Mac Mini Install
