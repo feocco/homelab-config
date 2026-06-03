@@ -126,4 +126,119 @@ if grep -R '\${{ github.event.inputs\.' "${REPO_DIR}/.github/workflows"; then
   exit 1
 fi
 
+for planner_service in \
+  bedtime \
+  caddy \
+  dashy \
+  dashy-redirect \
+  dog-bowl-monitor \
+  hass-janitor \
+  hello-nas \
+  homarr \
+  homelab-functions \
+  homelab-log-watcher \
+  homelab-monitor \
+  homelab-sre-agent \
+  instacart-history-service \
+  mealie \
+  mealie-planner \
+  plant-monitor \
+  portainer
+do
+  "${REPO_DIR}/scripts/homelab-plan" --service "${planner_service}" --base-ref HEAD --json >/dev/null
+done
+
+planner_tmp="$(mktemp -d)"
+planner_repo="${planner_tmp}/repo"
+mkdir -p \
+  "${planner_repo}/hosts/macmini" \
+  "${planner_repo}/services/demo" \
+  "${planner_repo}/../demo-app/demo_app" \
+  "${planner_repo}/../demo-app/tests"
+cat > "${planner_repo}/hosts/macmini/services.yaml" <<'EOF'
+host:
+  name: macmini
+  deploy_base_dir: ${HOME}/homelab-config-runtime
+
+services:
+  demo:
+    path: services/demo
+    enabled: true
+EOF
+cat > "${planner_repo}/homelab-deploy-policy.yaml" <<EOF
+services:
+  demo:
+    host: macmini
+    path: services/demo
+    source:
+      repo: feocco/demo
+      path_hint: ${planner_tmp}/demo-app
+    default_strategy: direct
+    smoke_checks:
+      - curl -fsS http://127.0.0.1:8080/health
+    restore:
+      required_for:
+        - data/**
+        - migrations/**
+EOF
+cat > "${planner_repo}/../demo-app/homelab.yaml" <<'EOF'
+service: demo
+image: ghcr.io/feocco/demo
+health:
+  url: http://127.0.0.1:8080/health
+checks:
+  - python -m pytest
+risk:
+  default: direct
+  canary:
+    - docker-compose.yml
+  restore:
+    - data/**
+EOF
+touch "${planner_repo}/services/demo/.env.config"
+touch "${planner_repo}/services/demo/docker-compose.yml"
+touch "${planner_repo}/../demo-app/demo_app/main.py"
+touch "${planner_repo}/../demo-app/tests/test_main.py"
+(
+  cd "${planner_repo}/../demo-app"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Planner Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+(
+  cd "${planner_repo}"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Planner Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+echo "# source change" >> "${planner_repo}/../demo-app/demo_app/main.py"
+planner_direct="$("${REPO_DIR}/scripts/homelab-plan" --base-dir "${planner_repo}" --service demo --base-ref HEAD --json)"
+echo "${planner_direct}" | python3 -c 'import json,sys; payload=json.load(sys.stdin); assert payload["strategy"] == "direct"; assert "python -m pytest" in payload["checks"]'
+planner_missing_ref="$("${REPO_DIR}/scripts/homelab-plan" --base-dir "${planner_repo}" --service demo --base-ref missing-ref --json)"
+echo "${planner_missing_ref}" | python3 -c 'import json,sys; payload=json.load(sys.stdin); assert payload["warnings"]; assert payload["strategy"] == "direct"'
+(
+  cd "${planner_repo}/../demo-app"
+  git add demo_app/main.py
+  git commit -m "source change" >/dev/null
+)
+echo "# compose change" >> "${planner_repo}/services/demo/docker-compose.yml"
+planner_canary="$("${REPO_DIR}/scripts/homelab-plan" --base-dir "${planner_repo}" --service demo --base-ref HEAD --json)"
+echo "${planner_canary}" | python3 -c 'import json,sys; payload=json.load(sys.stdin); assert payload["strategy"] == "canary"; assert any("--canary" in command for command in payload["deploy_commands"])'
+(
+  cd "${planner_repo}"
+  git add services/demo/docker-compose.yml
+  git commit -m "compose change" >/dev/null
+)
+mkdir -p "${planner_repo}/services/demo/data"
+echo "state" > "${planner_repo}/services/demo/data/state.json"
+planner_restore="$("${REPO_DIR}/scripts/homelab-plan" --base-dir "${planner_repo}" --service demo --base-ref HEAD --json)"
+echo "${planner_restore}" | python3 -c 'import json,sys; payload=json.load(sys.stdin); assert payload["strategy"] == "restore"; assert payload["restore_required"] is True'
+rm -rf "${planner_tmp}"
+
 echo "Deploy tooling checks passed."

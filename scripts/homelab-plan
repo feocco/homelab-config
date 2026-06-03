@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+"""Plan the safest homelab deploy path for a service."""
+
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import json
+import os
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+
+GLOBAL_CANARY_PATTERNS = [
+    "hosts/**",
+    "services/*/docker-compose.yml",
+    "services/caddy/**",
+    "scripts/homelab-deploy",
+    "scripts/render-service-env",
+    "homelab-deploy-policy.yaml",
+]
+GLOBAL_RESTORE_PATTERNS = [
+    "service-secrets.yaml",
+    "services/*/data/**",
+    "services/*/migrations/**",
+    "services/*/recovery/**",
+    "**/*secret*",
+    "**/*auth*",
+    "**/*token*",
+]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Recommend direct, canary, or restore-required homelab deploy steps."
+    )
+    parser.add_argument("--base-dir", default=os.getcwd(), help="homelab-config repo path")
+    parser.add_argument("--service", required=True, help="service name")
+    parser.add_argument("--host", help="target host override")
+    parser.add_argument(
+        "--base-ref",
+        default="origin/main",
+        help="git ref to diff against in homelab-config and app repos",
+    )
+    parser.add_argument(
+        "--changed",
+        action="store_true",
+        help="include changed-file detail; retained for command readability",
+    )
+    parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    return parser.parse_args()
+
+
+def load_yaml(path: Path) -> Any:
+    try:
+        import yaml  # type: ignore
+    except Exception:
+        return load_simple_yaml(path)
+
+    with path.open("r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+    return data
+
+
+def scalar(value: str) -> Any:
+    value = value.strip()
+    if value == "[]":
+        return []
+    if value == "{}":
+        return {}
+    if value in {"true", "false"}:
+        return value == "true"
+    if value in {"null", "~"}:
+        return None
+    if (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
+    ):
+        return value[1:-1]
+    return value
+
+
+def load_simple_yaml(path: Path) -> Any:
+    root: dict[str, Any] = {}
+    stack: list[tuple[int, Any]] = [(-1, root)]
+    lines = path.read_text(encoding="utf-8").splitlines()
+
+    for index, raw_line in enumerate(lines):
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+            continue
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        line = raw_line.strip()
+        while stack and indent <= stack[-1][0]:
+            stack.pop()
+        parent = stack[-1][1]
+
+        if line.startswith("- "):
+            if not isinstance(parent, list):
+                raise ValueError(f"List item without list parent in {path}: {raw_line}")
+            parent.append(scalar(line[2:]))
+            continue
+
+        if ":" not in line:
+            raise ValueError(f"Unsupported YAML line in {path}: {raw_line}")
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+
+        if value:
+            parent[key] = scalar(value)
+            continue
+
+        next_content = ""
+        for candidate in lines[index + 1 :]:
+            if candidate.strip() and not candidate.lstrip().startswith("#"):
+                next_content = candidate.strip()
+                break
+
+        child: Any
+        if next_content.startswith("- "):
+            child = []
+        else:
+            child = {}
+        parent[key] = child
+        stack.append((indent, child))
+
+    return root
+
+
+def git_ref_exists(repo: Path, ref: str) -> bool:
+    return (
+        subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--verify", "--quiet", ref],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def git_files(repo: Path, base_ref: str) -> tuple[list[str], list[str]]:
+    if not (repo / ".git").exists():
+        return [], []
+    changed: list[str] = []
+    warnings: list[str] = []
+    diff_ref = base_ref
+    if not git_ref_exists(repo, diff_ref):
+        if git_ref_exists(repo, "HEAD"):
+            warnings.append(f"{repo}: base ref {base_ref!r} not found; diffing against HEAD")
+            diff_ref = "HEAD"
+        else:
+            warnings.append(f"{repo}: no HEAD commit found; only untracked files are considered")
+            diff_ref = ""
+
+    if diff_ref:
+        diff = subprocess.run(
+            ["git", "-C", str(repo), "diff", "--name-only", "--diff-filter=ACMRTUXB", diff_ref],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if diff.returncode == 0:
+            changed.extend(line for line in diff.stdout.splitlines() if line)
+        else:
+            warnings.append(f"{repo}: git diff against {diff_ref!r} failed")
+    untracked = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "--others", "--exclude-standard"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if untracked.returncode == 0:
+        changed.extend(line for line in untracked.stdout.splitlines() if line)
+    return sorted(set(changed)), warnings
+
+
+def as_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return [str(value)]
+
+
+def match_any(path: str, patterns: list[str]) -> bool:
+    return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
+
+
+def service_relative(path: str, service_path: str) -> str | None:
+    prefix = f"{service_path.rstrip('/')}/"
+    if path.startswith(prefix):
+        return path[len(prefix) :]
+    return None
+
+
+def host_service(base_dir: Path, host: str, service: str) -> dict[str, Any]:
+    host_file = base_dir / "hosts" / host / "services.yaml"
+    if not host_file.exists():
+        raise SystemExit(f"Missing host services file: {host_file}")
+    services = (load_yaml(host_file).get("services") or {})
+    entry = services.get(service)
+    if not entry:
+        raise SystemExit(f"Service {service!r} is not listed for host {host!r}")
+    if entry.get("enabled") is False:
+        raise SystemExit(f"Service {service!r} is disabled for host {host!r}")
+    return entry
+
+
+def app_contract(source_path: str | None) -> tuple[Path | None, dict[str, Any]]:
+    if not source_path:
+        return None, {}
+    app_dir = Path(os.path.expandvars(os.path.expanduser(source_path)))
+    contract = app_dir / "homelab.yaml"
+    if not contract.exists():
+        return app_dir, {}
+    return app_dir, load_yaml(contract)
+
+
+def classify(
+    repo_files: list[str],
+    app_files: list[str],
+    service_path: str,
+    policy_entry: dict[str, Any],
+    app_policy: dict[str, Any],
+) -> tuple[str, list[str]]:
+    reasons: list[str] = []
+    strategy = str(policy_entry.get("default_strategy") or "direct")
+
+    restore_patterns = as_list((policy_entry.get("restore") or {}).get("required_for"))
+    app_risk = app_policy.get("risk") or {}
+    app_restore_patterns = as_list(app_risk.get("restore"))
+    app_canary_patterns = as_list(app_risk.get("canary"))
+
+    for path in repo_files:
+        rel = service_relative(path, service_path)
+        if match_any(path, GLOBAL_RESTORE_PATTERNS) or (
+            rel is not None and match_any(rel, restore_patterns)
+        ):
+            reasons.append(f"restore pattern matched {path}")
+            return "restore", reasons
+
+    for path in app_files:
+        if match_any(path, app_restore_patterns):
+            reasons.append(f"app restore pattern matched {path}")
+            return "restore", reasons
+
+    for path in repo_files:
+        rel = service_relative(path, service_path)
+        if match_any(path, GLOBAL_CANARY_PATTERNS) or (
+            rel is not None and match_any(rel, as_list(policy_entry.get("canary_for")))
+        ):
+            reasons.append(f"canary pattern matched {path}")
+            strategy = "canary"
+            break
+
+    if strategy != "canary":
+        for path in app_files:
+            if match_any(path, app_canary_patterns):
+                reasons.append(f"app canary pattern matched {path}")
+                strategy = "canary"
+                break
+
+    if not reasons and (repo_files or app_files):
+        reasons.append("only direct-change patterns matched")
+    if not reasons:
+        reasons.append("no changed files found")
+    return strategy, reasons
+
+
+def plan_payload(args: argparse.Namespace) -> dict[str, Any]:
+    base_dir = Path(args.base_dir).resolve()
+    policy_path = base_dir / "homelab-deploy-policy.yaml"
+    if not policy_path.exists():
+        raise SystemExit(f"Missing deploy policy: {policy_path}")
+
+    policy = load_yaml(policy_path)
+    service_policy = (policy.get("services") or {}).get(args.service)
+    if not service_policy:
+        raise SystemExit(f"Missing service in deploy policy: {args.service}")
+
+    host = args.host or service_policy.get("host")
+    if not host:
+        raise SystemExit(f"Missing host for service: {args.service}")
+
+    host_entry = host_service(base_dir, host, args.service)
+    service_path = str(service_policy.get("path") or host_entry.get("path") or "")
+    if not service_path:
+        raise SystemExit(f"Missing deploy path for service: {args.service}")
+
+    app_dir, app_policy = app_contract((service_policy.get("source") or {}).get("path_hint"))
+    repo_files, repo_warnings = git_files(base_dir, args.base_ref)
+    app_files, app_warnings = git_files(app_dir, args.base_ref) if app_dir else ([], [])
+    strategy, reasons = classify(repo_files, app_files, service_path, service_policy, app_policy)
+    restore_required = strategy == "restore"
+
+    checks = as_list(app_policy.get("checks") or service_policy.get("checks"))
+    smoke_checks = as_list(service_policy.get("smoke_checks"))
+    deploy_command = (
+        f"./scripts/homelab-deploy --host {shlex.quote(str(host))} "
+        f"{shlex.quote(args.service)}"
+    )
+    if strategy == "canary":
+        deploy_command = f"{deploy_command} --canary"
+    deploy_commands = [] if restore_required else [deploy_command]
+
+    return {
+        "service": args.service,
+        "host": host,
+        "strategy": strategy,
+        "restore_required": restore_required,
+        "repo_changed_files": repo_files,
+        "app_changed_files": app_files,
+        "app_source_path": str(app_dir) if app_dir else None,
+        "checks": checks,
+        "smoke_checks": smoke_checks,
+        "deploy_commands": deploy_commands,
+        "reasons": reasons,
+        "warnings": repo_warnings + app_warnings,
+    }
+
+
+def print_text(payload: dict[str, Any]) -> None:
+    print(f"Service: {payload['service']} on {payload['host']}")
+    print(f"Recommended strategy: {payload['strategy']}")
+    for reason in payload["reasons"]:
+        print(f"- {reason}")
+    if payload["warnings"]:
+        print("\nWarnings:")
+        for warning in payload["warnings"]:
+            print(f"  {warning}")
+    if payload["checks"]:
+        print("\nRun checks:")
+        for command in payload["checks"]:
+            print(f"  {command}")
+    if payload["restore_required"]:
+        print("\nRestore plan required before deploy. Do not deploy until backup/restore proof is recorded.")
+    elif payload["deploy_commands"]:
+        print("\nDeploy command:")
+        for command in payload["deploy_commands"]:
+            print(f"  {command}")
+    if payload["smoke_checks"]:
+        print("\nSmoke checks after deploy:")
+        for command in payload["smoke_checks"]:
+            print(f"  {command}")
+
+
+def main() -> int:
+    args = parse_args()
+    payload = plan_payload(args)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print_text(payload)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

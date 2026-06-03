@@ -1,0 +1,4 @@
+interface:
+  display_name: "Homelab Service Scaffold"
+  short_description: "Scaffold Joe Feocco homelab Python service repos"
+  default_prompt: "Use $homelab-service-scaffold to create a new Python homelab service repo with homelab.yaml, docs, Docker, GHCR publishing, env examples, and tests."

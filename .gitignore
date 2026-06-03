@@ -2,3 +2,5 @@
 **/data/*
 !**/data/.gitkeep
 .homelab-deploy-state/
+__pycache__/
+*.pyc

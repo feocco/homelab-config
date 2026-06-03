@@ -14,6 +14,9 @@
 ## Agent Workflows
 
 - Inspect `git status --short --branch` before deployment work.
+- Before deploying a service, run `./scripts/homelab-plan --service <service>`
+  with `--host <host>` when the host is ambiguous. Follow the recommended
+  direct, canary, or restore-required path before running `homelab-deploy`.
 - Validate deployment changes with `./scripts/test-deploy-tooling`.
 - When secrets or `.env.config` files change, run:
   `./scripts/generate-service-secret-workflow-env`,
