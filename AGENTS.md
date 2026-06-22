@@ -49,3 +49,26 @@
 - Do not hand-edit generated secret blocks in `.github/workflows/deploy.yml`.
   Update `service-secrets.yaml` or host manifests, then run the generator.
 - Never commit real `.env` files or runtime `data/` contents.
+
+## Cursor Cloud specific instructions
+
+- This repo is bash/python CLI tooling + deploy config; there is no
+  long-running app to start and no language dependency manifests. Standard
+  commands live in `README.md` (deploy) and the `## Agent Workflows` section
+  above (validate/secrets).
+- Always run the deploy tooling with `LC_ALL=C`. The generated secret block in
+  `.github/workflows/deploy.yml` is sorted under C collation (underscore sorts
+  after letters). Under the VM default `en_US.UTF-8`, `sort` reorders keys, so
+  `./scripts/test-deploy-tooling`, `./scripts/check-service-secrets`, and
+  `./scripts/generate-service-secret-workflow-env` falsely report the block as
+  stale (and the generator would rewrite it incorrectly). Prefix all three with
+  `LC_ALL=C`, e.g. `LC_ALL=C ./scripts/test-deploy-tooling`.
+- The `tailscale` CLI binary must be on `PATH` for the test suite to pass:
+  `./scripts/test-deploy-tooling` runs `apply-tailscale-serve --dry-run`, which
+  checks `command -v tailscale` before its dry-run branch. The startup update
+  script installs the static `tailscale` CLI; the daemon is not needed.
+- To exercise a real deploy offline (no Docker daemon, no GHCR access), put fake
+  `docker`/`docker-compose` shims on `PATH` and deploy to a temp
+  `--deploy-base-dir` with `--allow-dirty --canary` (needed off `main`). This is
+  the same offline pattern `./scripts/test-deploy-tooling` uses; it renders the
+  runtime `.env`, runs `compose up`, and writes the provenance JSON.
