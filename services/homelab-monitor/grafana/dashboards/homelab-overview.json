@@ -833,40 +833,6 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "running"
-            },
-            "properties": [
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "options": {
-                      "0": {
-                        "color": "red",
-                        "index": 0,
-                        "text": "Stopped"
-                      },
-                      "1": {
-                        "color": "green",
-                        "index": 1,
-                        "text": "Running"
-                      }
-                    },
-                    "type": "value"
-                  }
-                ]
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
               "options": "cpu_percent"
             },
             "properties": [
@@ -884,22 +850,6 @@
             "matcher": {
               "id": "byName",
               "options": "memory_usage_bytes"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "bytes"
-              },
-              {
-                "id": "decimals",
-                "value": 1
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "memory_limit_bytes"
             },
             "properties": [
               {
@@ -981,7 +931,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "homelab_docker_container_running{name!=\"\"}",
+          "expr": "max by (name,host,state) (homelab_docker_container_running{name!=\"\"} and on(name,host) (homelab_docker_container_start_time_seconds{name!=\"\"} == on(name,host) group_left max by (name,host) (homelab_docker_container_start_time_seconds{name!=\"\"})))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{name}}",
@@ -993,7 +943,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "homelab_docker_container_cpu_percent{name!=\"\"}",
+          "expr": "max by (name,host) (homelab_docker_container_cpu_percent{name!=\"\"} and on(name,host) (homelab_docker_container_start_time_seconds{name!=\"\"} == on(name,host) group_left max by (name,host) (homelab_docker_container_start_time_seconds{name!=\"\"})))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{name}}",
@@ -1005,7 +955,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "homelab_docker_container_memory_usage_bytes{name!=\"\"}",
+          "expr": "max by (name,host) (homelab_docker_container_memory_usage_bytes{name!=\"\"} and on(name,host) (homelab_docker_container_start_time_seconds{name!=\"\"} == on(name,host) group_left max by (name,host) (homelab_docker_container_start_time_seconds{name!=\"\"})))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{name}}",
@@ -1017,7 +967,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "homelab_docker_container_memory_limit_bytes{name!=\"\"}",
+          "expr": "max by (name,host) (homelab_docker_container_restarts_total{name!=\"\"} and on(name,host) (homelab_docker_container_start_time_seconds{name!=\"\"} == on(name,host) group_left max by (name,host) (homelab_docker_container_start_time_seconds{name!=\"\"})))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{name}}",
@@ -1029,7 +979,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "homelab_docker_container_restarts_total{name!=\"\"}",
+          "expr": "max by (name,host) (homelab_docker_container_start_time_seconds{name!=\"\"} and on(name,host) (homelab_docker_container_start_time_seconds{name!=\"\"} == on(name,host) group_left max by (name,host) (homelab_docker_container_start_time_seconds{name!=\"\"})))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{name}}",
@@ -1041,26 +991,14 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "homelab_docker_container_oom_killed{name!=\"\"}",
+          "expr": "max by (name,host) (homelab_docker_container_oom_killed{name!=\"\"} and on(name,host) (homelab_docker_container_start_time_seconds{name!=\"\"} == on(name,host) group_left max by (name,host) (homelab_docker_container_start_time_seconds{name!=\"\"})))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{name}}",
           "refId": "F"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "homelab_docker_container_start_time_seconds{name!=\"\"}",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{name}}",
-          "refId": "G"
         }
       ],
-      "title": "Running Containers",
+      "title": "Docker Containers",
       "transformations": [
         {
           "id": "joinByField",
@@ -1079,55 +1017,48 @@
               "Time 4": true,
               "Time 5": true,
               "Time 6": true,
-              "Time 7": true,
               "__name__ 1": true,
               "__name__ 2": true,
               "__name__ 3": true,
               "__name__ 4": true,
               "__name__ 5": true,
               "__name__ 6": true,
-              "__name__ 7": true,
-              "id 2": true,
-              "id 3": true,
-              "id 4": true,
-              "id 5": true,
-              "id 6": true,
-              "id 7": true,
-              "image 2": true,
-              "image 3": true,
-              "image 4": true,
-              "image 5": true,
-              "image 6": true,
-              "image 7": true,
-              "state 2": true,
-              "state 3": true,
-              "state 4": true,
-              "state 5": true,
-              "state 6": true,
-              "state 7": true
+              "job 1": true,
+              "job 2": true,
+              "job 3": true,
+              "job 4": true,
+              "job 5": true,
+              "job 6": true,
+              "instance 1": true,
+              "instance 2": true,
+              "instance 3": true,
+              "instance 4": true,
+              "instance 5": true,
+              "instance 6": true,
+              "host 2": true,
+              "host 3": true,
+              "host 4": true,
+              "host 5": true,
+              "host 6": true,
+              "Value #A": true
             },
             "indexByName": {
               "name": 0,
-              "image 1": 1,
-              "state 1": 2,
-              "Value #A": 3,
-              "Value #B": 4,
-              "Value #C": 5,
-              "Value #D": 6,
-              "Value #E": 7,
-              "Value #F": 8,
-              "Value #G": 9
+              "host 1": 1,
+              "state": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "Value #E": 6,
+              "Value #F": 7
             },
             "renameByName": {
-              "image 1": "image",
-              "state 1": "state",
-              "Value #A": "running",
+              "host 1": "host",
               "Value #B": "cpu_percent",
               "Value #C": "memory_usage_bytes",
-              "Value #D": "memory_limit_bytes",
-              "Value #E": "restarts_total",
-              "Value #F": "oom_killed",
-              "Value #G": "started_at"
+              "Value #D": "restarts_total",
+              "Value #E": "started_at",
+              "Value #F": "oom_killed"
             }
           }
         },
