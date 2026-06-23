@@ -9,6 +9,7 @@ OpenAI TTS, and serves the generated audio library on the Tailnet.
 - Image: `ghcr.io/feocco/pirate-radio:latest`
 - Host: `macmini`
 - Local bind: `127.0.0.1:8103`
+- Container bind: `0.0.0.0:8103`
 - Tailnet URL: `http://maclabs-mac-mini.taildf3445.ts.net:8103/`
 - Health: `/health`
 - Library/state volume: `services/pirate-radio/data`
