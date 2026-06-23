@@ -13,6 +13,15 @@
 
 ## Agent Workflows
 
+- Classify deployment work before editing runtime config:
+  - App code changed only: commit/push the app repo, publish the image, then
+    run an operational redeploy through the homelab-config workflow. Do not
+    edit this repo unless the runtime shape changed.
+  - Runtime config changed: make the matching homelab-config change for env,
+    secrets, ports, volumes, host placement, image references, commands,
+    monitoring, dashboards, links, or SRE metadata.
+  - Third-party or config-only service changed: this repo usually owns the
+    durable change.
 - Inspect `git status --short --branch` before deployment work.
 - Validate deployment changes with `./scripts/test-deploy-tooling`.
 - When secrets or `.env.config` files change, run:
