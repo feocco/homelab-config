@@ -101,6 +101,31 @@ homelab-deploy --host nasfeo --changed
 homelab-deploy --host macmini --all
 ```
 
+## Which Command Should I Use?
+
+Use `scripts/list-homelab-services` before changing deploy config or answering
+service inventory questions:
+
+```bash
+./scripts/list-homelab-services
+./scripts/list-homelab-services --host macmini
+./scripts/list-homelab-services --format json
+```
+
+Use `scripts/redeploy-image` when only app code changed and a fresh image has
+already been published. This triggers the existing GitHub Actions deploy
+workflow from `main` with `force_recreate=true`; it does not require a
+`homelab-config` commit.
+
+```bash
+./scripts/redeploy-image --host macmini plant-monitor
+./scripts/redeploy-image --host macmini plant-monitor --watch
+./scripts/redeploy-image --host macmini plant-monitor --print
+```
+
+Use `scripts/homelab-deploy` directly for local dry-runs, runtime-config
+changes, canaries, and host-local operations.
+
 On the Synology NAS, Compose v1 is installed, so the deploy script uses
 `docker-compose`. On the Mac mini, it can use the Docker Compose v2 plugin.
 

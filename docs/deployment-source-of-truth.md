@@ -39,6 +39,24 @@ a service working until the next deploy from `main`.
 Service-scoped deploys remain preferred. A full-host deploy can restart unrelated
 services and increase blast radius, so it is not the default fix for drift.
 
+## App-Code-Only Image Redeploys
+
+When only an application repo changed, do not edit `homelab-config`. Commit and
+push the app repo, wait for the GHCR image publish, then trigger an operational
+redeploy:
+
+```sh
+./scripts/redeploy-image --host macmini plant-monitor
+```
+
+That wrapper dispatches the existing `deploy.yml` workflow from
+`homelab-config/main` with `force_recreate=true`, so the target host pulls the
+latest image and recreates the service container. Use `--print` to preview the
+workflow command and `--watch` to follow the run.
+
+Plain container restarts are not the durable image-update path because they do
+not guarantee a fresh image pull.
+
 ## Canary And Emergency Deploys
 
 Use `--canary` for a branch deploy:

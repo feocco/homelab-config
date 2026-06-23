@@ -14,6 +14,76 @@ HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host mac
 "${REPO_DIR}/scripts/apply-tailscale-serve" --host macmini --base-dir "${REPO_DIR}" --dry-run >/dev/null
 "${REPO_DIR}/scripts/ensure-macmini-node-exporter" --dry-run >/dev/null
 bash -n "${REPO_DIR}/scripts/check-macmini-monitor-health"
+bash -n "${REPO_DIR}/scripts/list-homelab-services"
+bash -n "${REPO_DIR}/scripts/redeploy-image"
+"${REPO_DIR}/scripts/list-homelab-services" --format json >"${REPO_DIR}/.list-homelab-services-test.json"
+python3 - "${REPO_DIR}/.list-homelab-services-test.json" <<'PY'
+import json
+import pathlib
+import sys
+
+rows = json.loads(pathlib.Path(sys.argv[1]).read_text())
+by_service_host = {(row["service"], row["host"]): row for row in rows}
+
+for key in [
+    ("plant-monitor", "macmini"),
+    ("homelab-monitor", "macmini"),
+    ("homarr", "macmini"),
+    ("portainer", "nasfeo"),
+]:
+    if key not in by_service_host:
+        raise SystemExit(f"Missing service row: {key}")
+
+if by_service_host[("plant-monitor", "nasfeo")]["enabled"] is not False:
+    raise SystemExit("plant-monitor on nasfeo should be visible as disabled")
+
+plant = by_service_host[("plant-monitor", "macmini")]
+if plant["monitored"] is not True:
+    raise SystemExit("plant-monitor should show monitoring coverage")
+if plant["sre_metadata"] is not True or plant["sre_enabled"] is not True:
+    raise SystemExit("plant-monitor should show enabled SRE coverage")
+if plant["source_repo"] != "feocco/plant-monitor":
+    raise SystemExit("plant-monitor source_repo did not come from SRE metadata")
+
+monitor = by_service_host[("homelab-monitor", "macmini")]
+if monitor["sre_metadata"] is not True or monitor["sre_enabled"] is not False:
+    raise SystemExit("homelab-monitor should show disabled SRE metadata")
+if "homelab-monitor-grafana" not in monitor["containers"]:
+    raise SystemExit("homelab-monitor compose containers were not discovered")
+
+portainer = by_service_host[("portainer", "nasfeo")]
+if portainer["enabled"] is not True:
+    raise SystemExit("portainer should be enabled on nasfeo")
+PY
+rm -f "${REPO_DIR}/.list-homelab-services-test.json"
+"${REPO_DIR}/scripts/list-homelab-services" | grep -q 'plant-monitor'
+"${REPO_DIR}/scripts/list-homelab-services" | grep -q 'homelab-monitor'
+"${REPO_DIR}/scripts/list-homelab-services" | grep -q 'homarr'
+"${REPO_DIR}/scripts/list-homelab-services" | grep -q 'portainer'
+redeploy_print="$("${REPO_DIR}/scripts/redeploy-image" --host macmini plant-monitor --print)"
+printf '%s\n' "${redeploy_print}" | grep -q 'gh workflow run deploy.yml'
+printf '%s\n' "${redeploy_print}" | grep -q -- '--repo feocco/homelab-config'
+printf '%s\n' "${redeploy_print}" | grep -q -- '-f host=macmini'
+printf '%s\n' "${redeploy_print}" | grep -q -- '-f service=plant-monitor'
+printf '%s\n' "${redeploy_print}" | grep -q -- '-f force_recreate=true'
+if "${REPO_DIR}/scripts/redeploy-image" --host invalid plant-monitor --print >/tmp/redeploy-invalid-host.out 2>&1; then
+  echo "redeploy-image should reject invalid hosts." >&2
+  exit 1
+fi
+grep -q 'Unsupported host' /tmp/redeploy-invalid-host.out
+rm -f /tmp/redeploy-invalid-host.out
+if "${REPO_DIR}/scripts/redeploy-image" --host macmini not-a-service --print >/tmp/redeploy-invalid-service.out 2>&1; then
+  echo "redeploy-image should reject invalid services." >&2
+  exit 1
+fi
+grep -q 'Unsupported or disabled service' /tmp/redeploy-invalid-service.out
+rm -f /tmp/redeploy-invalid-service.out
+if "${REPO_DIR}/scripts/redeploy-image" --host all plant-monitor --all-hosts --print >/tmp/redeploy-all-hosts.out 2>&1; then
+  echo "redeploy-image should reject all-host redeploys when the service is disabled on any host." >&2
+  exit 1
+fi
+grep -q 'Unsupported or disabled service on host' /tmp/redeploy-all-hosts.out
+rm -f /tmp/redeploy-all-hosts.out
 python3 - \
   "${REPO_DIR}/services/homelab-monitor/exporters/openai_cost_exporter.py" \
   "${REPO_DIR}/services/homelab-monitor/exporters/docker_stats_exporter.py" <<'PY'

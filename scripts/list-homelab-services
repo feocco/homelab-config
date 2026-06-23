@@ -1,0 +1,286 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="${HOMELAB_CONFIG_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+HOST="all"
+FORMAT="table"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  list-homelab-services [--host macmini|nasfeo|all] [--format table|json]
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host)
+      HOST="${2:?--host requires a value}"
+      shift 2
+      ;;
+    --format)
+      FORMAT="${2:?--format requires a value}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      echo "Unexpected argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+case "${HOST}" in
+  all|macmini|nasfeo) ;;
+  *)
+    echo "Unsupported host: ${HOST}" >&2
+    exit 2
+    ;;
+esac
+
+case "${FORMAT}" in
+  table|json) ;;
+  *)
+    echo "Unsupported format: ${FORMAT}" >&2
+    exit 2
+    ;;
+esac
+
+python3 - "${BASE_DIR}" "${HOST}" "${FORMAT}" <<'PY'
+import json
+import pathlib
+import re
+import sys
+
+base_dir = pathlib.Path(sys.argv[1])
+host_filter = sys.argv[2]
+output_format = sys.argv[3]
+
+
+def clean_scalar(value):
+    value = value.strip()
+    if " #" in value:
+        value = value.split(" #", 1)[0].strip()
+    return value.strip('"').strip("'")
+
+
+def parse_host_services(path):
+    rows = []
+    in_services = False
+    current = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if line == "services:":
+            in_services = True
+            continue
+        if not in_services:
+            continue
+        if line and not line.startswith(" "):
+            break
+        match = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if match:
+            if current:
+                rows.append(current)
+            current = {
+                "service": match.group(1),
+                "path": "",
+                "enabled": True,
+            }
+            continue
+        if not current:
+            continue
+        match = re.match(r"^    path:\s*(.+)\s*$", line)
+        if match:
+            current["path"] = clean_scalar(match.group(1))
+            continue
+        match = re.match(r"^    enabled:\s*(.+)\s*$", line)
+        if match:
+            current["enabled"] = clean_scalar(match.group(1)).lower() != "false"
+            continue
+    if current:
+        rows.append(current)
+    return rows
+
+
+def parse_compose(path):
+    containers = []
+    images = []
+    in_services = False
+    current = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if line == "services:":
+            in_services = True
+            continue
+        if not in_services:
+            continue
+        if line and not line.startswith(" "):
+            break
+        match = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if match:
+            current = match.group(1)
+            containers.append(current)
+            continue
+        if not current:
+            continue
+        match = re.match(r"^    image:\s*(.+)\s*$", line)
+        if match:
+            images.append(clean_scalar(match.group(1)))
+            continue
+        match = re.match(r"^    container_name:\s*(.+)\s*$", line)
+        if match:
+            containers[-1] = clean_scalar(match.group(1))
+            continue
+    return {
+        "containers": sorted(dict.fromkeys(containers)),
+        "images": sorted(dict.fromkeys(images)),
+    }
+
+
+def parse_prometheus_services(path):
+    if not path.exists():
+        return set()
+    services = set()
+    for raw in path.read_text().splitlines():
+        match = re.match(r"^\s+service:\s*(.+)\s*$", raw.rstrip())
+        if match:
+            services.add(clean_scalar(match.group(1)))
+    return services
+
+
+def parse_sre(path):
+    if not path.exists():
+        return {}
+    services = {}
+    in_services = False
+    current = None
+    section = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if line == "services:":
+            in_services = True
+            continue
+        if not in_services:
+            continue
+        match = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if match:
+            current = match.group(1)
+            services[current] = {
+                "containers": [],
+                "images": [],
+                "source_repo": "",
+                "sre_enabled": False,
+            }
+            section = None
+            continue
+        if not current:
+            continue
+        match = re.match(r"^    ([A-Za-z_]+):\s*$", line)
+        if match:
+            section = match.group(1)
+            continue
+        if section in {"containers", "images"}:
+            match = re.match(r"^      -\s+(.+)\s*$", line)
+            if match:
+                services[current][section].append(clean_scalar(match.group(1)))
+                continue
+        if section == "source":
+            match = re.match(r"^      repo:\s*(.+)\s*$", line)
+            if match:
+                services[current]["source_repo"] = clean_scalar(match.group(1))
+                continue
+        if section == "sre":
+            match = re.match(r"^      enabled:\s*(.+)\s*$", line)
+            if match:
+                services[current]["sre_enabled"] = clean_scalar(match.group(1)).lower() == "true"
+                continue
+    return services
+
+
+def requested_hosts():
+    if host_filter != "all":
+        return [host_filter]
+    hosts_dir = base_dir / "hosts"
+    return sorted(path.name for path in hosts_dir.iterdir() if path.is_dir())
+
+
+monitored_services = parse_prometheus_services(
+    base_dir / "services/homelab-monitor/prometheus/prometheus.yml"
+)
+sre_services = parse_sre(base_dir / "services/homelab-sre-agent/services.yaml")
+rows = []
+
+for host in requested_hosts():
+    services_file = base_dir / "hosts" / host / "services.yaml"
+    if not services_file.exists():
+        raise SystemExit(f"Missing host services file: {services_file}")
+    for entry in parse_host_services(services_file):
+        service_path = base_dir / entry["path"]
+        compose = {"containers": [], "images": []}
+        compose_file = service_path / "docker-compose.yml"
+        if compose_file.exists():
+            compose = parse_compose(compose_file)
+        sre = sre_services.get(entry["service"], {})
+        rows.append(
+            {
+                "service": entry["service"],
+                "host": host,
+                "enabled": entry["enabled"],
+                "path": entry["path"],
+                "containers": compose["containers"],
+                "images": compose["images"],
+                "monitored": entry["service"] in monitored_services,
+                "sre_metadata": entry["service"] in sre_services,
+                "sre_enabled": bool(sre.get("sre_enabled", False)),
+                "source_repo": sre.get("source_repo", ""),
+            }
+        )
+
+rows.sort(key=lambda row: (row["host"], row["service"]))
+
+if output_format == "json":
+    print(json.dumps(rows, indent=2, sort_keys=True))
+    raise SystemExit(0)
+
+
+def text(value):
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, list):
+        return ",".join(value)
+    return str(value)
+
+
+columns = [
+    "service",
+    "host",
+    "enabled",
+    "path",
+    "containers",
+    "images",
+    "monitored",
+    "sre_metadata",
+    "sre_enabled",
+    "source_repo",
+]
+widths = {}
+for column in columns:
+    widths[column] = max(len(column), *(len(text(row[column])) for row in rows))
+
+header = "  ".join(column.ljust(widths[column]) for column in columns)
+rule = "  ".join("-" * widths[column] for column in columns)
+print(header)
+print(rule)
+for row in rows:
+    print("  ".join(text(row[column]).ljust(widths[column]) for column in columns))
+PY

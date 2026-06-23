@@ -13,10 +13,13 @@
 
 ## Agent Workflows
 
+- Before service discovery, deploy planning, or source-of-truth questions, run
+  `./scripts/list-homelab-services` to compare host manifests, Compose images,
+  monitoring coverage, and SRE metadata.
 - Classify deployment work before editing runtime config:
   - App code changed only: commit/push the app repo, publish the image, then
-    run an operational redeploy through the homelab-config workflow. Do not
-    edit this repo unless the runtime shape changed.
+    run `./scripts/redeploy-image --host <host> <service>` from this repo. Do
+    not edit this repo unless the runtime shape changed.
   - Runtime config changed: make the matching homelab-config change for env,
     secrets, ports, volumes, host placement, image references, commands,
     monitoring, dashboards, links, or SRE metadata.
