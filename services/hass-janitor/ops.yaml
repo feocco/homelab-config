@@ -12,6 +12,10 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8092
 tailnet: true
 monitoring: true
 sre: true
+dashboard_name: hass-janitor
+dashboard_group: Runtime Services
+dashboard_description: Home Assistant cleanup and action helper
+dashboard_icon: home-assistant.png
 secrets:
   - HA_BASE_URL
   - HA_TOKEN

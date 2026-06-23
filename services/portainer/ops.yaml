@@ -10,4 +10,9 @@ port_env: PORTAINER_HTTPS_PORT
 tailnet: false
 monitoring: false
 sre: false
+dashboard_name: Portainer
+dashboard_group: Infrastructure
+dashboard_description: NAS Docker admin
+dashboard_icon: portainer.png
+dashboard_url: https://nasfeo:9443/
 secrets:

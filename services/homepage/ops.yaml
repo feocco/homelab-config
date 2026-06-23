@@ -1,0 +1,18 @@
+service: homepage
+kind: app
+host: macmini
+source_repo: feocco/homelab-config
+image: gethomepage/homepage:v1.13.2
+public_image: true
+container: homepage
+http_port: 7576
+port_env: HOMEPAGE_HTTP_PORT
+health_path: /
+tailnet: true
+monitoring: true
+sre: false
+dashboard_name: Homepage
+dashboard_group: Daily Ops
+dashboard_description: Generated homelab front door
+dashboard_icon: homepage.png
+secrets:

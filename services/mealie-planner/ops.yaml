@@ -11,6 +11,10 @@ health_path: /health
 tailnet: false
 monitoring: true
 sre: true
+dashboard_name: Mealie Planner
+dashboard_group: Runtime Services
+dashboard_description: Meal planning helper service
+dashboard_icon: mealie.png
 secrets:
   - OPENAI_API_KEY
   - MEALIE_API_TOKEN

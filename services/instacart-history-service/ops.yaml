@@ -12,5 +12,9 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8100
 tailnet: true
 monitoring: true
 sre: false
+dashboard_name: Instacart History
+dashboard_group: Runtime Services
+dashboard_description: Instacart purchase history service
+dashboard_icon: docker.png
 secrets:
   - OPENAI_API_KEY

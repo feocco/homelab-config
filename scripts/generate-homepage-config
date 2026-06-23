@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHONPATH="${SCRIPT_DIR}/lib${PYTHONPATH:+:${PYTHONPATH}}" python3 - "$@" <<'PY'
 import sys
-from homelab_catalog import main_list
+from homelab_catalog import main_homepage
 
-raise SystemExit(main_list(sys.argv[1:]))
+raise SystemExit(main_homepage(sys.argv[1:]))
 PY

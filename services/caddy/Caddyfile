@@ -6,10 +6,14 @@ http://homarr.home.arpa {
 	reverse_proxy host.docker.internal:7575
 }
 
-http://grafana.home.arpa {
-	reverse_proxy host.docker.internal:3000
+http://home.arpa {
+	reverse_proxy host.docker.internal:7576
 }
 
-http://dashy.home.arpa {
-	reverse_proxy host.docker.internal:8080
+http://homepage.home.arpa {
+	reverse_proxy host.docker.internal:7576
+}
+
+http://grafana.home.arpa {
+	reverse_proxy host.docker.internal:3000
 }

@@ -12,6 +12,10 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8094
 tailnet: true
 monitoring: true
 sre: true
+dashboard_name: homelab-sre-agent
+dashboard_group: Runtime Services
+dashboard_description: Homelab SRE triage agent
+dashboard_icon: grafana.png
 secrets:
   - HA_URL
   - HA_LONG_LIVED_TOKEN

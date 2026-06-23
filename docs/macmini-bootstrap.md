@@ -61,7 +61,7 @@ The Mac mini is expected to run:
 
 - `hello-nas`
 - `bedtime`
-- `dashy`
+- `homepage`
 - `hass-janitor`
 - `homelab-functions`
 - `homarr`
@@ -72,8 +72,9 @@ The Mac mini is expected to run:
 
 The NAS keeps Portainer, the NAS runner, Pi-hole outside this repo, a tiny
 `dashy-redirect` compatibility service for `http://nasfeo:8080/`, and its own
-`homelab-log-watcher`. `netalertx` remains disabled until its Mac mini host
-networking and scan interface are validated.
+`homelab-log-watcher`. `dashy` is disabled on Mac mini after the Homepage
+cutover. `netalertx` remains disabled until its Mac mini host networking and
+scan interface are validated.
 
 `homelab-monitor` uses native Homebrew `node_exporter` on Mac mini for host
 metrics and a Docker socket exporter for high-level container stats. Grafana is

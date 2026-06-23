@@ -254,10 +254,30 @@ changed_services() {
     if echo "${files}" | grep -qx "hosts/${HOST}/services.yaml" ||
       echo "${files}" | grep -qx "service-secrets.yaml" ||
       echo "${files}" | grep -qx "${host_config}" ||
-      echo "${files}" | grep -q "^${path}/"; then
+      echo "${files}" | grep -q "^${path}/" ||
+      { [[ "${service}" == "homepage" ]] && echo "${files}" | grep -Eq "^scripts/(generate-homepage-config|generate-service-catalog|lib/homelab_catalog.py)$"; }; then
       echo "${service}"
     fi
   done < <(service_entries)
+}
+
+prepare_service() {
+  local service="$1"
+  local service_dir="$2"
+
+  if [[ "${service}" != "homepage" ]]; then
+    return 0
+  fi
+
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    echo "Would generate Homepage config in ${service_dir}/config"
+    return 0
+  fi
+
+  echo "Generating Homepage config in ${service_dir}/config"
+  "${DEPLOY_BASE_DIR}/scripts/generate-homepage-config" \
+    --base-dir "${DEPLOY_BASE_DIR}" \
+    --output "${service_dir}/config"
 }
 
 deploy_service() {
@@ -278,6 +298,7 @@ deploy_service() {
   fi
 
   echo "Deploying ${service} on ${HOST} from ${service_dir}"
+  prepare_service "${service}" "${service_dir}"
   if [[ "${DRY_RUN}" == "true" ]]; then
     return 0
   fi

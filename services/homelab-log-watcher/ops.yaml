@@ -16,6 +16,10 @@ tailnet_hosts:
 monitoring_hosts:
   - macmini
 sre: true
+dashboard_name: homelab-log-watcher
+dashboard_group: Runtime Services
+dashboard_description: Docker log watcher
+dashboard_icon: docker.png
 secrets:
   - HOMELAB_FUNCTIONS_TOKEN
   - LOG_WATCHER_INCIDENT_WEBHOOK_TOKEN

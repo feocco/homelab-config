@@ -200,6 +200,12 @@ External dependencies used by validation:
 `scripts/test-deploy-tooling` is the blessed command for deploy tooling
 regression checks. Keep it as a thin orchestrator over focused subchecks.
 
+`scripts/generate-service-catalog` and `scripts/generate-homepage-config` build
+dashboard/catalog artifacts from `ops.yaml`, host manifests, Compose,
+monitoring, SRE metadata, and `services/homepage/manual-links.yaml`. Homepage
+runtime config is generated during deploy and files under
+`services/homepage/config/` should not be committed.
+
 Service rollout intake must be manifest-driven. `scripts/tests/check-service-rollout`
 discovers `services/*/ops.yaml`, validates each manifest, and uses a generated
 `validator-demo` service inside a temporary copied repo for negative cases. Do

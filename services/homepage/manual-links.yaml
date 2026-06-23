@@ -1,0 +1,61 @@
+links:
+  - name: Home Assistant
+    group: Daily Ops
+    href: http://homeassistant.local:8123/
+    description: Primary home automation UI
+    icon: home-assistant.png
+  - name: Synology DSM
+    group: Infrastructure
+    href: http://nasfeo:5000/
+    description: NAS management console
+    icon: synology.png
+  - name: Pi-hole
+    group: Infrastructure
+    href: http://nasfeo:8181/admin/
+    description: DNS and ad blocking
+    icon: pi-hole.png
+  - name: Homelab Deploy
+    group: Infrastructure
+    href: https://github.com/feocco/homelab-config/actions
+    description: GitHub Actions deploy workflow
+    icon: github.png
+  - name: homelab-config
+    group: Infrastructure
+    href: https://github.com/feocco/homelab-config
+    description: Runtime source of truth
+    icon: github.png
+  - name: OpenAI Cost / Usage
+    group: Monitoring & Cost
+    href: http://grafana.home.arpa/d/openai-cost-usage/openai-cost-usage
+    description: API cost and usage dashboard
+    icon: openai.png
+  - name: Prometheus Targets
+    group: Monitoring & Cost
+    href: http://grafana.home.arpa/explore
+    description: Prometheus query entrypoint
+    icon: prometheus.png
+  - name: AWS Console
+    group: Cloud & External
+    href: https://console.aws.amazon.com/
+    description: AWS account and billing
+    icon: aws.png
+  - name: GCP Console
+    group: Cloud & External
+    href: https://console.cloud.google.com/
+    description: Google Cloud resources
+    icon: google-cloud.png
+  - name: Google AI Studio
+    group: Cloud & External
+    href: https://aistudio.google.com/
+    description: Gemini API and prototyping
+    icon: google.png
+  - name: Replit
+    group: Cloud & External
+    href: https://replit.com/~
+    description: Cloud IDE and app hosting
+    icon: replit.png
+  - name: Prusa Connect
+    group: Cloud & External
+    href: https://connect.prusa3d.com/
+    description: 3D printer dashboard
+    icon: prusa.png

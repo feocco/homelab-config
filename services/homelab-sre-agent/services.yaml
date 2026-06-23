@@ -161,6 +161,25 @@ services:
       enabled: false
       autofix: false
 
+  homepage:
+    containers:
+      - homepage
+    images:
+      - gethomepage/homepage:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/homepage
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/homepage
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homepage
+    labels:
+      - homelab-sre
+      - homepage
+    sre:
+      enabled: false
+      autofix: false
+
   dashy-redirect:
     containers:
       - dashy-redirect

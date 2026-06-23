@@ -4,9 +4,13 @@ services:
     http_port: 8099
     target: http://127.0.0.1:8099
   dashy:
-    enabled: true
+    enabled: false
     http_port: 8080
     target: http://127.0.0.1:8080
+  homepage:
+    enabled: true
+    http_port: 7576
+    target: http://127.0.0.1:7576
   plant-monitor:
     enabled: true
     http_port: 8088

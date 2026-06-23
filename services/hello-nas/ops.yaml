@@ -12,4 +12,8 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8099
 tailnet: true
 monitoring: true
 sre: true
+dashboard_name: Hello NAS
+dashboard_group: Runtime Services
+dashboard_description: Deployment smoke test service
+dashboard_icon: docker.png
 secrets:

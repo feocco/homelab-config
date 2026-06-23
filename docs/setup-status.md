@@ -18,8 +18,10 @@
 - Added Dockerized GitHub runner Compose config.
 - Proved Mac mini runner and Tailnet-only `hello-nas` canary deploy.
 - Adopted split placement: NAS for stable infra, Mac mini for app/compute services.
-- Re-enabled `homarr` and `homelab-monitor` placement on Mac mini, with
-  native Mac host metrics and Docker socket container metrics for monitoring.
+- Added generated Homepage front door on Mac mini, with Homarr kept separate
+  and Dashy disabled as legacy config.
+- Re-enabled `homarr` and `homelab-monitor` placement on Mac mini, with native
+  Mac host metrics and Docker socket container metrics for monitoring.
 
 ## Blocked
 
@@ -68,5 +70,5 @@ sudo scripts/install-deploy-script
 - Deployment method: self-hosted runners per Docker host.
 - Future service placement: default app/compute services to `macmini`; keep
   storage-adjacent and NAS infrastructure on `nasfeo`.
-- Monitoring placement: `homelab-monitor` and `homarr` run on `macmini`;
-  `netalertx` stays deferred.
+- Dashboard placement: `homepage`, `homarr`, and `homelab-monitor` run on
+  `macmini`; `dashy` is disabled legacy config and `netalertx` stays deferred.
