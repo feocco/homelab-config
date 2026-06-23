@@ -96,6 +96,11 @@ scrape_configs:
           service: dog-bowl-monitor
           host: macmini
       - targets:
+          - http://host.docker.internal:8102/health
+        labels:
+          service: laundry-monitor
+          host: macmini
+      - targets:
           - http://host.docker.internal:3000/api/health
         labels:
           service: grafana

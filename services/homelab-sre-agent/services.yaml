@@ -327,3 +327,23 @@ services:
       enabled: true
       autofix: false
       repo_daily_limit: 1
+
+  laundry-monitor:
+    containers:
+      - laundry-monitor
+    images:
+      - ghcr.io/feocco/laundry-monitor:*
+    source:
+      repo: feocco/laundry-monitor
+      path_hint: /Users/feocco/code/laundry-monitor
+    issue_repo: feocco/laundry-monitor
+    deploy:
+      path: services/laundry-monitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/laundry-monitor
+    labels:
+      - homelab-sre
+      - laundry-monitor
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
