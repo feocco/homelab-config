@@ -97,6 +97,30 @@ entries() {
   ' "${CONFIG_FILE}"
 }
 
+disable_serve() {
+  local http_port="$1"
+  local output
+  local status
+
+  set +e
+  output="$(tailscale serve --http="${http_port}" off 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "${status}" -eq 0 ]]; then
+    [[ -z "${output}" ]] || printf '%s\n' "${output}"
+    return 0
+  fi
+
+  if [[ "${output}" == *"handler does not exist"* ]]; then
+    echo "Tailnet HTTP port ${http_port} was already disabled."
+    return 0
+  fi
+
+  printf '%s\n' "${output}" >&2
+  return "${status}"
+}
+
 while IFS='|' read -r service enabled http_port target; do
   [[ -n "${service}" ]] || continue
   if [[ -z "${http_port}" ]]; then
@@ -120,7 +144,7 @@ while IFS='|' read -r service enabled http_port target; do
       if [[ "${DRY_RUN}" == "true" ]]; then
         echo "Would disable Tailnet HTTP port ${http_port} for ${service}"
       else
-        tailscale serve --http="${http_port}" off
+        disable_serve "${http_port}"
       fi
       ;;
     *)

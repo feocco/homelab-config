@@ -22,6 +22,28 @@ for arg in sys.argv[1:]:
     ast.parse(pathlib.Path(arg).read_text(), filename=arg)
 PY
 
+tailscale_tmp="$(mktemp -d)"
+mkdir -p "${tailscale_tmp}/repo/hosts/testhost" "${tailscale_tmp}/bin"
+cp "${REPO_DIR}/scripts/apply-tailscale-serve" "${tailscale_tmp}/repo/apply-tailscale-serve"
+cat > "${tailscale_tmp}/repo/hosts/testhost/tailscale-serve.yaml" <<'EOF'
+services:
+  old-service:
+    enabled: false
+    http_port: 8080
+EOF
+cat > "${tailscale_tmp}/bin/tailscale" <<'EOF'
+#!/usr/bin/env bash
+if [ "$*" = "serve --http=8080 off" ]; then
+  echo "error: failed to remove web serve: handler does not exist" >&2
+  exit 1
+fi
+exit 0
+EOF
+chmod +x "${tailscale_tmp}/repo/apply-tailscale-serve" "${tailscale_tmp}/bin/tailscale"
+PATH="${tailscale_tmp}/bin:$PATH" \
+  "${tailscale_tmp}/repo/apply-tailscale-serve" --host testhost --base-dir "${tailscale_tmp}/repo" >/dev/null
+rm -rf "${tailscale_tmp}"
+
 tmp_runtime="$(mktemp -d)"
 mkdir -p "${tmp_runtime}/legacy-service/data" "${tmp_runtime}/services/legacy-service/data"
 touch "${tmp_runtime}/services/legacy-service/data/.gitkeep"
