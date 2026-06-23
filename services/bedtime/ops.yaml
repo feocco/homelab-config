@@ -8,6 +8,10 @@ container: bedtime
 tailnet: false
 monitoring: false
 sre: true
+dashboard_name: Bedtime
+dashboard_group: Runtime Services
+dashboard_description: Home Assistant bedtime automation worker
+dashboard_icon: home-assistant.png
 secrets:
   - HA_URL
   - HA_LONG_LIVED_TOKEN

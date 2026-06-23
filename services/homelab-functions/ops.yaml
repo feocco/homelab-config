@@ -12,6 +12,10 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8091
 tailnet: true
 monitoring: true
 sre: true
+dashboard_name: homelab-functions
+dashboard_group: Runtime Services
+dashboard_description: Notification and homelab API service
+dashboard_icon: python.png
 secrets:
   - HA_URL
   - HA_LONG_LIVED_TOKEN

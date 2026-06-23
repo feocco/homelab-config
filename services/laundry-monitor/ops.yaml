@@ -12,6 +12,10 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8102
 tailnet: true
 monitoring: true
 sre: true
+dashboard_name: Laundry Monitor
+dashboard_group: Runtime Services
+dashboard_description: Washer and dryer notification service
+dashboard_icon: home-assistant.png
 secrets:
   - HA_URL
   - HA_LONG_LIVED_TOKEN

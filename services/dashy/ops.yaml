@@ -9,7 +9,12 @@ http_port: 8080
 port_env: DASHY_HTTP_PORT
 health_path: /
 live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8080
-tailnet: true
-monitoring: true
+tailnet: false
+monitoring: false
 sre: false
+dashboard_name: Dashy
+dashboard_group: Disabled / Legacy
+dashboard_description: Disabled legacy dashboard
+dashboard_icon: archive.png
+dashboard_url: http://dashy.home.arpa/
 secrets:

@@ -16,7 +16,8 @@ High-level map for understanding the deployed homelab quickly.
 - Cloudflare Access gates public Mealie access.
 - Caddy provides local `home.arpa` dashboard names.
 - UniFi DNS maps friendly names to Mac.
-- Dashy redirect preserves old NAS dashboard links.
+- Homepage is the generated local front door at `http://home.arpa`.
+- Homarr remains available separately at `http://homarr.home.arpa`.
 
 ## Deployment
 
@@ -30,8 +31,9 @@ High-level map for understanding the deployed homelab quickly.
 
 - Grafana centralizes health, uptime, and cost monitoring.
 - Prometheus scrapes containers, hosts, and HTTP endpoints.
-- Homarr is the primary clickable service dashboard.
-- Dashy remains a secondary dashboard surface.
+- Homepage is the primary clickable service dashboard.
+- Homarr remains a separate comparison/transition dashboard.
+- Dashy is disabled legacy config.
 - Portainer remains NAS Docker management.
 
 ## Alerting
@@ -61,7 +63,7 @@ High-level map for understanding the deployed homelab quickly.
 ## Start Here
 
 - Read this overview for the mental model.
-- Open Homarr for clickable service entrypoints.
+- Open Homepage for clickable service entrypoints.
 - Use Grafana to inspect service health.
 - Use GitHub Actions to inspect deploy history.
 - Use service READMEs for operational details.

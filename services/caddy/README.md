@@ -5,16 +5,17 @@ LAN reverse proxy for Mac mini dashboard hostnames.
 ## URLs
 
 - Homarr: `http://homarr.home.arpa`
+- Homepage: `http://home.arpa` or `http://homepage.home.arpa`
 - Grafana: `http://grafana.home.arpa`
-- Dashy: `http://dashy.home.arpa`
 
 ## UniFi DNS
 
 Create these UniFi local DNS Host A records:
 
 - `homarr.home.arpa` -> `192.168.1.43`
+- `home.arpa` -> `192.168.1.43`
+- `homepage.home.arpa` -> `192.168.1.43`
 - `grafana.home.arpa` -> `192.168.1.43`
-- `dashy.home.arpa` -> `192.168.1.43`
 
 In UniFi Network, use **Settings > Policy Table > Create New Policy > DNS** on
 Network 9.4, or **Settings > Policy Engine > DNS > Create DNS Record** on

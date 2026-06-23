@@ -6,7 +6,7 @@ source "${REPO_DIR}/scripts/tests/lib-test-helpers"
 
 validate_discovered_manifests() {
   local found="false"
-  local manifest service host hosts_file
+  local manifest service host hosts_file enabled_file
 
   while IFS= read -r manifest; do
     found="true"
@@ -41,6 +41,36 @@ PY
 
     while IFS= read -r host; do
       [[ -n "${host}" ]] || continue
+      enabled_file="$(mktemp)"
+      python3 - "${REPO_DIR}/hosts/${host}/services.yaml" "${service}" >"${enabled_file}" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+service = sys.argv[2]
+enabled = None
+current = ""
+for raw in path.read_text().splitlines():
+    line = raw.rstrip()
+    match = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+    if match:
+        current = match.group(1)
+        if current == service:
+            enabled = True
+        continue
+    if current == service:
+        match = re.match(r"^    enabled:\s*(.+)\s*$", line)
+        if match:
+            enabled = match.group(1).strip().lower() != "false"
+print("true" if enabled else "false")
+PY
+      if ! grep -qx "true" "${enabled_file}"; then
+        echo "Skipping disabled service rollout manifest: ${service} on ${host}"
+        rm -f "${enabled_file}"
+        continue
+      fi
+      rm -f "${enabled_file}"
       "${REPO_DIR}/scripts/validate-service-rollout" \
         --service "${service}" \
         --host "${host}" \

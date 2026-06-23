@@ -12,6 +12,10 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8101
 tailnet: true
 monitoring: true
 sre: true
+dashboard_name: Dog Bowl Monitor
+dashboard_group: Runtime Services
+dashboard_description: Dog bowl camera monitoring service
+dashboard_icon: docker.png
 secrets:
   - HA_URL
   - HA_LONG_LIVED_TOKEN

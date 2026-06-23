@@ -45,10 +45,10 @@ Current placement:
 
 - `nasfeo`: `portainer`, the NAS GitHub runner, Pi-hole outside this repo,
   `dashy-redirect`, and `homelab-log-watcher` for NAS container logs.
-- `macmini`: `hello-nas`, `bedtime`, `dashy`, `hass-janitor`,
+- `macmini`: `homepage`, `hello-nas`, `bedtime`, `hass-janitor`,
   `homelab-functions`, `homarr`, `homelab-monitor`, `plant-monitor`,
-  `homelab-log-watcher`, and `homelab-sre-agent`.
-- Disabled for later: `netalertx`.
+  `homelab-log-watcher`, `homelab-sre-agent`, and app services.
+- Disabled for later or legacy: `dashy`, `netalertx`.
 
 One log watcher should run on each Docker host. The central SRE agent runs on
 the Mac mini, so the NAS must be able to reach the Mac mini over Tailscale for
@@ -104,12 +104,23 @@ homelab-deploy --host macmini --all
 ## Which Command Should I Use?
 
 Use `scripts/list-homelab-services` before changing deploy config or answering
-service inventory questions:
+service inventory questions. It is a view over the generated service catalog:
 
 ```bash
 ./scripts/list-homelab-services
 ./scripts/list-homelab-services --host macmini
 ./scripts/list-homelab-services --format json
+```
+
+Use `scripts/generate-service-catalog` to inspect the service catalog.
+Homepage config is generated at deploy time from service `ops.yaml` dashboard
+metadata plus `services/homepage/manual-links.yaml`; generated files under
+`services/homepage/config/` are ignored and should not be committed.
+
+```bash
+./scripts/generate-service-catalog --format json
+tmpdir="$(mktemp -d)"
+./scripts/generate-homepage-config --output "$tmpdir"
 ```
 
 Use `scripts/redeploy-image` when only app code changed and a fresh image has

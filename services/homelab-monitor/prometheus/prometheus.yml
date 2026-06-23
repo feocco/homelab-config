@@ -41,9 +41,9 @@ scrape_configs:
         - http_2xx
     static_configs:
       - targets:
-          - http://host.docker.internal:8080/
+          - http://host.docker.internal:7576/
         labels:
-          service: dashy
+          service: homepage
           host: macmini
       - targets:
           - http://host.docker.internal:8088/health

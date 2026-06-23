@@ -1,4 +1,6 @@
 **/.env
 **/data/*
 !**/data/.gitkeep
+services/homepage/config/*
+!services/homepage/config/.gitkeep
 .homelab-deploy-state/

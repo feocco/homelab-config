@@ -16,6 +16,14 @@
 - Before service discovery, deploy planning, or source-of-truth questions, run
   `./scripts/list-homelab-services` to compare host manifests, Compose images,
   monitoring coverage, and SRE metadata.
+- Service catalog output is generated from `services/*/ops.yaml`, host
+  manifests, Compose, monitoring, and SRE metadata. Do not hand-maintain a
+  parallel catalog file. Use `./scripts/generate-service-catalog --format json`
+  to inspect the catalog. Homepage runtime config is generated during deploy;
+  do not commit generated files under `services/homepage/config/`.
+- Homepage display metadata belongs in optional flat `dashboard_*` fields in
+  each service `ops.yaml`. External/manual links belong in
+  `services/homepage/manual-links.yaml`.
 - Classify deployment work before editing runtime config:
   - App code changed only: commit/push the app repo, publish the image, then
     run `./scripts/redeploy-image --host <host> <service>` from this repo. Do

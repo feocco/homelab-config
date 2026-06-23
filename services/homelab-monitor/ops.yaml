@@ -21,6 +21,11 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:3000
 tailnet: true
 monitoring: false
 sre: false
+dashboard_name: Grafana
+dashboard_group: Daily Ops
+dashboard_description: Metrics and alert review
+dashboard_icon: grafana.png
+dashboard_url: http://grafana.home.arpa/d/homelab-monitoring/homelab-monitoring
 secrets:
   - GRAFANA_ADMIN_PASSWORD
   - HOMELAB_FUNCTIONS_TOKEN
