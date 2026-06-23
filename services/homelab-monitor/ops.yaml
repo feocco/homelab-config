@@ -1,0 +1,27 @@
+service: homelab-monitor
+kind: multi-container
+host: macmini
+source_repo: feocco/homelab-config
+images:
+  - prom/prometheus:v3.11.3
+  - grafana/grafana:13.0.1
+  - prom/blackbox-exporter:v0.28.0
+  - python:3.13.13-alpine3.22
+public_image: true
+containers:
+  - homelab-monitor-prometheus
+  - homelab-monitor-grafana
+  - homelab-monitor-blackbox-exporter
+  - homelab-monitor-docker-stats-exporter
+  - homelab-monitor-openai-cost-exporter
+http_port: 3000
+port_env: GRAFANA_HTTP_PORT
+health_path: /api/health
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:3000
+tailnet: true
+monitoring: false
+sre: false
+secrets:
+  - GRAFANA_ADMIN_PASSWORD
+  - HOMELAB_FUNCTIONS_TOKEN
+  - OPENAI_ADMIN_KEY

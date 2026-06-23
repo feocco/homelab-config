@@ -1,0 +1,19 @@
+service: plant-monitor
+kind: app
+host: macmini
+source_repo: feocco/plant-monitor
+image: ghcr.io/feocco/plant-monitor:latest
+public_image: true
+container: plant-monitor
+http_port: 8088
+port_env: SERVICE_PORT
+health_path: /health
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8088
+tailnet: true
+monitoring: true
+sre: true
+secrets:
+  - HA_URL
+  - HA_LONG_LIVED_TOKEN
+  - HOMELAB_FUNCTIONS_TOKEN
+  - SERVICE_CALLBACK_TOKEN

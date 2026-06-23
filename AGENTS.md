@@ -26,10 +26,15 @@
   - Third-party or config-only service changed: this repo usually owns the
     durable change.
 - Inspect `git status --short --branch` before deployment work.
-- Validate deployment changes with `./scripts/test-deploy-tooling`.
+- Validate deployment changes with `LC_ALL=C ./scripts/test-deploy-tooling`.
+- Every enabled service should have `services/<service>/ops.yaml`. Validate the
+  declared rollout outcome with
+  `LC_ALL=C ./scripts/validate-service-rollout --service <service> --host <host> --check config`.
+  Use `--check live` after deployment for manifests that declare live proof.
 - When secrets or `.env.config` files change, run:
-  `./scripts/generate-service-secret-workflow-env`,
-  `./scripts/check-service-secrets`, and `./scripts/test-deploy-tooling`.
+  `LC_ALL=C ./scripts/generate-service-secret-workflow-env`,
+  `LC_ALL=C ./scripts/check-service-secrets`, and
+  `LC_ALL=C ./scripts/test-deploy-tooling`.
 - Prefer host-aware commands, for example
   `./scripts/homelab-deploy --host macmini <service> --dry-run`.
 - Do not treat a dirty or unpushed deploy as durable production state.

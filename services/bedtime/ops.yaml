@@ -1,0 +1,14 @@
+service: bedtime
+kind: worker
+host: macmini
+source_repo: feocco/bedtime
+image: ghcr.io/feocco/bedtime:latest
+public_image: true
+container: bedtime
+tailnet: false
+monitoring: false
+sre: true
+secrets:
+  - HA_URL
+  - HA_LONG_LIVED_TOKEN
+  - HOMELAB_FUNCTIONS_TOKEN

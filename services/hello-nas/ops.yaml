@@ -1,0 +1,15 @@
+service: hello-nas
+kind: app
+host: macmini
+source_repo: feocco/hello-nas
+image: ghcr.io/feocco/hello-nas:latest
+public_image: true
+container: hello-nas
+http_port: 8099
+port_env: HOST_PORT
+health_path: /
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8099
+tailnet: true
+monitoring: true
+sre: true
+secrets:

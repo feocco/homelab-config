@@ -1,0 +1,19 @@
+service: dog-bowl-monitor
+kind: app
+host: macmini
+source_repo: feocco/dog-bowl-monitor
+image: ghcr.io/feocco/dog-bowl-monitor:latest
+public_image: false
+container: dog-bowl-monitor
+http_port: 8101
+port_env: SERVICE_PORT
+health_path: /health
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8101
+tailnet: true
+monitoring: true
+sre: true
+secrets:
+  - HA_URL
+  - HA_LONG_LIVED_TOKEN
+  - OPENAI_API_KEY
+  - HOMELAB_FUNCTIONS_TOKEN

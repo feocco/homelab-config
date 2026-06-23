@@ -1,0 +1,224 @@
+# Deployment Validation
+
+`scripts/validate-service-rollout` is the homelab service rollout checker. It
+keeps service-specific behavior out of scope and verifies the declared
+operational outcome for each enabled service.
+
+## High-Level Units
+
+- App image: source repo, GHCR image, and public/private pull expectation.
+- Secrets: `.env.example`, `.env.config`, `service-secrets.yaml`, generated
+  workflow env block, and uploaded secret names.
+- Runtime config: service folder, Compose file, host manifest, port uniqueness,
+  deploy allowlist, and dry-run deploy.
+- Tailnet: user-facing HTTP service exposure through
+  `hosts/<host>/tailscale-serve.yaml`.
+- Monitoring/SRE: Prometheus blackbox target, restart alert coverage,
+  monitor-health coverage, and `homelab-sre-agent` metadata.
+- Live proof: health/status endpoint, monitor-health output, and metric series
+  after deployment.
+
+## Usage
+
+Each enabled service owns a private runtime manifest:
+
+```text
+services/<service>/ops.yaml
+```
+
+Run config validation before deploying:
+
+```sh
+./scripts/validate-service-rollout --service laundry-monitor --host macmini --check config --mode strict
+```
+
+Run live validation after deployment:
+
+```sh
+./scripts/validate-service-rollout --service laundry-monitor --host macmini --check live --mode strict
+```
+
+Use `--mode smoketest` for canaries, partial rollout debugging, or environments
+where live external checks may not be available. Strict mode is for durable
+production readiness. A service without declared live proof should pass live
+validation by explicitly reporting that live checks were skipped.
+
+## Manifest Shape
+
+The manifest intentionally uses a small dependency-free YAML subset: top-level
+scalar keys and top-level lists. The required fields are:
+
+```yaml
+service: laundry-monitor
+kind: app
+host: macmini
+source_repo: feocco/laundry-monitor
+image: ghcr.io/feocco/laundry-monitor:latest
+container: laundry-monitor
+secrets:
+  - HA_URL
+```
+
+Optional fields enable additional units:
+
+- `kind: app|worker|proxy|infra|multi-container` declares the service shape.
+- `hosts:` replaces `host:` for multi-host services.
+- `images:` and `containers:` replace `image` and `container` for
+  multi-container services.
+- `http_port` and `port_env` declare user-facing host ports when present.
+- `public_image: true` checks anonymous GHCR manifest access.
+- `health_path: /health` declares an HTTP health path when one exists.
+- `status_path: /v1/status` checks the status endpoint identifies the service.
+- `live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8102` enables live
+  HTTP validation.
+- `tailnet: true` checks Tailscale Serve config and dry-run apply.
+- `monitoring: true` checks Prometheus, restart alert, monitor-health, and live
+  monitor-health proof.
+- `sre: true` checks `homelab-sre-agent` service metadata.
+- `tailnet_hosts`, `monitoring_hosts`, `sre_hosts`, and
+  `live_base_url_<host>` allow multi-host services to declare host-specific
+  outcomes without duplicating manifests.
+
+Some fields are operational assertions rather than values that can be fully
+discovered from existing config. `kind`, `public_image`, `status_path`, and
+`live_base_url` should be filled from the intended runtime contract.
+
+## Troubleshooting Failures
+
+Missing manifest:
+
+- Add `services/<service>/ops.yaml`.
+- Keep the first manifest small and match the flat YAML subset shown above.
+
+Secret mismatch:
+
+- Compare the manifest `secrets:` list with `service-secrets.yaml`.
+- Ensure every secret key is documented in `.env.example`.
+- Run `LC_ALL=C ./scripts/generate-service-secret-workflow-env`, then
+  `LC_ALL=C ./scripts/check-service-secrets`.
+
+GHCR image failure:
+
+- Confirm the app repo workflow published the image tag in `ops.yaml`.
+- For `public_image: true`, anonymous `docker manifest inspect <image>` must
+  work without local registry credentials.
+- For private images, leave `public_image` unset or false and verify host
+  registry auth separately.
+
+Runtime config failure:
+
+- Confirm the service is enabled in `hosts/<host>/services.yaml`.
+- Check that Compose references the manifest image, container, and port.
+- Resolve `SERVICE_PORT` collisions before deploying.
+- Run `./scripts/homelab-deploy --host <host> <service> --dry-run`.
+
+Tailnet failure:
+
+- Add or correct the service entry in `hosts/<host>/tailscale-serve.yaml`.
+- Run `./scripts/apply-tailscale-serve --host <host> --dry-run`.
+
+Monitoring or SRE failure:
+
+- Add the Prometheus blackbox target, Grafana restart alert coverage, and
+  monitor-health checks when `monitoring: true`.
+- Add `services/homelab-sre-agent/services.yaml` metadata when `sre: true`.
+- After changing monitor or SRE config, redeploy or force-recreate
+  `homelab-monitor` or `homelab-sre-agent` before live validation.
+
+Live proof failure:
+
+- Check the service health URL from `live_base_url` plus `health_path`.
+- If the health endpoint returns JSON with `status`, strict mode expects
+  `status: ok`.
+- If Prometheus series are missing right after deploy, confirm the monitor
+  service reloaded and wait for a scrape interval before rechecking.
+
+## Detailed Checks
+
+App image:
+
+- `public_image: true` runs anonymous `docker manifest inspect <image>` to
+  prove the declared public pull expectation. Docker Hub rate limits are
+  reported as warnings because they do not prove the image is private or
+  missing.
+- Private images can opt out of that public check; package auth remains a
+  deployment concern for the target host.
+
+Secrets:
+
+- `ops.yaml` secret names must match the service entry in `service-secrets.yaml`.
+- `.env.example` must document those secret keys.
+- `.github/workflows/deploy.yml` must contain generated prefixed secret env
+  entries.
+- `scripts/check-service-secrets` must pass.
+- New services should prefer generic list-style endpoint secrets, such as
+  notification endpoint lists, rather than person-specific key names.
+
+Runtime config:
+
+- The selected host manifest must enable the service.
+- Compose must reference the manifest images, containers, and declared port.
+- The declared host port must match `port_env` in `.env.config` and be unique
+  among services enabled on the same host.
+- `scripts/homelab-deploy --host <host> <service> --dry-run` must pass.
+
+Tailnet:
+
+- `tailnet: true` requires an entry in `hosts/<host>/tailscale-serve.yaml` with
+  the manifest HTTP port.
+- `scripts/apply-tailscale-serve --dry-run` must pass.
+
+Monitoring/SRE:
+
+- `monitoring: true` requires a Prometheus blackbox target, Grafana container
+  restart alert coverage, and `scripts/check-macmini-monitor-health` coverage.
+- `sre: true` requires a service entry in
+  `services/homelab-sre-agent/services.yaml`.
+- For NAS-only infrastructure, use the declared service outcome instead of
+  forcing Mac mini monitor-health semantics.
+- If Prometheus, alerting, monitor-health, or SRE config changed, redeploy or
+  force-recreate the relevant service before expecting live checks to pass.
+
+Live proof:
+
+- The health endpoint must respond.
+- If the health endpoint returns JSON with a `status` field, strict mode expects
+  that field to be `ok`.
+- If `status_path` is set, the status response must identify the service.
+- For Mac mini monitored services, `scripts/check-macmini-monitor-health` must
+  see the blackbox and container metric series.
+
+External dependencies used by validation:
+
+- Container registries: GHCR and Docker Hub, depending on the manifest images.
+- Tailnet HTTP endpoints: declared `live_base_url` values.
+- Tailscale CLI: dry-run validation for Tailnet Serve config.
+- Grafana/Prometheus: monitor-health proof for monitored Mac mini services.
+
+## Test Harness Model
+
+`scripts/test-deploy-tooling` is the blessed command for deploy tooling
+regression checks. Keep it as a thin orchestrator over focused subchecks.
+
+Service rollout intake must be manifest-driven. `scripts/tests/check-service-rollout`
+discovers `services/*/ops.yaml`, validates each manifest, and uses a generated
+`validator-demo` service inside a temporary copied repo for negative cases. Do
+not add real service names to this intake path just to test missing fields,
+secret mismatches, port collisions, or monitoring omissions.
+
+Some named canaries are still intentional in repo-level deploy tooling tests:
+
+- `portainer`: NAS enabled infra service.
+- `plant-monitor`: Mac app service.
+- `plant-monitor` on `nasfeo`: disabled migrated service.
+- `homelab-monitor`: multi-container service.
+
+Those canaries protect known deploy-tooling shapes rather than service rollout
+intake. If a canary changes or is replaced, update its comment and preserve the
+invariant it was covering.
+
+## Incremental Rollout
+
+Add manifests in small batches. Start with one proven service, run config and
+live validation, then use non-mutating subagent tasks to inspect whether the
+output is understandable or overfit before expanding to the next batch.

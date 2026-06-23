@@ -1,0 +1,598 @@
+#!/usr/bin/env python3
+"""Validate homelab service rollout wiring and live health."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import re
+import subprocess
+import tempfile
+import urllib.error
+import urllib.request
+
+
+REQUIRED_FIELDS = {
+    "service",
+    "kind",
+    "source_repo",
+}
+
+VALID_KINDS = {"app", "worker", "proxy", "infra", "multi-container"}
+
+
+def clean_scalar(value: str):
+    value = value.strip()
+    if " #" in value:
+        value = value.split(" #", 1)[0].strip()
+    value = value.strip('"').strip("'")
+    if value.lower() == "true":
+        return True
+    if value.lower() == "false":
+        return False
+    if re.fullmatch(r"-?[0-9]+", value):
+        return int(value)
+    return value
+
+
+def parse_simple_yaml(path: pathlib.Path) -> dict[str, object]:
+    data: dict[str, object] = {}
+    current_list: str | None = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line.startswith("  - "):
+            if current_list is None:
+                raise ValueError(f"List item without list key in {path}: {line}")
+            value = clean_scalar(line[4:])
+            assert isinstance(data[current_list], list)
+            data[current_list].append(value)
+            continue
+        if line.startswith(" "):
+            raise ValueError(f"Unsupported nested manifest line in {path}: {line}")
+        match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):(?:\s*(.*))?$", line)
+        if not match:
+            raise ValueError(f"Unsupported manifest line in {path}: {line}")
+        key, value = match.groups()
+        if value == "":
+            data[key] = []
+            current_list = key
+        else:
+            data[key] = clean_scalar(value or "")
+            current_list = None
+    return data
+
+
+def parse_env(path: pathlib.Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for raw in path.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.startswith("export "):
+            key = key.removeprefix("export ")
+        values[key] = value
+    return values
+
+
+def host_services(path: pathlib.Path) -> dict[str, dict[str, object]]:
+    services: dict[str, dict[str, object]] = {}
+    in_services = False
+    current: str | None = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if line == "services:":
+            in_services = True
+            continue
+        if not in_services:
+            continue
+        if line and not line.startswith(" "):
+            break
+        match = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if match:
+            current = match.group(1)
+            services[current] = {"path": "", "enabled": True}
+            continue
+        if current is None:
+            continue
+        match = re.match(r"^    path:\s*(.+)\s*$", line)
+        if match:
+            services[current]["path"] = clean_scalar(match.group(1))
+            continue
+        match = re.match(r"^    enabled:\s*(.+)\s*$", line)
+        if match:
+            services[current]["enabled"] = clean_scalar(match.group(1)) is not False
+            continue
+    return services
+
+
+def manifest_secret_keys(path: pathlib.Path, service: str) -> list[str]:
+    if not path.exists():
+        return []
+    keys: list[str] = []
+    in_services = False
+    current: str | None = None
+    in_env = False
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if line == "services:":
+            in_services = True
+            continue
+        if not in_services:
+            continue
+        match = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if match:
+            current = match.group(1)
+            in_env = False
+            continue
+        if current != service:
+            continue
+        if re.match(r"^    env:\s*$", line):
+            in_env = True
+            continue
+        if re.match(r"^    [^:\s][^:]*:\s*$", line):
+            in_env = False
+            continue
+        if in_env:
+            match = re.match(r"^      -\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", line)
+            if match:
+                keys.append(match.group(1))
+    return sorted(keys)
+
+
+def prefixed_secret(service: str, key: str) -> str:
+    prefix = re.sub(r"[^A-Za-z0-9]", "_", service.upper())
+    return f"{prefix}__{key}"
+
+
+def as_list(manifest: dict[str, object], single_key: str, list_key: str) -> list[str]:
+    values: list[str] = []
+    list_value = manifest.get(list_key)
+    if isinstance(list_value, list):
+        values.extend(str(value) for value in list_value)
+    single_value = manifest.get(single_key)
+    if single_value not in (None, ""):
+        values.append(str(single_value))
+    return values
+
+
+def manifest_hosts(manifest: dict[str, object]) -> list[str]:
+    return as_list(manifest, "host", "hosts")
+
+
+def manifest_images(manifest: dict[str, object]) -> list[str]:
+    return as_list(manifest, "image", "images")
+
+
+def manifest_containers(manifest: dict[str, object]) -> list[str]:
+    return as_list(manifest, "container", "containers")
+
+
+def host_scoped_enabled(manifest: dict[str, object], key: str, host: str) -> bool:
+    if manifest.get(key) is True:
+        return True
+    if manifest.get(key) is False:
+        return False
+    host_values = manifest.get(f"{key}_hosts")
+    return isinstance(host_values, list) and host in [str(value) for value in host_values]
+
+
+def host_scoped_value(manifest: dict[str, object], key: str, host: str) -> str:
+    host_value = manifest.get(f"{key}_{host}")
+    if host_value not in (None, ""):
+        return str(host_value)
+    value = manifest.get(key)
+    return "" if value in (None, "") else str(value)
+
+
+def compose_mentions(
+    path: pathlib.Path, *, images: list[str], containers: list[str], port: int | None
+) -> tuple[list[str], list[str], bool]:
+    text = path.read_text() if path.exists() else ""
+    missing_images = [image for image in images if image not in text]
+    missing_containers = [container for container in containers if container not in text]
+    port_ok = True if port is None else str(port) in text
+    return missing_images, missing_containers, port_ok
+
+
+def tailnet_entry(path: pathlib.Path, service: str) -> str:
+    if not path.exists():
+        return ""
+    text = path.read_text()
+    match = re.search(rf"^  {re.escape(service)}:\n(?P<body>(?:    .+\n?)*)", text, re.MULTILINE)
+    return match.group("body") if match else ""
+
+
+def prometheus_has_service(path: pathlib.Path, service: str) -> bool:
+    return path.exists() and re.search(rf"^\s+service:\s*{re.escape(service)}\s*$", path.read_text(), re.MULTILINE) is not None
+
+
+def sre_has_service(path: pathlib.Path, service: str) -> bool:
+    return path.exists() and re.search(rf"^  {re.escape(service)}:\s*$", path.read_text(), re.MULTILINE) is not None
+
+
+def rules_reference_containers(path: pathlib.Path, containers: list[str]) -> bool:
+    text = path.read_text() if path.exists() else ""
+    return all(container in text for container in containers)
+
+
+def monitor_script_references(path: pathlib.Path, containers: list[str]) -> bool:
+    text = path.read_text() if path.exists() else ""
+    return all(container in text for container in containers)
+
+
+def run(cmd: list[str], *, cwd: pathlib.Path, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd,
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=timeout,
+        check=False,
+    )
+
+
+class Validator:
+    def __init__(self, *, base_dir: pathlib.Path, service: str, host: str, check: str, mode: str) -> None:
+        self.base_dir = base_dir
+        self.service = service
+        self.host = host
+        self.check = check
+        self.mode = mode
+        self.rows: list[tuple[str, str, str]] = []
+
+    def pass_(self, unit: str, message: str) -> None:
+        self.rows.append((unit, "pass", message))
+
+    def warn(self, unit: str, message: str) -> None:
+        self.rows.append((unit, "warn", message))
+
+    def fail(self, unit: str, message: str) -> None:
+        self.rows.append((unit, "fail", message))
+
+    @property
+    def strict(self) -> bool:
+        return self.mode == "strict"
+
+    @property
+    def failed(self) -> bool:
+        return any(status == "fail" for _, status, _ in self.rows)
+
+    def manifest_path(self) -> pathlib.Path:
+        return self.base_dir / "services" / self.service / "ops.yaml"
+
+    def load_manifest(self) -> dict[str, object] | None:
+        path = self.manifest_path()
+        if not path.exists():
+            required = ", ".join(sorted(REQUIRED_FIELDS))
+            self.fail(
+                "manifest",
+                f"Missing service rollout manifest: {path.relative_to(self.base_dir)}. "
+                f"Required fields: {required}",
+            )
+            return None
+        try:
+            manifest = parse_simple_yaml(path)
+        except ValueError as exc:
+            self.fail("manifest", str(exc))
+            return None
+        missing = sorted(field for field in REQUIRED_FIELDS if field not in manifest)
+        if not manifest_hosts(manifest):
+            missing.append("host or hosts")
+        if not manifest_images(manifest):
+            missing.append("image or images")
+        if not manifest_containers(manifest):
+            missing.append("container or containers")
+        if missing:
+            self.fail("manifest", f"{path.relative_to(self.base_dir)} missing fields: {', '.join(missing)}")
+            return None
+        self.pass_("manifest", f"Loaded {path.relative_to(self.base_dir)}")
+        return manifest
+
+    def check_config(self) -> None:
+        manifest = self.load_manifest()
+        if not manifest:
+            return
+        if manifest["service"] != self.service:
+            self.fail("manifest", f"service field is {manifest['service']!r}, expected {self.service!r}")
+        hosts = manifest_hosts(manifest)
+        if self.host not in hosts:
+            self.fail("manifest", f"host {self.host!r} is not declared in manifest hosts {hosts!r}")
+        if manifest.get("kind") not in VALID_KINDS:
+            self.fail("manifest", f"kind must be one of {', '.join(sorted(VALID_KINDS))}, got {manifest.get('kind')!r}")
+
+        images = manifest_images(manifest)
+        containers = manifest_containers(manifest)
+        http_port = manifest.get("http_port")
+        port = int(http_port) if http_port not in (None, "") else None
+
+        services_file = self.base_dir / "hosts" / self.host / "services.yaml"
+        services = host_services(services_file) if services_file.exists() else {}
+        host_entry = services.get(self.service)
+        if not host_entry or not host_entry["enabled"]:
+            self.fail("runtime config", f"{self.service} is not enabled in {services_file.relative_to(self.base_dir)}")
+            service_path = pathlib.Path("services") / self.service
+        else:
+            service_path = pathlib.Path(str(host_entry["path"]))
+            self.pass_("runtime config", f"Host manifest enables {self.service} at {service_path}")
+
+        service_dir = self.base_dir / service_path
+        compose_file = service_dir / "docker-compose.yml"
+        if not compose_file.exists():
+            self.fail("runtime config", f"Missing {compose_file.relative_to(self.base_dir)}")
+        else:
+            missing_images, missing_containers, port_ok = compose_mentions(
+                compose_file,
+                images=images,
+                containers=containers,
+                port=port,
+            )
+            if not missing_images and not missing_containers and port_ok:
+                detail = "Compose images and containers match manifest"
+                if port is not None:
+                    detail = "Compose images, containers, and port match manifest"
+                self.pass_("runtime config", detail)
+            else:
+                problems = []
+                if missing_images:
+                    problems.append(f"missing images: {', '.join(missing_images)}")
+                if missing_containers:
+                    problems.append(f"missing containers: {', '.join(missing_containers)}")
+                if not port_ok:
+                    problems.append(f"missing port: {port}")
+                self.fail("runtime config", "Compose file does not match manifest: " + "; ".join(problems))
+
+        env_config = parse_env(service_dir / ".env.config")
+        env_example = parse_env(service_dir / ".env.example")
+        if port is not None:
+            port_env = str(manifest.get("port_env") or "")
+            if port_env:
+                if env_config.get(port_env) == str(port):
+                    self.pass_("runtime config", f"{port_env} matches manifest")
+                else:
+                    self.fail("runtime config", f"{port_env} is missing or differs from manifest")
+            elif str(port) in env_config.values():
+                self.pass_("runtime config", "Tracked port config matches manifest")
+            else:
+                self.fail("runtime config", "Tracked port config is missing or differs from manifest")
+
+            seen_ports: dict[str, list[str]] = {}
+            enabled_on_host = {name for name, entry in services.items() if entry.get("enabled") is not False}
+            for config_path in (self.base_dir / "services").glob("*/.env.config"):
+                values = parse_env(config_path)
+                owner = config_path.parent.name
+                if owner not in enabled_on_host:
+                    continue
+                for key, value in values.items():
+                    if key.endswith("_PORT") or key in {"HOST_PORT", "SERVICE_PORT"}:
+                        seen_ports.setdefault(value, []).append(owner)
+            other_port_owners = sorted(owner for owner in set(seen_ports.get(str(port), [])) if owner != self.service)
+            if not other_port_owners:
+                self.pass_("runtime config", "HTTP port is unique among service .env.config files")
+            else:
+                self.fail(
+                    "runtime config",
+                    f"HTTP port {port} is also used by {', '.join(other_port_owners)}",
+                )
+        else:
+            self.pass_("runtime config", "No HTTP port declared; skipping port checks")
+
+        dry_run = run(
+            [
+                str(self.base_dir / "scripts/homelab-deploy"),
+                "--host",
+                self.host,
+                self.service,
+                "--dry-run",
+                "--deploy-base-dir",
+                str(self.base_dir),
+            ],
+            cwd=self.base_dir,
+        )
+        if dry_run.returncode == 0:
+            self.pass_("runtime config", "Service dry-run deploy passes")
+        else:
+            self.fail("runtime config", f"Service dry-run deploy failed: {dry_run.stdout.strip()}")
+
+        manifest_secrets = sorted(str(value) for value in manifest.get("secrets", []))
+        service_secret_keys = manifest_secret_keys(self.base_dir / "service-secrets.yaml", self.service)
+        if manifest_secrets == service_secret_keys:
+            self.pass_("secrets", "ops.yaml secrets match service-secrets.yaml")
+        else:
+            self.fail(
+                "secrets",
+                f"ops.yaml secrets {manifest_secrets} differ from service-secrets.yaml {service_secret_keys}",
+            )
+        missing_examples = sorted(key for key in manifest_secrets if key not in env_example)
+        if missing_examples:
+            self.fail("secrets", f".env.example is missing secret keys: {', '.join(missing_examples)}")
+        else:
+            self.pass_("secrets", ".env.example contains manifest secret keys")
+        workflow_text = (self.base_dir / ".github/workflows/deploy.yml").read_text()
+        missing_workflow = [
+            prefixed_secret(self.service, key)
+            for key in manifest_secrets
+            if f"{prefixed_secret(self.service, key)}:" not in workflow_text
+        ]
+        if missing_workflow:
+            self.fail("secrets", f"Deploy workflow is missing secret env entries: {', '.join(missing_workflow)}")
+        else:
+            self.pass_("secrets", "Deploy workflow contains generated secret env entries")
+        secret_check = run([str(self.base_dir / "scripts/check-service-secrets"), "--base-dir", str(self.base_dir)], cwd=self.base_dir)
+        if secret_check.returncode == 0:
+            self.pass_("secrets", "check-service-secrets passes")
+        else:
+            self.fail("secrets", f"check-service-secrets failed: {secret_check.stdout.strip()}")
+
+        if manifest.get("public_image") is True:
+            for image in images:
+                inspect_image = image.split("@", 1)[0]
+                with tempfile.TemporaryDirectory() as tmp:
+                    env = os.environ.copy()
+                    env["DOCKER_CONFIG"] = tmp
+                    image_check = subprocess.run(
+                        ["docker", "manifest", "inspect", inspect_image],
+                        cwd=self.base_dir,
+                        env=env,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        timeout=45,
+                        check=False,
+                    )
+                if image_check.returncode == 0:
+                    self.pass_("app image", f"Public image is anonymously inspectable: {image}")
+                elif "toomanyrequests" in image_check.stdout.lower() or "rate limit" in image_check.stdout.lower():
+                    self.warn("app image", f"Public image check rate-limited for {image}: {image_check.stdout.strip()}")
+                elif self.strict:
+                    self.fail("app image", f"Public image check failed for {image}: {image_check.stdout.strip()}")
+                else:
+                    self.warn("app image", f"Public image check failed for {image}: {image_check.stdout.strip()}")
+
+        if host_scoped_enabled(manifest, "tailnet", self.host):
+            if port is None:
+                self.fail("tailnet", "tailnet requires http_port")
+            elif not manifest.get("health_path"):
+                self.fail("tailnet", "tailnet requires health_path")
+            tailnet_path = self.base_dir / "hosts" / self.host / "tailscale-serve.yaml"
+            body = tailnet_entry(tailnet_path, self.service)
+            if port is not None and body and f"http_port: {port}" in body:
+                self.pass_("tailnet", "Tailscale Serve entry matches manifest port")
+            else:
+                self.fail("tailnet", f"Missing Tailscale Serve entry for {self.service} on port {port}")
+            apply_check = run(
+                [str(self.base_dir / "scripts/apply-tailscale-serve"), "--host", self.host, "--base-dir", str(self.base_dir), "--dry-run"],
+                cwd=self.base_dir,
+            )
+            if apply_check.returncode == 0:
+                self.pass_("tailnet", "Tailscale Serve dry-run passes")
+            else:
+                self.fail("tailnet", f"Tailscale Serve dry-run failed: {apply_check.stdout.strip()}")
+
+        if host_scoped_enabled(manifest, "monitoring", self.host):
+            if port is not None and manifest.get("health_path"):
+                if prometheus_has_service(self.base_dir / "services/homelab-monitor/prometheus/prometheus.yml", self.service):
+                    self.pass_("monitoring/SRE", "Prometheus blackbox target is configured")
+                else:
+                    self.fail("monitoring/SRE", "Prometheus blackbox target is missing")
+            rules = self.base_dir / "services/homelab-monitor/grafana/provisioning/alerting/rules.yml"
+            if rules_reference_containers(rules, containers):
+                self.pass_("monitoring/SRE", "Grafana restart alert references manifest containers")
+            else:
+                self.fail("monitoring/SRE", "Grafana restart alert does not reference manifest containers")
+            monitor_script = self.base_dir / "scripts/check-macmini-monitor-health"
+            if self.host != "macmini":
+                self.pass_("monitoring/SRE", "Monitor-health script check is Mac mini only; skipping for host")
+            elif monitor_script_references(monitor_script, containers):
+                self.pass_("monitoring/SRE", "Monitor-health script checks manifest containers")
+            else:
+                self.fail("monitoring/SRE", "Monitor-health script does not check manifest containers")
+
+        if host_scoped_enabled(manifest, "sre", self.host):
+            if sre_has_service(self.base_dir / "services/homelab-sre-agent/services.yaml", self.service):
+                self.pass_("monitoring/SRE", "SRE metadata is configured")
+            else:
+                self.fail("monitoring/SRE", "SRE metadata is missing")
+
+    def check_live(self) -> None:
+        manifest = self.load_manifest()
+        if not manifest:
+            return
+        base_url = host_scoped_value(manifest, "live_base_url", self.host).rstrip("/")
+        if not base_url:
+            self.pass_("live proof", "No live_base_url declared; skipping HTTP live checks")
+            return
+
+        health_path = str(manifest.get("health_path") or "")
+        if health_path:
+            health_url = f"{base_url}{health_path}"
+            try:
+                with urllib.request.urlopen(health_url, timeout=10) as response:
+                    body = response.read(4096).decode("utf-8", "replace")
+                if response.status < 400:
+                    self.pass_("live proof", f"Health endpoint responds: {health_url}")
+                    try:
+                        payload = json.loads(body)
+                    except json.JSONDecodeError:
+                        payload = None
+                    if isinstance(payload, dict) and "status" in payload:
+                        if payload.get("status") == "ok":
+                            self.pass_("live proof", "Health payload reports status ok")
+                        else:
+                            (self.fail if self.strict else self.warn)(
+                                "live proof",
+                                f"Health payload status is {payload.get('status')!r}",
+                            )
+                else:
+                    raise urllib.error.URLError(f"HTTP {response.status}")
+            except Exception as exc:
+                (self.fail if self.strict else self.warn)("live proof", f"Health endpoint failed: {exc}")
+        else:
+            self.pass_("live proof", "No health_path declared; skipping health endpoint check")
+
+        status_path = str(manifest.get("status_path") or "")
+        if status_path:
+            status_url = f"{base_url}{status_path}"
+            try:
+                with urllib.request.urlopen(status_url, timeout=10) as response:
+                    payload = json.loads(response.read(8192).decode("utf-8"))
+                if payload.get("service") == self.service:
+                    self.pass_("live proof", f"Status endpoint identifies {self.service}")
+                else:
+                    self.fail("live proof", f"Status endpoint service mismatch: {payload.get('service')!r}")
+            except Exception as exc:
+                (self.fail if self.strict else self.warn)("live proof", f"Status endpoint failed: {exc}")
+
+        if host_scoped_enabled(manifest, "monitoring", self.host) and self.host == "macmini":
+            monitor_check = run([str(self.base_dir / "scripts/check-macmini-monitor-health")], cwd=self.base_dir, timeout=60)
+            if monitor_check.returncode == 0:
+                self.pass_("live proof", "Mac mini monitor-health check passes")
+            else:
+                (self.fail if self.strict else self.warn)(
+                    "live proof",
+                    f"Mac mini monitor-health check failed: {monitor_check.stdout.strip()}",
+                )
+
+    def print_rows(self) -> None:
+        width = max([len(unit) for unit, _, _ in self.rows] + [4])
+        print(f"service={self.service} host={self.host} check={self.check} mode={self.mode}")
+        print(f"{'unit'.ljust(width)}  status  detail")
+        print(f"{'-' * width}  ------  ------")
+        for unit, status, message in self.rows:
+            print(f"{unit.ljust(width)}  {status:<6}  {message}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--service", required=True)
+    parser.add_argument("--host", required=True)
+    parser.add_argument("--check", choices=["config", "live", "all"], default="all")
+    parser.add_argument("--mode", choices=["strict", "smoketest"], default="strict")
+    parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[1]))
+    args = parser.parse_args()
+
+    validator = Validator(
+        base_dir=pathlib.Path(args.base_dir),
+        service=args.service,
+        host=args.host,
+        check=args.check,
+        mode=args.mode,
+    )
+
+    if args.check in {"config", "all"}:
+        validator.check_config()
+    if args.check in {"live", "all"}:
+        validator.check_live()
+    validator.print_rows()
+    return 1 if validator.failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

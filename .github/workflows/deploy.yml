@@ -87,6 +87,17 @@ jobs:
             --base-dir "${{ github.workspace }}" \
             --deploy-base-dir /volume1/docker/homelab-config
 
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "${DOCKERHUB_USERNAME}" ] && [ -n "${DOCKERHUB_TOKEN}" ]; then
+            printf '%s' "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+          else
+            echo "Skipping Docker Hub login; DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not configured."
+          fi
+
       - name: Deploy changed services
         if: github.event_name == 'push'
         env:
@@ -230,6 +241,17 @@ jobs:
           mkdir -p "${DOCKER_CONFIG_DIR}"
           printf '{}\n' > "${DOCKER_CONFIG_DIR}/config.json"
           echo "DOCKER_CONFIG=${DOCKER_CONFIG_DIR}" >> "${GITHUB_ENV}"
+
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "${DOCKERHUB_USERNAME}" ] && [ -n "${DOCKERHUB_TOKEN}" ]; then
+            printf '%s' "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+          else
+            echo "Skipping Docker Hub login; DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not configured."
+          fi
 
       - name: Deploy changed services
         if: github.event_name == 'push'

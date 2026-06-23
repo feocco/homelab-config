@@ -1,0 +1,23 @@
+service: homelab-sre-agent
+kind: app
+host: macmini
+source_repo: feocco/homelab-sre-agent
+image: ghcr.io/feocco/homelab-sre-agent:latest
+public_image: false
+container: homelab-sre-agent
+http_port: 8094
+port_env: SERVICE_PORT
+health_path: /health
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8094
+tailnet: true
+monitoring: true
+sre: true
+secrets:
+  - HA_URL
+  - HA_LONG_LIVED_TOKEN
+  - HOMELAB_FUNCTIONS_TOKEN
+  - SRE_INCIDENT_TOKEN
+  - GITHUB_TOKEN
+  - GITHUB_APP_PRIVATE_KEY_B64
+  - AWS_ACCESS_KEY_ID
+  - AWS_SECRET_ACCESS_KEY

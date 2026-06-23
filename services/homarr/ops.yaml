@@ -1,0 +1,16 @@
+service: homarr
+kind: proxy
+host: macmini
+source_repo: feocco/homelab-config
+image: ghcr.io/homarr-labs/homarr:latest@sha256:fc96436bf80000bed8989d6606fc1ac0929bf4809bb4594168ad4b327e8f2c5f
+public_image: true
+container: homarr
+http_port: 7575
+port_env: HOMARR_HTTP_PORT
+health_path: /
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:7575
+tailnet: true
+monitoring: true
+sre: false
+secrets:
+  - SECRET_ENCRYPTION_KEY

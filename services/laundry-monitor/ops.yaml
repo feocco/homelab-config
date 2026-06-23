@@ -1,0 +1,19 @@
+service: laundry-monitor
+kind: app
+host: macmini
+source_repo: feocco/laundry-monitor
+image: ghcr.io/feocco/laundry-monitor:latest
+public_image: true
+container: laundry-monitor
+http_port: 8102
+health_path: /health
+status_path: /v1/status
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8102
+tailnet: true
+monitoring: true
+sre: true
+secrets:
+  - HA_URL
+  - HA_LONG_LIVED_TOKEN
+  - HA_NOTIFY_JOE_SERVICE
+  - HA_NOTIFY_JESS_SERVICE

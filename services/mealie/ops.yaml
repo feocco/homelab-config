@@ -1,0 +1,25 @@
+service: mealie
+kind: multi-container
+host: macmini
+source_repo: feocco/homelab-config
+images:
+  - ghcr.io/mealie-recipes/mealie:v3.19.0
+  - postgres:17
+  - cloudflare/cloudflared:latest
+public_image: true
+containers:
+  - mealie
+  - mealie-postgres
+  - mealie-cloudflared
+http_port: 9925
+port_env: MEALIE_HTTP_PORT
+tailnet: false
+monitoring: false
+sre: false
+secrets:
+  - POSTGRES_PASSWORD
+  - CLOUDFLARE_TUNNEL_TOKEN
+  - OPENAI_API_KEY
+  - SMTP_FROM_EMAIL
+  - SMTP_USER
+  - SMTP_PASSWORD

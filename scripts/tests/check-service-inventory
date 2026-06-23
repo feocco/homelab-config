@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+# Real service canaries:
+# - portainer: NAS enabled infra service
+# - plant-monitor: Mac app service
+# - plant-monitor on nasfeo: disabled migrated service
+# - homelab-monitor: multi-container service
+HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host nasfeo --list
+HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host nasfeo portainer --dry-run --deploy-base-dir "${REPO_DIR}"
+HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host nasfeo dashy-redirect --dry-run --deploy-base-dir "${REPO_DIR}"
+HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host nasfeo --all --dry-run --deploy-base-dir "${REPO_DIR}"
+HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host macmini --list
+HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host macmini plant-monitor --dry-run --deploy-base-dir "${REPO_DIR}"
+
+inventory_json="$(mktemp)"
+"${REPO_DIR}/scripts/list-homelab-services" --format json >"${inventory_json}"
+python3 - "${inventory_json}" <<'PY'
+import json
+import pathlib
+import sys
+
+rows = json.loads(pathlib.Path(sys.argv[1]).read_text())
+by_service_host = {(row["service"], row["host"]): row for row in rows}
+
+for key in [
+    ("plant-monitor", "macmini"),
+    ("homelab-monitor", "macmini"),
+    ("homarr", "macmini"),
+    ("portainer", "nasfeo"),
+]:
+    if key not in by_service_host:
+        raise SystemExit(f"Missing service row: {key}")
+
+if by_service_host[("plant-monitor", "nasfeo")]["enabled"] is not False:
+    raise SystemExit("plant-monitor on nasfeo should be visible as disabled")
+
+plant = by_service_host[("plant-monitor", "macmini")]
+if plant["monitored"] is not True:
+    raise SystemExit("plant-monitor should show monitoring coverage")
+if plant["sre_metadata"] is not True or plant["sre_enabled"] is not True:
+    raise SystemExit("plant-monitor should show enabled SRE coverage")
+if plant["source_repo"] != "feocco/plant-monitor":
+    raise SystemExit("plant-monitor source_repo did not come from SRE metadata")
+
+monitor = by_service_host[("homelab-monitor", "macmini")]
+if monitor["sre_metadata"] is not True or monitor["sre_enabled"] is not False:
+    raise SystemExit("homelab-monitor should show disabled SRE metadata")
+if "homelab-monitor-grafana" not in monitor["containers"]:
+    raise SystemExit("homelab-monitor compose containers were not discovered")
+
+portainer = by_service_host[("portainer", "nasfeo")]
+if portainer["enabled"] is not True:
+    raise SystemExit("portainer should be enabled on nasfeo")
+PY
+rm -f "${inventory_json}"
+
+inventory_table="$(mktemp)"
+"${REPO_DIR}/scripts/list-homelab-services" >"${inventory_table}"
+assert_contains "${inventory_table}" 'plant-monitor'
+assert_contains "${inventory_table}" 'homelab-monitor'
+assert_contains "${inventory_table}" 'homarr'
+assert_contains "${inventory_table}" 'portainer'
+rm -f "${inventory_table}"

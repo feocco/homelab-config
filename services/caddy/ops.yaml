@@ -1,0 +1,13 @@
+service: caddy
+kind: infra
+host: macmini
+source_repo: feocco/homelab-config
+image: caddy:2-alpine
+public_image: true
+container: caddy
+http_port: 80
+port_env: CADDY_HTTP_PORT
+tailnet: false
+monitoring: false
+sre: false
+secrets:

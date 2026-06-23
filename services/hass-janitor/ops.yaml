@@ -1,0 +1,19 @@
+service: hass-janitor
+kind: app
+host: macmini
+source_repo: feocco/hass-janitor
+image: ghcr.io/feocco/hass-janitor:latest
+public_image: false
+container: hass-janitor
+http_port: 8092
+port_env: SERVICE_PORT
+health_path: /health
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8092
+tailnet: true
+monitoring: true
+sre: true
+secrets:
+  - HA_BASE_URL
+  - HA_TOKEN
+  - HASS_JANITOR_API_TOKEN
+  - HOMELAB_FUNCTIONS_TOKEN

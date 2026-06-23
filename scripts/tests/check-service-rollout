@@ -1,0 +1,487 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+validate_discovered_manifests() {
+  local found="false"
+  local manifest service host hosts_file
+
+  while IFS= read -r manifest; do
+    found="true"
+    service="$(basename "$(dirname "${manifest}")")"
+    hosts_file="$(mktemp)"
+    python3 - "${manifest}" >"${hosts_file}" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+in_hosts = False
+for raw in path.read_text().splitlines():
+    line = raw.rstrip()
+    if line.startswith("host:"):
+        print(line.split(":", 1)[1].strip())
+        in_hosts = False
+        continue
+    if line == "hosts:":
+        in_hosts = True
+        continue
+    if in_hosts:
+        if line.startswith("  - "):
+            print(line[4:].strip())
+        elif line and not line.startswith(" "):
+            in_hosts = False
+PY
+    if [[ ! -s "${hosts_file}" ]]; then
+      echo "${manifest} is missing host/hosts; validator should report that directly." >&2
+      rm -f "${hosts_file}"
+      exit 1
+    fi
+
+    while IFS= read -r host; do
+      [[ -n "${host}" ]] || continue
+      "${REPO_DIR}/scripts/validate-service-rollout" \
+        --service "${service}" \
+        --host "${host}" \
+        --check config \
+        --mode strict
+
+      if grep -q '^live_base_url:' "${manifest}"; then
+        "${REPO_DIR}/scripts/validate-service-rollout" \
+          --service "${service}" \
+          --host "${host}" \
+          --check live \
+          --mode smoketest
+      fi
+    done <"${hosts_file}"
+    rm -f "${hosts_file}"
+  done < <(find "${REPO_DIR}/services" -maxdepth 2 -name ops.yaml | sort)
+
+  if [[ "${found}" != "true" ]]; then
+    echo "No services/*/ops.yaml manifests found to validate." >&2
+    exit 1
+  fi
+}
+
+add_validator_demo_fixture() {
+  local fixture="$1"
+
+  python3 - "${fixture}" <<'PY'
+import pathlib
+import re
+import sys
+
+base = pathlib.Path(sys.argv[1])
+service_dir = base / "services/validator-demo"
+service_dir.mkdir(parents=True, exist_ok=True)
+
+(service_dir / "ops.yaml").write_text("""service: validator-demo
+kind: app
+host: macmini
+source_repo: feocco/validator-demo
+image: ghcr.io/feocco/validator-demo:latest
+public_image: false
+container: validator-demo
+http_port: 19080
+port_env: SERVICE_PORT
+health_path: /health
+tailnet: true
+monitoring: true
+sre: true
+secrets:
+  - DEMO_TOKEN
+""")
+
+(service_dir / ".env.config").write_text("SERVICE_PORT=19080\n")
+(service_dir / ".env.example").write_text("SERVICE_PORT=19080\nDEMO_TOKEN=replace_me\n")
+(service_dir / "docker-compose.yml").write_text("""services:
+  validator-demo:
+    image: ghcr.io/feocco/validator-demo:latest
+    container_name: validator-demo
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${SERVICE_PORT:-19080}:19080"
+""")
+
+host_services = base / "hosts/macmini/services.yaml"
+host_services.write_text(host_services.read_text().rstrip() + """
+
+  validator-demo:
+    path: services/validator-demo
+    enabled: true
+""")
+
+service_secrets = base / "service-secrets.yaml"
+service_secrets.write_text(service_secrets.read_text().rstrip() + """
+
+  validator-demo:
+    env:
+      - DEMO_TOKEN
+""")
+
+tailscale = base / "hosts/macmini/tailscale-serve.yaml"
+tailscale.write_text(tailscale.read_text().rstrip() + """
+  validator-demo:
+    enabled: true
+    http_port: 19080
+    target: http://127.0.0.1:19080
+""")
+
+prometheus = base / "services/homelab-monitor/prometheus/prometheus.yml"
+prometheus.write_text(prometheus.read_text().replace(
+    "      - targets:\n          - http://host.docker.internal:3000/api/health\n        labels:\n          service: grafana\n          host: macmini\n",
+    "      - targets:\n          - http://host.docker.internal:19080/health\n        labels:\n          service: validator-demo\n          host: macmini\n"
+    "      - targets:\n          - http://host.docker.internal:3000/api/health\n        labels:\n          service: grafana\n          host: macmini\n",
+))
+
+rules = base / "services/homelab-monitor/grafana/provisioning/alerting/rules.yml"
+rules_text = rules.read_text()
+rules_text = rules_text.replace(
+    "dog-bowl-monitor|laundry-monitor|bedtime|homelab-monitor-",
+    "dog-bowl-monitor|laundry-monitor|validator-demo|bedtime|homelab-monitor-",
+)
+rules.write_text(rules_text)
+
+monitor_health = base / "scripts/check-macmini-monitor-health"
+monitor_health.write_text(monitor_health.read_text().replace(
+    "  check_promql 'probe_success{job=\"blackbox-http\",service=\"laundry-monitor\"}'\n"
+    "  check_promql 'homelab_docker_container_start_time_seconds{name=\"laundry-monitor\"}'\n",
+    "  check_promql 'probe_success{job=\"blackbox-http\",service=\"laundry-monitor\"}'\n"
+    "  check_promql 'homelab_docker_container_start_time_seconds{name=\"laundry-monitor\"}'\n"
+    "  check_promql 'probe_success{job=\"blackbox-http\",service=\"validator-demo\"}'\n"
+    "  check_promql 'homelab_docker_container_start_time_seconds{name=\"validator-demo\"}'\n",
+))
+
+sre = base / "services/homelab-sre-agent/services.yaml"
+sre.write_text(sre.read_text().rstrip() + """
+
+  validator-demo:
+    containers:
+      - validator-demo
+    images:
+      - ghcr.io/feocco/validator-demo:*
+    source:
+      repo: feocco/validator-demo
+      path_hint: /Users/feocco/code/validator-demo
+    issue_repo: feocco/validator-demo
+    deploy:
+      path: services/validator-demo
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/validator-demo
+    labels:
+      - homelab-sre
+      - validator-demo
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
+""")
+PY
+
+  "${fixture}/scripts/generate-service-secret-workflow-env" --base-dir "${fixture}" >/dev/null
+}
+
+add_worker_demo_fixture() {
+  local fixture="$1"
+
+  python3 - "${fixture}" <<'PY'
+import pathlib
+import sys
+
+base = pathlib.Path(sys.argv[1])
+service_dir = base / "services/validator-worker"
+service_dir.mkdir(parents=True, exist_ok=True)
+
+(service_dir / "ops.yaml").write_text("""service: validator-worker
+kind: worker
+host: macmini
+source_repo: feocco/validator-worker
+image: ghcr.io/feocco/validator-worker:latest
+public_image: false
+container: validator-worker
+monitoring: false
+sre: false
+secrets:
+""")
+
+(service_dir / ".env.config").write_text("LOG_LEVEL=INFO\n")
+(service_dir / ".env.example").write_text("LOG_LEVEL=INFO\n")
+(service_dir / "docker-compose.yml").write_text("""services:
+  validator-worker:
+    image: ghcr.io/feocco/validator-worker:latest
+    container_name: validator-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+""")
+
+host_services = base / "hosts/macmini/services.yaml"
+host_services.write_text(host_services.read_text().rstrip() + """
+
+  validator-worker:
+    path: services/validator-worker
+    enabled: true
+""")
+PY
+}
+
+add_multi_container_demo_fixture() {
+  local fixture="$1"
+
+  python3 - "${fixture}" <<'PY'
+import pathlib
+import sys
+
+base = pathlib.Path(sys.argv[1])
+service_dir = base / "services/validator-multi"
+service_dir.mkdir(parents=True, exist_ok=True)
+
+(service_dir / "ops.yaml").write_text("""service: validator-multi
+kind: multi-container
+host: macmini
+source_repo: feocco/validator-multi
+images:
+  - ghcr.io/feocco/validator-multi:latest
+  - postgres:17
+public_image: false
+containers:
+  - validator-multi
+  - validator-multi-postgres
+http_port: 19081
+port_env: VALIDATOR_MULTI_PORT
+health_path: /health
+tailnet: false
+monitoring: false
+sre: false
+secrets:
+  - DEMO_TOKEN
+""")
+
+(service_dir / ".env.config").write_text("VALIDATOR_MULTI_PORT=19081\n")
+(service_dir / ".env.example").write_text("VALIDATOR_MULTI_PORT=19081\nDEMO_TOKEN=replace_me\n")
+(service_dir / "docker-compose.yml").write_text("""services:
+  validator-multi:
+    image: ghcr.io/feocco/validator-multi:latest
+    container_name: validator-multi
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${VALIDATOR_MULTI_PORT:-19081}:8080"
+  validator-multi-postgres:
+    image: postgres:17
+    container_name: validator-multi-postgres
+    restart: unless-stopped
+""")
+
+host_services = base / "hosts/macmini/services.yaml"
+host_services.write_text(host_services.read_text().rstrip() + """
+
+  validator-multi:
+    path: services/validator-multi
+    enabled: true
+""")
+
+service_secrets = base / "service-secrets.yaml"
+service_secrets.write_text(service_secrets.read_text().rstrip() + """
+
+  validator-multi:
+    env:
+      - DEMO_TOKEN
+""")
+PY
+
+  "${fixture}/scripts/generate-service-secret-workflow-env" --base-dir "${fixture}" >/dev/null
+}
+
+add_multihost_demo_fixture() {
+  local fixture="$1"
+
+  python3 - "${fixture}" <<'PY'
+import pathlib
+import sys
+
+base = pathlib.Path(sys.argv[1])
+service_dir = base / "services/validator-multihost"
+service_dir.mkdir(parents=True, exist_ok=True)
+
+(service_dir / "ops.yaml").write_text("""service: validator-multihost
+kind: app
+hosts:
+  - macmini
+  - nasfeo
+source_repo: feocco/validator-multihost
+image: ghcr.io/feocco/validator-multihost:latest
+public_image: false
+container: validator-multihost
+http_port: 19082
+port_env: SERVICE_PORT
+health_path: /health
+tailnet_hosts:
+  - macmini
+monitoring: false
+sre: false
+secrets:
+""")
+
+(service_dir / ".env.config").write_text("SERVICE_PORT=19082\nLOG_LEVEL=INFO\n")
+(service_dir / ".env.example").write_text("SERVICE_PORT=19082\nLOG_LEVEL=INFO\n")
+(service_dir / "docker-compose.yml").write_text("""services:
+  validator-multihost:
+    image: ghcr.io/feocco/validator-multihost:latest
+    container_name: validator-multihost
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${SERVICE_PORT:-19082}:8080"
+""")
+
+for host in ("macmini", "nasfeo"):
+    host_services = base / f"hosts/{host}/services.yaml"
+    host_services.write_text(host_services.read_text().rstrip() + f"""
+
+  validator-multihost:
+    path: services/validator-multihost
+    enabled: true
+""")
+
+tailscale = base / "hosts/macmini/tailscale-serve.yaml"
+tailscale.write_text(tailscale.read_text().rstrip() + """
+  validator-multihost:
+    enabled: true
+    http_port: 19082
+    target: http://127.0.0.1:19082
+""")
+PY
+}
+
+copy_fixture() {
+  local destination="$1"
+  mkdir -p "${destination}"
+  tar \
+    --exclude='.git' \
+    --exclude='.homelab-deploy-state' \
+    --exclude='services/*/data/*' \
+    -cf - . | tar -xf - -C "${destination}"
+}
+
+missing_out="$(mktemp)"
+assert_fails "${missing_out}" "${REPO_DIR}/scripts/validate-service-rollout" --service missing-demo --host macmini --check config --mode strict
+assert_contains "${missing_out}" 'Missing service rollout manifest'
+assert_contains "${missing_out}" 'services/missing-demo/ops.yaml'
+rm -f "${missing_out}"
+
+validate_discovered_manifests
+
+validator_tmp="$(mktemp -d)"
+trap 'rm -rf "${validator_tmp}"' EXIT
+validator_fixture="${validator_tmp}/repo"
+copy_fixture "${validator_fixture}"
+add_validator_demo_fixture "${validator_fixture}"
+add_worker_demo_fixture "${validator_fixture}"
+add_multi_container_demo_fixture "${validator_fixture}"
+add_multihost_demo_fixture "${validator_fixture}"
+
+if "${validator_fixture}/scripts/validate-service-rollout" --base-dir "${validator_fixture}" --service validator-demo --host macmini --check config --mode strict >"${validator_tmp}/baseline.out" 2>&1; then
+  :
+else
+  cat "${validator_tmp}/baseline.out" >&2
+  echo "validator-demo fixture baseline should pass." >&2
+  exit 1
+fi
+for fixture_case in \
+  "validator-worker macmini" \
+  "validator-multi macmini" \
+  "validator-multihost macmini" \
+  "validator-multihost nasfeo"; do
+  read -r fixture_service fixture_host <<<"${fixture_case}"
+  if "${validator_fixture}/scripts/validate-service-rollout" --base-dir "${validator_fixture}" --service "${fixture_service}" --host "${fixture_host}" --check config --mode strict >"${validator_tmp}/${fixture_service}-${fixture_host}.out" 2>&1; then
+    :
+  else
+    cat "${validator_tmp}/${fixture_service}-${fixture_host}.out" >&2
+    echo "${fixture_service} fixture baseline should pass on ${fixture_host}." >&2
+    exit 1
+  fi
+done
+
+cp -R "${validator_fixture}" "${validator_tmp}/invalid-manifest"
+python3 - "${validator_tmp}/invalid-manifest/services/validator-demo/ops.yaml" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+path.write_text(path.read_text().replace("container: validator-demo\n", ""))
+PY
+invalid_out="${validator_tmp}/invalid-manifest.out"
+assert_fails "${invalid_out}" "${validator_tmp}/invalid-manifest/scripts/validate-service-rollout" --base-dir "${validator_tmp}/invalid-manifest" --service validator-demo --host macmini --check config --mode strict
+assert_contains "${invalid_out}" 'missing fields: container'
+
+cp -R "${validator_fixture}" "${validator_tmp}/missing-secret"
+python3 - "${validator_tmp}/missing-secret/service-secrets.yaml" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+path.write_text(path.read_text().replace("      - DEMO_TOKEN\n", ""))
+PY
+secret_out="${validator_tmp}/missing-secret.out"
+assert_fails "${secret_out}" "${validator_tmp}/missing-secret/scripts/validate-service-rollout" --base-dir "${validator_tmp}/missing-secret" --service validator-demo --host macmini --check config --mode strict
+assert_contains "${secret_out}" 'differ from service-secrets.yaml'
+
+cp -R "${validator_fixture}" "${validator_tmp}/missing-tailnet"
+python3 - "${validator_tmp}/missing-tailnet/hosts/macmini/tailscale-serve.yaml" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+path.write_text(re.sub(r"  validator-demo:\n(?:    .+\n)*", "", path.read_text()))
+PY
+tailnet_out="${validator_tmp}/missing-tailnet.out"
+assert_fails "${tailnet_out}" "${validator_tmp}/missing-tailnet/scripts/validate-service-rollout" --base-dir "${validator_tmp}/missing-tailnet" --service validator-demo --host macmini --check config --mode strict
+assert_contains "${tailnet_out}" 'Missing Tailscale Serve entry'
+
+cp -R "${validator_fixture}" "${validator_tmp}/port-collision"
+mkdir -p "${validator_tmp}/port-collision/services/validator-collision"
+printf 'SERVICE_PORT=19080\n' > "${validator_tmp}/port-collision/services/validator-collision/.env.config"
+cat >> "${validator_tmp}/port-collision/hosts/macmini/services.yaml" <<'EOF'
+
+  validator-collision:
+    path: services/validator-collision
+    enabled: true
+EOF
+port_out="${validator_tmp}/port-collision.out"
+assert_fails "${port_out}" "${validator_tmp}/port-collision/scripts/validate-service-rollout" --base-dir "${validator_tmp}/port-collision" --service validator-demo --host macmini --check config --mode strict
+assert_contains "${port_out}" 'HTTP port 19080 is also used by validator-collision'
+
+cp -R "${validator_fixture}" "${validator_tmp}/missing-prometheus"
+python3 - "${validator_tmp}/missing-prometheus/services/homelab-monitor/prometheus/prometheus.yml" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+path.write_text(re.sub(r"      - targets:\n          - http://host\.docker\.internal:19080/health\n        labels:\n          service: validator-demo\n          host: macmini\n", "", path.read_text()))
+PY
+prom_out="${validator_tmp}/missing-prometheus.out"
+assert_fails "${prom_out}" "${validator_tmp}/missing-prometheus/scripts/validate-service-rollout" --base-dir "${validator_tmp}/missing-prometheus" --service validator-demo --host macmini --check config --mode strict
+assert_contains "${prom_out}" 'Prometheus blackbox target is missing'
+
+cp -R "${validator_fixture}" "${validator_tmp}/missing-sre"
+python3 - "${validator_tmp}/missing-sre/services/homelab-sre-agent/services.yaml" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+path.write_text(re.sub(r"\n  validator-demo:\n(?:    .+\n|      .+\n)*", "\n", path.read_text()))
+PY
+sre_out="${validator_tmp}/missing-sre.out"
+assert_fails "${sre_out}" "${validator_tmp}/missing-sre/scripts/validate-service-rollout" --base-dir "${validator_tmp}/missing-sre" --service validator-demo --host macmini --check config --mode strict
+assert_contains "${sre_out}" 'SRE metadata is missing'
+
+rm -rf "${validator_tmp}"
+trap - EXIT

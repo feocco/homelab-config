@@ -1,0 +1,19 @@
+service: mealie-planner
+kind: app
+host: macmini
+source_repo: feocco/mealie-planner
+image: ghcr.io/feocco/mealie-planner:latest
+public_image: true
+container: mealie-planner
+http_port: 8097
+port_env: MEALIE_PLANNER_PORT
+health_path: /health
+tailnet: false
+monitoring: true
+sre: true
+secrets:
+  - OPENAI_API_KEY
+  - MEALIE_API_TOKEN
+  - HA_URL
+  - HA_LONG_LIVED_TOKEN
+  - HOMELAB_FUNCTIONS_TOKEN

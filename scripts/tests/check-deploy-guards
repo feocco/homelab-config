@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+"${REPO_DIR}/scripts/apply-tailscale-serve" --host macmini --base-dir "${REPO_DIR}" --dry-run >/dev/null
+"${REPO_DIR}/scripts/ensure-macmini-node-exporter" --dry-run >/dev/null
+bash -n "${REPO_DIR}/scripts/check-macmini-monitor-health"
+bash -n "${REPO_DIR}/scripts/list-homelab-services"
+bash -n "${REPO_DIR}/scripts/redeploy-image"
+python3 -m py_compile "${REPO_DIR}/scripts/validate-service-rollout"
+
+python3 - \
+  "${REPO_DIR}/services/homelab-monitor/exporters/openai_cost_exporter.py" \
+  "${REPO_DIR}/services/homelab-monitor/exporters/docker_stats_exporter.py" <<'PY'
+import ast
+import pathlib
+import sys
+
+for arg in sys.argv[1:]:
+    ast.parse(pathlib.Path(arg).read_text(), filename=arg)
+PY
+
+tmp_runtime="$(mktemp -d)"
+mkdir -p "${tmp_runtime}/legacy-service/data" "${tmp_runtime}/services/legacy-service/data"
+touch "${tmp_runtime}/services/legacy-service/data/.gitkeep"
+echo "state" > "${tmp_runtime}/legacy-service/data/state.txt"
+rm -rf "${tmp_runtime}/services/legacy-service/data"
+mkdir -p "${tmp_runtime}/services/legacy-service/data"
+touch "${tmp_runtime}/services/legacy-service/data/.gitkeep"
+rm -rf "${tmp_runtime}/services/legacy-service/data"
+"${REPO_DIR}/scripts/migrate-host-runtime-layout" "${tmp_runtime}" >/dev/null
+test -f "${tmp_runtime}/services/legacy-service/data/state.txt"
+rm -rf "${tmp_runtime}"
+
+guard_tmp="$(mktemp -d)"
+guard_repo="${guard_tmp}/repo"
+guard_runtime="${guard_tmp}/runtime"
+guard_fakebin="${guard_tmp}/bin"
+mkdir -p \
+  "${guard_repo}/scripts" \
+  "${guard_repo}/hosts/macmini" \
+  "${guard_repo}/services/demo" \
+  "${guard_runtime}/services/demo" \
+  "${guard_fakebin}"
+cp "${REPO_DIR}/scripts/homelab-deploy" "${guard_repo}/scripts/homelab-deploy"
+cp "${REPO_DIR}/scripts/lib-service-secrets" "${guard_repo}/scripts/lib-service-secrets"
+chmod +x "${guard_repo}/scripts/homelab-deploy"
+cat > "${guard_repo}/hosts/macmini/services.yaml" <<EOF
+host:
+  name: macmini
+  deploy_base_dir: ${guard_runtime}
+
+services:
+  demo:
+    path: services/demo
+    enabled: true
+EOF
+cat > "${guard_runtime}/services/demo/docker-compose.yml" <<'EOF'
+services:
+  demo:
+    image: ghcr.io/feocco/demo:latest
+EOF
+cat > "${guard_fakebin}/docker-compose" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "${guard_tmp}/compose.log"
+EOF
+cat > "${guard_fakebin}/docker" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "ps" ]; then
+  echo "CONTAINER ID   IMAGE   NAMES"
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "${guard_fakebin}/docker-compose" "${guard_fakebin}/docker"
+(
+  cd "${guard_repo}"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Tooling Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+
+touch "${guard_repo}/dirty.txt"
+dirty_out="${guard_tmp}/dirty.out"
+assert_fails "${dirty_out}" env PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}"
+assert_contains "${dirty_out}" 'dirty worktree'
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${guard_runtime}" >/dev/null
+assert_json_field "${guard_runtime}/.homelab-deploy-state/macmini/demo.json" git_dirty true
+assert_contains "${guard_tmp}/compose.log" '--remove-orphans'
+rm -f "${guard_repo}/dirty.txt" "${guard_tmp}/compose.log"
+
+(
+  cd "${guard_repo}"
+  git checkout -b feature/canary >/dev/null
+)
+branch_out="${guard_tmp}/branch.out"
+assert_fails "${branch_out}" env PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}"
+assert_contains "${branch_out}" 'without --canary'
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --canary --deploy-base-dir "${guard_runtime}" >/dev/null
+assert_json_field "${guard_runtime}/.homelab-deploy-state/macmini/demo.json" canary true
+(
+  cd "${guard_repo}"
+  git checkout main >/dev/null
+)
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}" >/dev/null
+assert_json_field "${guard_runtime}/.homelab-deploy-state/macmini/demo.json" git_branch main
+rm -rf "${guard_tmp}"
+
+if grep -R '\${{ github.event.inputs\.' "${REPO_DIR}/.github/workflows"; then
+  echo "Deploy workflows must not interpolate github.event.inputs directly into shell scripts." >&2
+  exit 1
+fi
