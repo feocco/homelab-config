@@ -37,6 +37,7 @@ on:
           - mealie
           - mealie-planner
           - netalertx
+          - pirate-radio
           - plant-monitor
           - portainer
       force_recreate:
