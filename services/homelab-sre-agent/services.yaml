@@ -347,3 +347,23 @@ services:
       enabled: true
       autofix: false
       repo_daily_limit: 1
+
+  pirate-radio:
+    containers:
+      - pirate-radio
+    images:
+      - ghcr.io/feocco/pirate-radio:*
+    source:
+      repo: feocco/pirate-wires-reader
+      path_hint: /Users/feocco/code/pirate-wires-reader
+    issue_repo: feocco/pirate-wires-reader
+    deploy:
+      path: services/pirate-radio
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/pirate-radio
+    labels:
+      - homelab-sre
+      - pirate-radio
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1

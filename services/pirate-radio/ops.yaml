@@ -1,0 +1,19 @@
+service: pirate-radio
+kind: app
+host: macmini
+source_repo: feocco/pirate-wires-reader
+image: ghcr.io/feocco/pirate-radio:latest
+public_image: true
+container: pirate-radio
+http_port: 8103
+port_env: SERVICE_PORT
+health_path: /health
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8103
+tailnet: true
+monitoring: true
+sre: true
+secrets:
+  - OPENAI_API_KEY
+  - HA_URL
+  - HA_LONG_LIVED_TOKEN
+  - HOMELAB_FUNCTIONS_TOKEN

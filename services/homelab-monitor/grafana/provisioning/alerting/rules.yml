@@ -364,7 +364,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: changes(homelab_docker_container_start_time_seconds{name=~"plant-monitor|homelab-functions|hass-janitor|homelab-log-watcher|homelab-sre-agent|hello-nas|dashy|homarr|mealie-planner|instacart-history-service|dog-bowl-monitor|laundry-monitor|bedtime|homelab-monitor-(prometheus|grafana|blackbox-exporter|openai-cost-exporter|docker-stats-exporter)"}[15m]) > 0
+              expr: changes(homelab_docker_container_start_time_seconds{name=~"plant-monitor|homelab-functions|hass-janitor|homelab-log-watcher|homelab-sre-agent|hello-nas|dashy|homarr|mealie-planner|instacart-history-service|pirate-radio|dog-bowl-monitor|laundry-monitor|bedtime|homelab-monitor-(prometheus|grafana|blackbox-exporter|openai-cost-exporter|docker-stats-exporter)"}[15m]) > 0
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
