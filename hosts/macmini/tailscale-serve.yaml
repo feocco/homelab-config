@@ -43,3 +43,7 @@ services:
     enabled: true
     http_port: 8101
     target: http://127.0.0.1:8101
+  laundry-monitor:
+    enabled: true
+    http_port: 8102
+    target: http://127.0.0.1:8102
