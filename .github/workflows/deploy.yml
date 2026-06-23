@@ -93,7 +93,11 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           if [ -n "${DOCKERHUB_USERNAME}" ] && [ -n "${DOCKERHUB_TOKEN}" ]; then
-            printf '%s' "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+            DOCKER_CONFIG_DIR="${DOCKER_CONFIG:-${RUNNER_TEMP:-/tmp}/docker-config}"
+            mkdir -p "${DOCKER_CONFIG_DIR}"
+            auth="$(printf '%s:%s' "${DOCKERHUB_USERNAME}" "${DOCKERHUB_TOKEN}" | base64 | tr -d '\n')"
+            printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}\n' "${auth}" > "${DOCKER_CONFIG_DIR}/config.json"
+            echo "DOCKER_CONFIG=${DOCKER_CONFIG_DIR}" >> "${GITHUB_ENV}"
           else
             echo "Skipping Docker Hub login; DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not configured."
           fi
@@ -248,7 +252,11 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           if [ -n "${DOCKERHUB_USERNAME}" ] && [ -n "${DOCKERHUB_TOKEN}" ]; then
-            printf '%s' "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+            DOCKER_CONFIG_DIR="${DOCKER_CONFIG:-${RUNNER_TEMP:-/tmp}/docker-config}"
+            mkdir -p "${DOCKER_CONFIG_DIR}"
+            auth="$(printf '%s:%s' "${DOCKERHUB_USERNAME}" "${DOCKERHUB_TOKEN}" | base64 | tr -d '\n')"
+            printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}\n' "${auth}" > "${DOCKER_CONFIG_DIR}/config.json"
+            echo "DOCKER_CONFIG=${DOCKER_CONFIG_DIR}" >> "${GITHUB_ENV}"
           else
             echo "Skipping Docker Hub login; DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not configured."
           fi
