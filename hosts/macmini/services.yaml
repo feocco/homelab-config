@@ -71,3 +71,7 @@ services:
   laundry-monitor:
     path: services/laundry-monitor
     enabled: true
+
+  pirate-radio:
+    path: services/pirate-radio
+    enabled: true

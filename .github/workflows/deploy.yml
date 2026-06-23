@@ -38,6 +38,7 @@ on:
           - mealie
           - mealie-planner
           - netalertx
+          - pirate-radio
           - plant-monitor
           - portainer
       force_recreate:
@@ -121,7 +122,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|plant-monitor|portainer)
+            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
@@ -229,6 +230,10 @@ jobs:
           MEALIE__SMTP_FROM_EMAIL: ${{ secrets.MEALIE__SMTP_FROM_EMAIL }}
           MEALIE__SMTP_PASSWORD: ${{ secrets.MEALIE__SMTP_PASSWORD }}
           MEALIE__SMTP_USER: ${{ secrets.MEALIE__SMTP_USER }}
+          PIRATE_RADIO__HA_LONG_LIVED_TOKEN: ${{ secrets.PIRATE_RADIO__HA_LONG_LIVED_TOKEN }}
+          PIRATE_RADIO__HA_URL: ${{ secrets.PIRATE_RADIO__HA_URL }}
+          PIRATE_RADIO__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.PIRATE_RADIO__HOMELAB_FUNCTIONS_TOKEN }}
+          PIRATE_RADIO__OPENAI_API_KEY: ${{ secrets.PIRATE_RADIO__OPENAI_API_KEY }}
           PLANT_MONITOR__HA_LONG_LIVED_TOKEN: ${{ secrets.PLANT_MONITOR__HA_LONG_LIVED_TOKEN }}
           PLANT_MONITOR__HA_URL: ${{ secrets.PLANT_MONITOR__HA_URL }}
           PLANT_MONITOR__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.PLANT_MONITOR__HOMELAB_FUNCTIONS_TOKEN }}
@@ -285,7 +290,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|plant-monitor|portainer)
+            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2

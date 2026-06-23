@@ -128,6 +128,8 @@ if [[ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
   check_promql 'homelab_docker_container_start_time_seconds{name="dog-bowl-monitor"}'
   check_promql 'probe_success{job="blackbox-http",service="laundry-monitor"}'
   check_promql 'homelab_docker_container_start_time_seconds{name="laundry-monitor"}'
+  check_promql 'probe_success{job="blackbox-http",service="pirate-radio"}'
+  check_promql 'homelab_docker_container_start_time_seconds{name="pirate-radio"}'
 else
   echo "Skipping Prometheus API checks; set GRAFANA_ADMIN_PASSWORD or keep ${ENV_FILE} populated."
 fi

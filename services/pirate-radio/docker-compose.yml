@@ -1,0 +1,18 @@
+services:
+  pirate-radio:
+    image: ghcr.io/feocco/pirate-radio:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
+    container_name: pirate-radio
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${SERVICE_PORT:-8103}:${SERVICE_PORT:-8103}"
+    volumes:
+      - ./data:/data
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"
