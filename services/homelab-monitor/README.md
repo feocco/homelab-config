@@ -8,6 +8,8 @@ Metrics-first Grafana and Prometheus stack for `macmini`.
 - Grafana Tailscale fallback: `http://maclabs-mac-mini.taildf3445.ts.net:3000`
 - Prometheus: internal only
 - Exporters: internal only
+- Python exporter sidecars use `python:3.12-slim`; the exporter scripts are
+  stdlib-only and do not require Python 3.13.
 - Phone alerts: Grafana webhook to Mac-hosted `homelab-functions`
 - Homelab dashboard: `https://grafana.home.feocco.com/d/homelab-monitoring/homelab-monitoring`
 - OpenAI cost dashboard: `https://grafana.home.feocco.com/d/openai-cost-usage/openai-cost-usage`

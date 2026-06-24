@@ -67,7 +67,7 @@ services:
         compress: "false"
 
   docker-stats-exporter:
-    image: python:3.13.13-alpine3.22
+    image: python:3.12-slim
     container_name: homelab-monitor-docker-stats-exporter
     restart: unless-stopped
     env_file:
@@ -90,7 +90,7 @@ services:
         compress: "false"
 
   openai-cost-exporter:
-    image: python:3.13.13-alpine3.22
+    image: python:3.12-slim
     container_name: homelab-monitor-openai-cost-exporter
     restart: unless-stopped
     env_file:

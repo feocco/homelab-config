@@ -6,7 +6,7 @@ images:
   - prom/prometheus:v3.11.3
   - grafana/grafana:13.0.1
   - prom/blackbox-exporter:v0.28.0
-  - python:3.13.13-alpine3.22
+  - python:3.12-slim
 public_image: true
 containers:
   - homelab-monitor-prometheus
