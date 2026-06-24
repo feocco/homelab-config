@@ -28,7 +28,9 @@ GitHub Actions secrets and rendered into the ignored runtime `.env`:
 - `HOMELAB_FUNCTIONS_TOKEN`
 
 `PWR_HEADLESS=true` is required for the containerized Playwright extraction
-path.
+path. `PWR_PROFILE_DIR=/data/playwright-profile` keeps the logged-in browser
+profile in the persistent runtime volume; that directory contains Pirate Wires
+session state and must not be committed.
 
 ## Storage
 
