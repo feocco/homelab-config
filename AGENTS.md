@@ -24,6 +24,12 @@
 - Caddy routes are generated from flat `route_*` fields in service `ops.yaml`
   files. Use `./scripts/generate-caddy-config` and `./scripts/sync-unifi-dns`;
   do not hand-edit or commit `services/caddy/Caddyfile`.
+- For new Mac mini user-facing HTTP services, default to a LAN HTTPS route
+  under `home.feocco.com` unless the service is a worker, disabled, not
+  user-facing, or has incompatible base-URL assumptions. Use
+  `./scripts/list-https-route-candidates`, add only `route_*` fields, sync
+  UniFi DNS, deploy Caddy plus the service as a canary, then run strict config
+  and live validation.
 - Homepage display metadata belongs in optional flat `dashboard_*` fields in
   each service `ops.yaml`. External/manual links belong in
   `services/homepage/manual-links.yaml`.
