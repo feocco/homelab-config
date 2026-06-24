@@ -626,6 +626,9 @@ class Validator:
         route_applies = not isinstance(route_hosts, list) or self.host in [str(value) for value in route_hosts]
         if route_hostname and manifest.get("route_https") is True and route_applies:
             bind_addr = host_bind_addr(self.base_dir / "hosts" / self.host / "services.yaml")
+            route_path = str(manifest.get("health_path") or "/")
+            if not route_path.startswith("/"):
+                route_path = f"/{route_path}"
             try:
                 resolved = {item[4][0] for item in socket.getaddrinfo(route_hostname, 443, type=socket.SOCK_STREAM)}
                 if bind_addr and bind_addr in resolved:
@@ -638,10 +641,10 @@ class Validator:
             except Exception as exc:
                 (self.fail if self.strict else self.warn)("live proof", f"Route DNS lookup failed: {exc}")
             try:
-                with urllib.request.urlopen(f"https://{route_hostname}/", timeout=10) as response:
+                with urllib.request.urlopen(f"https://{route_hostname}{route_path}", timeout=10) as response:
                     response.read(4096)
                 if response.status < 400:
-                    self.pass_("live proof", f"HTTPS route responds: https://{route_hostname}/")
+                    self.pass_("live proof", f"HTTPS route responds: https://{route_hostname}{route_path}")
                 else:
                     raise urllib.error.URLError(f"HTTP {response.status}")
             except Exception as exc:
