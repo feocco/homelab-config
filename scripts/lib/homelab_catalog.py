@@ -7,6 +7,7 @@ import argparse
 import json
 import pathlib
 import re
+import sys
 from typing import Any
 
 
@@ -325,6 +326,10 @@ def build_catalog(base_dir: pathlib.Path) -> dict[str, Any]:
                     "http_port": http_port,
                     "health_path": str(manifest.get("health_path") or ""),
                     "homepage_url": homepage_url,
+                    "route_hostname": manifest_value(manifest, "route_hostname"),
+                    "route_https": manifest.get("route_https") is True,
+                    "route_dns": manifest_value(manifest, "route_dns"),
+                    "route_target_port": manifest.get("route_target_port"),
                     "monitoring": monitoring,
                     "monitored": monitoring,
                     "sre_metadata": service in sre,
@@ -343,6 +348,10 @@ def build_catalog(base_dir: pathlib.Path) -> dict[str, Any]:
 
 
 def homepage_url_for(service: str, host: str, manifest: dict[str, Any], caddy_routes: dict[int, str]) -> str:
+    route_hostname = manifest_value(manifest, "route_hostname")
+    if route_hostname:
+        scheme = "https" if manifest.get("route_https") is True else "http"
+        return f"{scheme}://{route_hostname.rstrip('/')}/"
     if service == "homepage":
         return "http://home.arpa/"
     if service == "homarr":
@@ -356,6 +365,78 @@ def homepage_url_for(service: str, host: str, manifest: dict[str, Any], caddy_ro
     if live:
         return live.rstrip("/") + "/"
     return ""
+
+
+def route_entries(base_dir: pathlib.Path, host: str | None = None) -> list[dict[str, Any]]:
+    manifests = service_manifests(base_dir)
+    entries: list[dict[str, Any]] = []
+    for current_host in host_names(base_dir):
+        if host and current_host != host:
+            continue
+        services_file = base_dir / "hosts" / current_host / "services.yaml"
+        if not services_file.exists():
+            continue
+        for service, entry in parse_host_services(services_file).items():
+            if entry.get("enabled") is False:
+                continue
+            manifest = manifests.get(service, {})
+            hostname = manifest_value(manifest, "route_hostname")
+            if not hostname:
+                continue
+            target_port = manifest.get("route_target_port") or manifest.get("http_port")
+            entries.append(
+                {
+                    "service": service,
+                    "host": current_host,
+                    "hostname": hostname,
+                    "target_port": target_port,
+                    "https": manifest.get("route_https") is True,
+                    "dns": manifest_value(manifest, "route_dns"),
+                    "aliases": [str(value) for value in manifest.get("route_aliases", []) if str(value)],
+                }
+            )
+    return sorted(entries, key=lambda row: (str(row["hostname"]), str(row["service"])))
+
+
+def caddy_config(base_dir: pathlib.Path, host: str | None = None) -> str:
+    entries = route_entries(base_dir, host)
+    lines = [
+        "{",
+        "\temail {$CADDY_ACME_EMAIL}",
+        "}",
+        "",
+        "*.{$CADDY_HOME_DOMAIN} {",
+        "\ttls {",
+        "\t\tdns cloudflare {env.CLOUDFLARE_API_TOKEN}",
+        "\t}",
+        "\trespond \"No homelab route configured for {host}\" 404",
+        "}",
+        "",
+    ]
+    for entry in entries:
+        hostname = str(entry["hostname"])
+        target_port = entry["target_port"]
+        lines.extend(
+            [
+                f"{hostname} {{",
+                "\ttls {",
+                "\t\tdns cloudflare {env.CLOUDFLARE_API_TOKEN}",
+                "\t}",
+                f"\treverse_proxy host.docker.internal:{target_port}",
+                "}",
+                "",
+            ]
+        )
+        for alias in entry["aliases"]:
+            lines.extend(
+                [
+                    f"http://{alias} {{",
+                    f"\tredir https://{hostname}{{uri}} 308",
+                    "}",
+                    "",
+                ]
+            )
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def yaml_scalar(value: Any) -> str:
@@ -596,4 +677,21 @@ def main_homepage(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     write_homepage_config(pathlib.Path(args.base_dir), pathlib.Path(args.output))
+    return 0
+
+
+def main_caddy(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[2]))
+    parser.add_argument("--host", default=None)
+    parser.add_argument("--output", default="-")
+    args = parser.parse_args(argv)
+
+    payload = caddy_config(pathlib.Path(args.base_dir), args.host)
+    if args.output == "-":
+        print(payload, end="")
+    else:
+        output = pathlib.Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(payload)
     return 0

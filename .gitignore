@@ -1,6 +1,9 @@
 **/.env
+**/__pycache__/
+.local/
 **/data/*
 !**/data/.gitkeep
 services/homepage/config/*
 !services/homepage/config/.gitkeep
+services/caddy/Caddyfile
 .homelab-deploy-state/

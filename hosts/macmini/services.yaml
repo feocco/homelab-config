@@ -1,7 +1,7 @@
 host:
   name: macmini
   deploy_base_dir: ${HOME}/homelab-config-runtime
-  bind_addr: 192.168.1.43
+  bind_addr: 192.168.1.118
 
 services:
   hello-nas:

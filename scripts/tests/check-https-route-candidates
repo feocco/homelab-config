@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+candidate_json="$("${REPO_DIR}/scripts/list-https-route-candidates" --format json)"
+CANDIDATE_JSON="${candidate_json}" python3 - <<'PY'
+import json
+import os
+
+items = {item["service"]: item for item in json.loads(os.environ["CANDIDATE_JSON"])}
+
+homepage = items["homepage"]
+if homepage["status"] != "routed":
+    raise SystemExit(f"homepage should be routed, got {homepage}")
+if homepage["suggested_hostname"] != "home.feocco.com":
+    raise SystemExit(f"homepage hostname mismatch: {homepage}")
+
+plant = items["plant-monitor"]
+if plant["status"] != "eligible":
+    raise SystemExit(f"plant-monitor should be eligible, got {plant}")
+if plant["suggested_hostname"] != "plant-monitor.home.feocco.com":
+    raise SystemExit(f"plant-monitor hostname mismatch: {plant}")
+
+bedtime = items["bedtime"]
+if bedtime["status"] != "blocked" or "no user-facing HTTP route" not in bedtime["reason"]:
+    raise SystemExit(f"bedtime should be blocked as a worker, got {bedtime}")
+
+caddy = items["caddy"]
+if caddy["status"] != "blocked" or "terminator" not in caddy["reason"]:
+    raise SystemExit(f"caddy should be blocked, got {caddy}")
+PY
+
+eligible_text="$("${REPO_DIR}/scripts/list-https-route-candidates" --status eligible)"
+if [[ "${eligible_text}" != *"plant-monitor.home.feocco.com"* ]]; then
+  echo "eligible output should include suggested service hostnames" >&2
+  echo "${eligible_text}" >&2
+  exit 1
+fi

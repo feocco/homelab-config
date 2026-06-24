@@ -2,8 +2,7 @@ service: caddy
 kind: infra
 host: macmini
 source_repo: feocco/homelab-config
-image: caddy:2-alpine
-public_image: true
+image: ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare
 container: caddy
 http_port: 80
 port_env: CADDY_HTTP_PORT
@@ -11,3 +10,4 @@ tailnet: false
 monitoring: false
 sre: false
 secrets:
+  - CLOUDFLARE_API_TOKEN

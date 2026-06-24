@@ -14,9 +14,9 @@ High-level map for understanding the deployed homelab quickly.
 - Tailscale exposes Mac services without LAN-wide binds.
 - Cloudflare Tunnel publishes selected public services safely.
 - Cloudflare Access gates public Mealie access.
-- Caddy provides local `home.arpa` dashboard names.
+- Caddy terminates HTTPS for routed `home.feocco.com` LAN names.
 - UniFi DNS maps friendly names to Mac.
-- Homepage is the generated local front door at `http://home.arpa`.
+- Homepage is the generated local front door at `https://home.feocco.com`.
 - Homarr remains available separately at `http://homarr.home.arpa`.
 
 ## Deployment

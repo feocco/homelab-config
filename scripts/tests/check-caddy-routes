@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+caddy_tmp="$(mktemp -d)"
+"${REPO_DIR}/scripts/generate-caddy-config" --output "${caddy_tmp}/Caddyfile"
+assert_contains "${caddy_tmp}/Caddyfile" 'home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:7576'
+assert_contains "${caddy_tmp}/Caddyfile" 'tls {'
+assert_contains "${caddy_tmp}/Caddyfile" 'dns cloudflare {env.CLOUDFLARE_API_TOKEN}'
+assert_contains "${caddy_tmp}/Caddyfile" 'http://home.arpa {'
+assert_contains "${caddy_tmp}/Caddyfile" 'redir https://home.feocco.com{uri} 308'
+rm -rf "${caddy_tmp}"
+
+dns_dry_run="$(
+  UNIFI_BASE_URL=https://unifi.example.invalid \
+  UNIFI_API_KEY=test-api-key \
+  "${REPO_DIR}/scripts/sync-unifi-dns" --host macmini --dry-run
+)"
+if [[ "${dns_dry_run}" != *"Would upsert A home.feocco.com -> 192.168.1.118"* ]]; then
+  echo "UniFi DNS dry-run should show Homepage A record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+
+dns_fixture="$(mktemp)"
+cat > "${dns_fixture}" <<'JSON'
+{
+  "records": [
+    {
+      "id": "record-home",
+      "type": "A",
+      "name": "home.feocco.com",
+      "value": "192.168.1.118"
+    }
+  ]
+}
+JSON
+UNIFI_BASE_URL=https://unifi.example.invalid \
+UNIFI_API_KEY=test-api-key \
+UNIFI_DNS_RECORDS_FIXTURE="${dns_fixture}" \
+  "${REPO_DIR}/scripts/sync-unifi-dns" --host macmini --check >/dev/null
+rm -f "${dns_fixture}"
+
+deploy_dry_run="$("${REPO_DIR}/scripts/homelab-deploy" --host macmini caddy --dry-run --deploy-base-dir "${REPO_DIR}")"
+if [[ "${deploy_dry_run}" != *"Would generate Caddy config"* ]]; then
+  echo "Caddy dry-run should show deploy-time config generation" >&2
+  echo "${deploy_dry_run}" >&2
+  exit 1
+fi

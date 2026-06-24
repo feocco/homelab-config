@@ -116,12 +116,37 @@ Use `scripts/generate-service-catalog` to inspect the service catalog.
 Homepage config is generated at deploy time from service `ops.yaml` dashboard
 metadata plus `services/homepage/manual-links.yaml`; generated files under
 `services/homepage/config/` are ignored and should not be committed.
+Caddy config is generated at deploy time from service `ops.yaml` `route_*`
+fields; `services/caddy/Caddyfile` is ignored and should not be committed.
 
 ```bash
 ./scripts/generate-service-catalog --format json
 tmpdir="$(mktemp -d)"
 ./scripts/generate-homepage-config --output "$tmpdir"
+./scripts/generate-caddy-config
 ```
+
+To add a LAN HTTPS route for a service, add these fields to the service
+manifest and validate before deploy:
+
+```yaml
+route_hostname: service.home.feocco.com
+route_target_port: 8100
+route_https: true
+route_dns: unifi
+```
+
+Then check the generated proxy and UniFi DNS intent:
+
+```bash
+./scripts/generate-caddy-config --host macmini
+./scripts/sync-unifi-dns --host macmini --dry-run
+LC_ALL=C ./scripts/validate-service-rollout --service service --host macmini --check config --mode strict
+```
+
+Use `./scripts/list-https-route-candidates --status eligible` to pick the next
+service and `docs/https-route-rollout-goal.md` for the repeatable canary and
+live-proof criteria.
 
 Use `scripts/redeploy-image` when only app code changed and a fresh image has
 already been published. This triggers the existing GitHub Actions deploy

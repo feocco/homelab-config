@@ -21,6 +21,9 @@
   parallel catalog file. Use `./scripts/generate-service-catalog --format json`
   to inspect the catalog. Homepage runtime config is generated during deploy;
   do not commit generated files under `services/homepage/config/`.
+- Caddy routes are generated from flat `route_*` fields in service `ops.yaml`
+  files. Use `./scripts/generate-caddy-config` and `./scripts/sync-unifi-dns`;
+  do not hand-edit or commit `services/caddy/Caddyfile`.
 - Homepage display metadata belongs in optional flat `dashboard_*` fields in
   each service `ops.yaml`. External/manual links belong in
   `services/homepage/manual-links.yaml`.

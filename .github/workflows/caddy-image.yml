@@ -1,0 +1,54 @@
+name: Build Caddy Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/caddy/Dockerfile
+      - .github/workflows/caddy-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  CADDY_IMAGE: ghcr.io/feocco/homelab-caddy
+  CADDY_VERSION: 2.11.4
+
+jobs:
+  build:
+    name: Build Caddy with Cloudflare DNS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build validation image
+        uses: docker/build-push-action@v6
+        with:
+          context: services/caddy
+          build-args: |
+            CADDY_VERSION=${{ env.CADDY_VERSION }}
+          load: true
+          tags: ${{ env.CADDY_IMAGE }}:${{ env.CADDY_VERSION }}-cloudflare
+
+      - name: Verify Cloudflare DNS module
+        run: |
+          docker run --rm "${CADDY_IMAGE}:${CADDY_VERSION}-cloudflare" caddy list-modules | grep -qx 'dns.providers.cloudflare'
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          docker push "${CADDY_IMAGE}:${CADDY_VERSION}-cloudflare"

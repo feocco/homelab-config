@@ -13,6 +13,7 @@ operational outcome for each enabled service.
   deploy allowlist, and dry-run deploy.
 - Tailnet: user-facing HTTP service exposure through
   `hosts/<host>/tailscale-serve.yaml`.
+- Route: LAN HTTPS exposure through generated Caddy config and UniFi local DNS.
 - Monitoring/SRE: Prometheus blackbox target, restart alert coverage,
   monitor-health coverage, and `homelab-sre-agent` metadata.
 - Live proof: health/status endpoint, monitor-health output, and metric series
@@ -72,6 +73,12 @@ Optional fields enable additional units:
 - `live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8102` enables live
   HTTP validation.
 - `tailnet: true` checks Tailscale Serve config and dry-run apply.
+- `route_hostname: home.feocco.com` declares the LAN HTTPS hostname.
+- `route_target_port: 7576` declares the backend port Caddy should proxy to.
+- `route_https: true` requires the hostname to use Caddy HTTPS.
+- `route_dns: unifi` requires the route to be present in UniFi local DNS.
+- `route_aliases:` optionally lists legacy HTTP hostnames that redirect to the
+  HTTPS route.
 - `monitoring: true` checks Prometheus, restart alert, monitor-health, and live
   monitor-health proof.
 - `sre: true` checks `homelab-sre-agent` service metadata.
@@ -116,6 +123,15 @@ Tailnet failure:
 
 - Add or correct the service entry in `hosts/<host>/tailscale-serve.yaml`.
 - Run `./scripts/apply-tailscale-serve --host <host> --dry-run`.
+
+Route failure:
+
+- Add or correct the `route_*` fields in `services/<service>/ops.yaml`.
+- Run `./scripts/generate-caddy-config --host <host>` and confirm the hostname
+  appears.
+- Run `./scripts/sync-unifi-dns --host <host> --dry-run` to confirm UniFi DNS
+  will point the hostname at the host bind address.
+- Ensure `caddy` is enabled on the host and publishes port `443`.
 
 Monitoring or SRE failure:
 
@@ -168,6 +184,18 @@ Tailnet:
   the manifest HTTP port.
 - `scripts/apply-tailscale-serve --dry-run` must pass.
 
+Route:
+
+- `route_hostname` must be a public DNS name, not `.home.arpa`, so Caddy can
+  use public ACME certificates.
+- `route_dns: unifi` routes LAN clients by local DNS. The `sync-unifi-dns`
+  script uses `UNIFI_BASE_URL`, `UNIFI_API_KEY`, optional `UNIFI_SITE_ID`, and
+  either optional `UNIFI_CERT_SHA256`/`UNIFI_TLS_SERVER_NAME` for pinned TLS or
+  optional `UNIFI_SKIP_TLS_VERIFY` for temporary bootstrap.
+- Caddy gets certificates with Cloudflare DNS-01. `CLOUDFLARE_API_TOKEN` is a
+  Caddy service secret and should be scoped to DNS edit/zone read for
+  `feocco.com`.
+
 Monitoring/SRE:
 
 - `monitoring: true` requires a Prometheus blackbox target, Grafana container
@@ -205,6 +233,8 @@ dashboard/catalog artifacts from `ops.yaml`, host manifests, Compose,
 monitoring, SRE metadata, and `services/homepage/manual-links.yaml`. Homepage
 runtime config is generated during deploy and files under
 `services/homepage/config/` should not be committed.
+`scripts/generate-caddy-config` builds Caddy runtime config from route
+manifests during deploy and `services/caddy/Caddyfile` should not be committed.
 
 Service rollout intake must be manifest-driven. `scripts/tests/check-service-rollout`
 discovers `services/*/ops.yaml`, validates each manifest, and uses a generated

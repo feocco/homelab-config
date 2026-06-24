@@ -8,6 +8,7 @@ import json
 import os
 import pathlib
 import re
+import socket
 import subprocess
 import tempfile
 import urllib.error
@@ -225,6 +226,20 @@ def rules_reference_containers(path: pathlib.Path, containers: list[str]) -> boo
 def monitor_script_references(path: pathlib.Path, containers: list[str]) -> bool:
     text = path.read_text() if path.exists() else ""
     return all(container in text for container in containers)
+
+
+def host_bind_addr(path: pathlib.Path) -> str:
+    if not path.exists():
+        return ""
+    for line in path.read_text().splitlines():
+        match = re.match(r"^  bind_addr:\s*(.+)\s*$", line)
+        if match:
+            return str(clean_scalar(match.group(1)))
+    return ""
+
+
+def host_service_enabled(path: pathlib.Path, service: str) -> bool:
+    return host_services(path).get(service, {}).get("enabled") is not False and service in host_services(path)
 
 
 def run(cmd: list[str], *, cwd: pathlib.Path, timeout: int = 30) -> subprocess.CompletedProcess[str]:
@@ -476,6 +491,59 @@ class Validator:
             else:
                 self.fail("tailnet", f"Tailscale Serve dry-run failed: {apply_check.stdout.strip()}")
 
+        route_hostname = str(manifest.get("route_hostname") or "")
+        if route_hostname:
+            route_target_port = manifest.get("route_target_port") or port
+            if manifest.get("route_https") is not True:
+                self.fail("route", "route_hostname requires route_https: true for the Caddy HTTPS path")
+            elif str(route_hostname).endswith(".home.arpa"):
+                self.fail("route", "route_hostname must use a public DNS name for Let's Encrypt")
+            else:
+                self.pass_("route", f"Route hostname is HTTPS-capable: {route_hostname}")
+            if manifest.get("route_dns") == "unifi":
+                self.pass_("route", "Route DNS provider is UniFi local DNS")
+            else:
+                self.fail("route", "route_dns must be unifi for LAN-routed HTTPS services")
+            if route_target_port == port and route_target_port is not None:
+                self.pass_("route", "Route target port matches manifest HTTP port")
+            else:
+                self.fail("route", "route_target_port must match the service HTTP port")
+
+            caddy_services_file = self.base_dir / "hosts" / self.host / "services.yaml"
+            if host_service_enabled(caddy_services_file, "caddy"):
+                self.pass_("route", "Caddy is enabled on the route host")
+            else:
+                self.fail("route", f"Caddy is not enabled in {caddy_services_file.relative_to(self.base_dir)}")
+            caddy_compose = self.base_dir / "services/caddy/docker-compose.yml"
+            caddy_text = caddy_compose.read_text() if caddy_compose.exists() else ""
+            if "${CADDY_HTTPS_PORT:-443}:443" in caddy_text:
+                self.pass_("route", "Caddy publishes HTTPS port 443")
+            else:
+                self.fail("route", "Caddy compose file does not publish HTTPS port 443")
+            caddy_config_check = run(
+                [
+                    str(self.base_dir / "scripts/generate-caddy-config"),
+                    "--host",
+                    self.host,
+                    "--base-dir",
+                    str(self.base_dir),
+                ],
+                cwd=self.base_dir,
+            )
+            if caddy_config_check.returncode == 0 and route_hostname in caddy_config_check.stdout:
+                self.pass_("route", "Generated Caddy config contains route hostname")
+            else:
+                self.fail("route", f"Generated Caddy config is missing route hostname: {caddy_config_check.stdout.strip()}")
+            dns_check = run(
+                [str(self.base_dir / "scripts/sync-unifi-dns"), "--host", self.host, "--base-dir", str(self.base_dir), "--dry-run"],
+                cwd=self.base_dir,
+            )
+            bind_addr = host_bind_addr(caddy_services_file)
+            if dns_check.returncode == 0 and route_hostname in dns_check.stdout and bind_addr in dns_check.stdout:
+                self.pass_("route", "UniFi DNS dry-run contains route hostname and host bind address")
+            else:
+                self.fail("route", f"UniFi DNS dry-run failed or omitted route: {dns_check.stdout.strip()}")
+
         if host_scoped_enabled(manifest, "monitoring", self.host):
             if port is not None and manifest.get("health_path"):
                 if prometheus_has_service(self.base_dir / "services/homelab-monitor/prometheus/prometheus.yml", self.service):
@@ -508,47 +576,70 @@ class Validator:
         base_url = host_scoped_value(manifest, "live_base_url", self.host).rstrip("/")
         if not base_url:
             self.pass_("live proof", "No live_base_url declared; skipping HTTP live checks")
-            return
+        else:
+            health_path = str(manifest.get("health_path") or "")
+            if health_path:
+                health_url = f"{base_url}{health_path}"
+                try:
+                    with urllib.request.urlopen(health_url, timeout=10) as response:
+                        body = response.read(4096).decode("utf-8", "replace")
+                    if response.status < 400:
+                        self.pass_("live proof", f"Health endpoint responds: {health_url}")
+                        try:
+                            payload = json.loads(body)
+                        except json.JSONDecodeError:
+                            payload = None
+                        if isinstance(payload, dict) and "status" in payload:
+                            if payload.get("status") == "ok":
+                                self.pass_("live proof", "Health payload reports status ok")
+                            else:
+                                (self.fail if self.strict else self.warn)(
+                                    "live proof",
+                                    f"Health payload status is {payload.get('status')!r}",
+                                )
+                    else:
+                        raise urllib.error.URLError(f"HTTP {response.status}")
+                except Exception as exc:
+                    (self.fail if self.strict else self.warn)("live proof", f"Health endpoint failed: {exc}")
+            else:
+                self.pass_("live proof", "No health_path declared; skipping health endpoint check")
 
-        health_path = str(manifest.get("health_path") or "")
-        if health_path:
-            health_url = f"{base_url}{health_path}"
+            status_path = str(manifest.get("status_path") or "")
+            if status_path:
+                status_url = f"{base_url}{status_path}"
+                try:
+                    with urllib.request.urlopen(status_url, timeout=10) as response:
+                        payload = json.loads(response.read(8192).decode("utf-8"))
+                    if payload.get("service") == self.service:
+                        self.pass_("live proof", f"Status endpoint identifies {self.service}")
+                    else:
+                        self.fail("live proof", f"Status endpoint service mismatch: {payload.get('service')!r}")
+                except Exception as exc:
+                    (self.fail if self.strict else self.warn)("live proof", f"Status endpoint failed: {exc}")
+
+        route_hostname = str(manifest.get("route_hostname") or "")
+        if route_hostname and manifest.get("route_https") is True:
+            bind_addr = host_bind_addr(self.base_dir / "hosts" / self.host / "services.yaml")
             try:
-                with urllib.request.urlopen(health_url, timeout=10) as response:
-                    body = response.read(4096).decode("utf-8", "replace")
+                resolved = {item[4][0] for item in socket.getaddrinfo(route_hostname, 443, type=socket.SOCK_STREAM)}
+                if bind_addr and bind_addr in resolved:
+                    self.pass_("live proof", f"Route DNS resolves {route_hostname} to {bind_addr}")
+                else:
+                    (self.fail if self.strict else self.warn)(
+                        "live proof",
+                        f"Route DNS resolved {route_hostname} to {sorted(resolved)}, expected {bind_addr}",
+                    )
+            except Exception as exc:
+                (self.fail if self.strict else self.warn)("live proof", f"Route DNS lookup failed: {exc}")
+            try:
+                with urllib.request.urlopen(f"https://{route_hostname}/", timeout=10) as response:
+                    response.read(4096)
                 if response.status < 400:
-                    self.pass_("live proof", f"Health endpoint responds: {health_url}")
-                    try:
-                        payload = json.loads(body)
-                    except json.JSONDecodeError:
-                        payload = None
-                    if isinstance(payload, dict) and "status" in payload:
-                        if payload.get("status") == "ok":
-                            self.pass_("live proof", "Health payload reports status ok")
-                        else:
-                            (self.fail if self.strict else self.warn)(
-                                "live proof",
-                                f"Health payload status is {payload.get('status')!r}",
-                            )
+                    self.pass_("live proof", f"HTTPS route responds: https://{route_hostname}/")
                 else:
                     raise urllib.error.URLError(f"HTTP {response.status}")
             except Exception as exc:
-                (self.fail if self.strict else self.warn)("live proof", f"Health endpoint failed: {exc}")
-        else:
-            self.pass_("live proof", "No health_path declared; skipping health endpoint check")
-
-        status_path = str(manifest.get("status_path") or "")
-        if status_path:
-            status_url = f"{base_url}{status_path}"
-            try:
-                with urllib.request.urlopen(status_url, timeout=10) as response:
-                    payload = json.loads(response.read(8192).decode("utf-8"))
-                if payload.get("service") == self.service:
-                    self.pass_("live proof", f"Status endpoint identifies {self.service}")
-                else:
-                    self.fail("live proof", f"Status endpoint service mismatch: {payload.get('service')!r}")
-            except Exception as exc:
-                (self.fail if self.strict else self.warn)("live proof", f"Status endpoint failed: {exc}")
+                (self.fail if self.strict else self.warn)("live proof", f"HTTPS route failed: {exc}")
 
         if host_scoped_enabled(manifest, "monitoring", self.host) and self.host == "macmini":
             monitor_check = run([str(self.base_dir / "scripts/check-macmini-monitor-health")], cwd=self.base_dir, timeout=60)

@@ -255,6 +255,7 @@ changed_services() {
       echo "${files}" | grep -qx "service-secrets.yaml" ||
       echo "${files}" | grep -qx "${host_config}" ||
       echo "${files}" | grep -q "^${path}/" ||
+      { [[ "${service}" == "caddy" ]] && echo "${files}" | grep -Eq "^(scripts/generate-caddy-config|scripts/lib/homelab_catalog.py|services/[^/]+/ops.yaml)$"; } ||
       { [[ "${service}" == "homepage" ]] && echo "${files}" | grep -Eq "^scripts/(generate-homepage-config|generate-service-catalog|lib/homelab_catalog.py)$"; }; then
       echo "${service}"
     fi
@@ -264,6 +265,20 @@ changed_services() {
 prepare_service() {
   local service="$1"
   local service_dir="$2"
+
+  if [[ "${service}" == "caddy" ]]; then
+    if [[ "${DRY_RUN}" == "true" ]]; then
+      echo "Would generate Caddy config in ${service_dir}/Caddyfile"
+      return 0
+    fi
+
+    echo "Generating Caddy config in ${service_dir}/Caddyfile"
+    "${DEPLOY_BASE_DIR}/scripts/generate-caddy-config" \
+      --base-dir "${DEPLOY_BASE_DIR}" \
+      --host "${HOST}" \
+      --output "${service_dir}/Caddyfile"
+    return 0
+  fi
 
   if [[ "${service}" != "homepage" ]]; then
     return 0

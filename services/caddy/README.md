@@ -1,29 +1,67 @@
 # Caddy
 
-LAN reverse proxy for Mac mini dashboard hostnames.
+LAN reverse proxy and HTTPS terminator for routed homelab services.
 
-## URLs
+## Route Model
 
-- Homarr: `http://homarr.home.arpa`
-- Homepage: `http://home.arpa` or `http://homepage.home.arpa`
-- Grafana: `http://grafana.home.arpa`
+Service routes are declared in `services/<service>/ops.yaml` with flat fields:
+
+```yaml
+route_hostname: home.feocco.com
+route_target_port: 7576
+route_https: true
+route_dns: unifi
+```
+
+`scripts/generate-caddy-config` builds the runtime `Caddyfile` from those
+manifests. Do not hand-maintain `services/caddy/Caddyfile`; it is generated
+during `homelab-deploy --host macmini caddy`.
+
+Homepage is the first HTTPS route:
+
+- `https://home.feocco.com` -> `host.docker.internal:7576`
+- `http://home.arpa` and `http://homepage.home.arpa` redirect to
+  `https://home.feocco.com` while the legacy records exist.
+
+## TLS
+
+Caddy uses Automatic HTTPS with the Cloudflare DNS-01 provider module. This
+keeps the Mac mini private: Let's Encrypt validates temporary
+`_acme-challenge` TXT records in Cloudflare, not inbound access to the Mac mini.
+
+The deployed image is `ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare`, built
+from `services/caddy/Dockerfile`. The image workflow verifies
+`dns.providers.cloudflare` before pushing.
+
+Required runtime values:
+
+- `CADDY_ACME_EMAIL` in `.env.config`
+- `CADDY_HOME_DOMAIN=home.feocco.com` in `.env.config`
+- `CLOUDFLARE_API_TOKEN` as a GitHub Actions secret named
+  `CADDY__CLOUDFLARE_API_TOKEN`
+
+The Cloudflare token should be scoped to the `feocco.com` zone with DNS edit and
+zone read permissions.
 
 ## UniFi DNS
 
-Create these UniFi local DNS Host A records:
+Use `scripts/sync-unifi-dns` to check or apply UniFi local DNS records for
+routed services:
 
-- `homarr.home.arpa` -> `192.168.1.43`
-- `home.arpa` -> `192.168.1.43`
-- `homepage.home.arpa` -> `192.168.1.43`
-- `grafana.home.arpa` -> `192.168.1.43`
+```bash
+./scripts/sync-unifi-dns --host macmini --dry-run
+./scripts/sync-unifi-dns --host macmini --check
+./scripts/sync-unifi-dns --host macmini --apply
+```
 
-In UniFi Network, use **Settings > Policy Table > Create New Policy > DNS** on
-Network 9.4, or **Settings > Policy Engine > DNS > Create DNS Record** on
-Network 9.3. Choose `Host (A)`, then enter the hostname and Mac mini LAN IP.
+Required environment for `--check` and `--apply`:
 
-The service is HTTP-only. `home.arpa` is local-only, so normal public ACME
-certificates are not available for these names.
+- `UNIFI_BASE_URL`
+- `UNIFI_API_KEY`
+- optional `UNIFI_SITE_ID`
+- optional `UNIFI_SKIP_TLS_VERIFY=true` for controllers with untrusted local TLS
+- optional `UNIFI_CERT_SHA256` and `UNIFI_TLS_SERVER_NAME` to pin the UniFi
+  controller certificate instead of disabling TLS verification
 
-The container publishes Caddy on `0.0.0.0:80` because Docker on macOS does not
-reliably expose ports when the publish address is pinned to the LAN IP. UniFi
-DNS still points clients at the Mac mini LAN address.
+For Homepage, UniFi should resolve `home.feocco.com` to the Mac mini bind
+address from `hosts/macmini/services.yaml`.

@@ -2,8 +2,9 @@
 
 Generated homelab front door sourced from `homelab-config`.
 
-- Primary LAN URL: `http://home.arpa`
-- Fallback LAN URL: `http://homepage.home.arpa`
+- Primary LAN URL: `https://home.feocco.com`
+- Legacy LAN aliases: `http://home.arpa` and `http://homepage.home.arpa`
+  redirect through Caddy when those DNS records still exist.
 - Homarr remains separate at `http://homarr.home.arpa`
 - Config files in `config/` are generated during deploy
 - Service tiles come from `dashboard_*` fields in service `ops.yaml` files

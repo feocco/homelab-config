@@ -37,8 +37,8 @@ if services[("dashy", "macmini")]["enabled"] is not False:
     raise SystemExit("dashy should be disabled after Homepage cutover")
 if services[("homarr", "macmini")]["enabled"] is not True:
     raise SystemExit("homarr should remain enabled and separate")
-if services[("homepage", "macmini")]["homepage_url"] != "http://home.arpa/":
-    raise SystemExit("homepage should use home.arpa as its primary URL")
+if services[("homepage", "macmini")]["homepage_url"] != "https://home.feocco.com/":
+    raise SystemExit("homepage should use home.feocco.com as its primary URL")
 if services[("plant-monitor", "macmini")]["dashboard_description"] != "Home Assistant plant notifications":
     raise SystemExit("plant-monitor dashboard metadata should come from ops.yaml")
 if services[("plant-monitor", "macmini")]["dashboard_group"] != "Runtime Services":
@@ -83,7 +83,7 @@ assert_contains "${homepage_tmp}/services.yaml" 'OpenAI Cost / Usage'
 assert_contains "${homepage_tmp}/services.yaml" 'Homarr'
 assert_contains "${homepage_tmp}/services.yaml" 'http://homarr.home.arpa/'
 assert_contains "${homepage_tmp}/services.yaml" 'Dashy'
-assert_contains "${homepage_tmp}/services.yaml" 'http://home.arpa/'
+assert_contains "${homepage_tmp}/services.yaml" 'https://home.feocco.com/'
 assert_contains "${homepage_tmp}/services.yaml" 'AWS Console'
 assert_contains "${homepage_tmp}/services.yaml" 'Prusa Connect'
 test -f "${homepage_tmp}/service-catalog.json"

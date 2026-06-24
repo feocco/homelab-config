@@ -52,6 +52,10 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   deploy-nasfeo:
     name: Deploy nasfeo
@@ -102,6 +106,14 @@ jobs:
             echo "DOCKER_CONFIG=${DOCKER_CONFIG_DIR}" >> "${GITHUB_ENV}"
           else
             echo "Skipping Docker Hub login; DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not configured."
+          fi
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${GHCR_TOKEN}" ]; then
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           fi
 
       - name: Deploy changed services
@@ -188,6 +200,7 @@ jobs:
           BEDTIME__HA_LONG_LIVED_TOKEN: ${{ secrets.BEDTIME__HA_LONG_LIVED_TOKEN }}
           BEDTIME__HA_URL: ${{ secrets.BEDTIME__HA_URL }}
           BEDTIME__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.BEDTIME__HOMELAB_FUNCTIONS_TOKEN }}
+          CADDY__CLOUDFLARE_API_TOKEN: ${{ secrets.CADDY__CLOUDFLARE_API_TOKEN }}
           DOG_BOWL_MONITOR__HA_LONG_LIVED_TOKEN: ${{ secrets.DOG_BOWL_MONITOR__HA_LONG_LIVED_TOKEN }}
           DOG_BOWL_MONITOR__HA_URL: ${{ secrets.DOG_BOWL_MONITOR__HA_URL }}
           DOG_BOWL_MONITOR__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.DOG_BOWL_MONITOR__HOMELAB_FUNCTIONS_TOKEN }}
@@ -267,6 +280,14 @@ jobs:
             echo "Skipping Docker Hub login; DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not configured."
           fi
 
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${GHCR_TOKEN}" ]; then
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          fi
+
       - name: Deploy changed services
         if: github.event_name == 'push'
         env:
@@ -319,8 +340,9 @@ jobs:
           docker logs --tail 100 caddy
           docker inspect caddy --format '{{.State.Status}} {{.State.ExitCode}} {{.State.Error}}'
           lsof -nP -iTCP:80 -sTCP:LISTEN || true
+          lsof -nP -iTCP:443 -sTCP:LISTEN || true
           curl -I --max-time 5 http://192.168.1.43/
-          curl -I --max-time 5 http://homarr.home.arpa/
+          curl -I --max-time 5 https://home.feocco.com/
           curl -I --max-time 5 http://127.0.0.1/ || true
 
       - name: Deploy all services

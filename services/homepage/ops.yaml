@@ -11,6 +11,13 @@ health_path: /
 tailnet: true
 monitoring: true
 sre: false
+route_hostname: home.feocco.com
+route_target_port: 7576
+route_https: true
+route_dns: unifi
+route_aliases:
+  - home.arpa
+  - homepage.home.arpa
 dashboard_name: Homepage
 dashboard_group: Daily Ops
 dashboard_description: Generated homelab front door
