@@ -1,7 +1,10 @@
 host:
   name: macmini
   deploy_base_dir: ${HOME}/homelab-config-runtime
-  bind_addr: 192.168.1.118
+  bind_addr: 192.168.1.43
+  deploy_user: maclab
+  tailnet_addr: 100.81.237.11
+  tailnet_name: maclabs-mac-mini.taildf3445.ts.net
 
 services:
   hello-nas:

@@ -138,6 +138,59 @@ PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
 assert_json_field "${guard_runtime}/.homelab-deploy-state/macmini/demo.json" git_branch main
 rm -rf "${guard_tmp}"
 
+identity_tmp="$(mktemp -d)"
+identity_repo="${identity_tmp}/repo"
+identity_runtime="${identity_tmp}/runtime"
+identity_fakebin="${identity_tmp}/bin"
+mkdir -p \
+  "${identity_repo}/scripts" \
+  "${identity_repo}/hosts/macmini" \
+  "${identity_repo}/services/demo" \
+  "${identity_runtime}/services/demo" \
+  "${identity_fakebin}"
+cp "${REPO_DIR}/scripts/homelab-deploy" "${identity_repo}/scripts/homelab-deploy"
+cp "${REPO_DIR}/scripts/lib-service-secrets" "${identity_repo}/scripts/lib-service-secrets"
+chmod +x "${identity_repo}/scripts/homelab-deploy"
+cat > "${identity_repo}/hosts/macmini/services.yaml" <<EOF
+host:
+  name: macmini
+  deploy_base_dir: ${identity_runtime}
+  bind_addr: 203.0.113.254
+
+services:
+  demo:
+    path: services/demo
+    enabled: true
+EOF
+cat > "${identity_runtime}/services/demo/docker-compose.yml" <<'EOF'
+services:
+  demo:
+    image: ghcr.io/feocco/demo:latest
+EOF
+cat > "${identity_fakebin}/docker-compose" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "${identity_fakebin}/docker" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "${identity_fakebin}/docker-compose" "${identity_fakebin}/docker"
+(
+  cd "${identity_repo}"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Tooling Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+identity_out="${identity_tmp}/identity.out"
+assert_fails "${identity_out}" env PATH="${identity_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${identity_repo}" \
+  "${identity_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${identity_runtime}"
+assert_contains "${identity_out}" 'does not have bind_addr 203.0.113.254'
+rm -rf "${identity_tmp}"
+
 if grep -R '\${{ github.event.inputs\.' "${REPO_DIR}/.github/workflows"; then
   echo "Deploy workflows must not interpolate github.event.inputs directly into shell scripts." >&2
   exit 1

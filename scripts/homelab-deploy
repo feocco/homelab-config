@@ -142,6 +142,73 @@ GIT_BRANCH="$(git_branch)"
 GIT_SHA="$(git_sha)"
 GIT_DIRTY="$(git_dirty_state)"
 
+host_scalar() {
+  local key="$1"
+  awk -v key="${key}" '
+    /^host:[[:space:]]*$/ {
+      in_host=1
+      next
+    }
+    in_host && /^services:[[:space:]]*$/ {
+      in_host=0
+      next
+    }
+    in_host && $1 == key ":" {
+      print $2
+      exit
+    }
+  ' "${SERVICES_FILE}"
+}
+
+local_has_ip() {
+  local expected_ip="$1"
+  [[ -n "${expected_ip}" ]] || return 1
+
+  if command -v ifconfig >/dev/null 2>&1 &&
+    ifconfig 2>/dev/null | grep -Eq "inet ${expected_ip}([[:space:]]|/)"; then
+    return 0
+  fi
+
+  if command -v ip >/dev/null 2>&1 &&
+    ip addr show 2>/dev/null | grep -Eq "inet ${expected_ip}([[:space:]]|/)"; then
+    return 0
+  fi
+
+  return 1
+}
+
+require_host_identity() {
+  if [[ "${HOST}" != "macmini" || "${ALLOW_DIRTY}" == "true" ]]; then
+    return 0
+  fi
+
+  local expected_user expected_ip actual_user
+  expected_user="$(host_scalar deploy_user)"
+  expected_ip="$(host_scalar bind_addr)"
+  actual_user="$(id -un 2>/dev/null || true)"
+
+  if [[ -n "${expected_user}" && "${actual_user}" != "${expected_user}" ]]; then
+    cat >&2 <<EOF
+Refusing macmini deploy from user '${actual_user}'.
+
+hosts/macmini/services.yaml requires deploy_user: ${expected_user}. Run this
+deploy on the Maclab production host, or use --allow-dirty only for an explicit
+emergency runtime edit.
+EOF
+    exit 3
+  fi
+
+  if [[ -n "${expected_ip}" ]] && ! local_has_ip "${expected_ip}"; then
+    cat >&2 <<EOF
+Refusing macmini deploy because this machine does not have bind_addr ${expected_ip}.
+
+Run this deploy on the Maclab production host. Local canary deploys must not be
+used as production DNS or HTTPS proof.
+EOF
+    exit 3
+  fi
+}
+
 require_deploy_allowed() {
   if [[ "${DRY_RUN}" == "true" || "${MODE}" == "list" ]]; then
     return 0
@@ -156,6 +223,8 @@ with --allow-dirty only for an explicit emergency runtime edit.
 EOF
     exit 3
   fi
+
+  require_host_identity
 
   if [[ "${GIT_BRANCH}" != "main" ]]; then
     echo "Warning: deploying from non-main branch '${GIT_BRANCH}'." >&2

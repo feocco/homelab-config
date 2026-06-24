@@ -22,14 +22,15 @@
   to inspect the catalog. Homepage runtime config is generated during deploy;
   do not commit generated files under `services/homepage/config/`.
 - Caddy routes are generated from flat `route_*` fields in service `ops.yaml`
-  files. Use `./scripts/generate-caddy-config` and `./scripts/sync-unifi-dns`;
-  do not hand-edit or commit `services/caddy/Caddyfile`.
+  files. Use `./scripts/generate-caddy-config`, `./scripts/sync-unifi-dns`,
+  and `./scripts/sync-cloudflare-dns`; do not hand-edit or commit
+  `services/caddy/Caddyfile`.
 - For new Mac mini user-facing HTTP services, default to a LAN HTTPS route
   under `home.feocco.com` unless the service is a worker, disabled, not
   user-facing, or has incompatible base-URL assumptions. Use
   `./scripts/list-https-route-candidates`, add only `route_*` fields, sync
-  UniFi DNS, deploy Caddy plus the service as a canary, then run strict config
-  and live validation.
+  UniFi and Cloudflare DNS, deploy Caddy plus the service as a canary on the
+  production host, then run strict config and live validation.
 - Homepage display metadata belongs in optional flat `dashboard_*` fields in
   each service `ops.yaml`. External/manual links belong in
   `services/homepage/manual-links.yaml`.
@@ -56,8 +57,9 @@
   `./scripts/homelab-deploy --host macmini <service> --dry-run`.
 - Do not treat a dirty or unpushed deploy as durable production state.
   Commit and push before a durable deploy.
-- Treat branch deploys as temporary canaries. Use `--canary`, then merge and
-  redeploy from `main` when the canary should become production truth.
+- Treat branch deploys as temporary canaries on the target production host, not
+  arbitrary local Docker contexts. Use `--canary`, then merge and redeploy from
+  `main` when the canary should become production truth.
 - If you must leave temporary runtime state behind, say so explicitly in the
   final answer.
 - Final answers for deploy work must say what was committed, pushed, and

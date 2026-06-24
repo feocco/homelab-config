@@ -136,11 +136,12 @@ route_https: true
 route_dns: unifi
 ```
 
-Then check the generated proxy and UniFi DNS intent:
+Then check the generated proxy, LAN DNS, public Tailnet DNS, and config intent:
 
 ```bash
 ./scripts/generate-caddy-config --host macmini
 ./scripts/sync-unifi-dns --host macmini --dry-run
+./scripts/sync-cloudflare-dns --host macmini --dry-run
 LC_ALL=C ./scripts/validate-service-rollout --service service --host macmini --check config --mode strict
 ```
 

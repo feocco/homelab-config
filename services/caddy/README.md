@@ -43,10 +43,10 @@ Required runtime values:
 The Cloudflare token should be scoped to the `feocco.com` zone with DNS edit and
 zone read permissions.
 
-## UniFi DNS
+## Route DNS
 
 Use `scripts/sync-unifi-dns` to check or apply UniFi local DNS records for
-routed services:
+routed services. These records point LAN clients to `host.bind_addr`:
 
 ```bash
 ./scripts/sync-unifi-dns --host macmini --dry-run
@@ -54,7 +54,17 @@ routed services:
 ./scripts/sync-unifi-dns --host macmini --apply
 ```
 
-Required environment for `--check` and `--apply`:
+Use `scripts/sync-cloudflare-dns` to check or apply public DNS-only A records
+for routed services. These records point off-LAN Tailnet clients to
+`host.tailnet_addr`:
+
+```bash
+./scripts/sync-cloudflare-dns --host macmini --dry-run
+./scripts/sync-cloudflare-dns --host macmini --check
+./scripts/sync-cloudflare-dns --host macmini --apply
+```
+
+Required UniFi environment for `--check` and `--apply`:
 
 - `UNIFI_BASE_URL`
 - `UNIFI_API_KEY`
@@ -63,5 +73,12 @@ Required environment for `--check` and `--apply`:
 - optional `UNIFI_CERT_SHA256` and `UNIFI_TLS_SERVER_NAME` to pin the UniFi
   controller certificate instead of disabling TLS verification
 
+Required Cloudflare environment for `--check` and `--apply`:
+
+- `CLOUDFLARE_API_TOKEN` or `CADDY__CLOUDFLARE_API_TOKEN`
+- optional `CLOUDFLARE_ZONE_ID`
+- optional `CLOUDFLARE_ZONE_NAME`, defaulting to `feocco.com`
+
 For Homepage, UniFi should resolve `home.feocco.com` to the Mac mini bind
-address from `hosts/macmini/services.yaml`.
+address from `hosts/macmini/services.yaml`, and Cloudflare should resolve it
+to the Mac mini Tailnet address with proxying disabled.

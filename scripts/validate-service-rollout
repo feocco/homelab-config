@@ -238,6 +238,16 @@ def host_bind_addr(path: pathlib.Path) -> str:
     return ""
 
 
+def host_tailnet_addr(path: pathlib.Path) -> str:
+    if not path.exists():
+        return ""
+    for line in path.read_text().splitlines():
+        match = re.match(r"^  tailnet_addr:\s*(.+)\s*$", line)
+        if match:
+            return str(clean_scalar(match.group(1)))
+    return ""
+
+
 def host_service_enabled(path: pathlib.Path, service: str) -> bool:
     return host_services(path).get(service, {}).get("enabled") is not False and service in host_services(path)
 
@@ -545,6 +555,22 @@ class Validator:
                 self.pass_("route", "UniFi DNS dry-run contains route hostname and host bind address")
             else:
                 self.fail("route", f"UniFi DNS dry-run failed or omitted route: {dns_check.stdout.strip()}")
+            cloudflare_check = run(
+                [
+                    str(self.base_dir / "scripts/sync-cloudflare-dns"),
+                    "--host",
+                    self.host,
+                    "--base-dir",
+                    str(self.base_dir),
+                    "--dry-run",
+                ],
+                cwd=self.base_dir,
+            )
+            tailnet_addr = host_tailnet_addr(caddy_services_file)
+            if cloudflare_check.returncode == 0 and route_hostname in cloudflare_check.stdout and tailnet_addr in cloudflare_check.stdout:
+                self.pass_("route", "Cloudflare DNS dry-run contains route hostname and host Tailnet address")
+            else:
+                self.fail("route", f"Cloudflare DNS dry-run failed or omitted route: {cloudflare_check.stdout.strip()}")
         elif route_hostname:
             self.pass_("route", f"Route hostname is scoped away from {self.host}")
 

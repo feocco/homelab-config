@@ -21,7 +21,7 @@ dns_dry_run="$(
   UNIFI_API_KEY=test-api-key \
   "${REPO_DIR}/scripts/sync-unifi-dns" --host macmini --dry-run
 )"
-if [[ "${dns_dry_run}" != *"Would upsert A home.feocco.com -> 192.168.1.118"* ]]; then
+if [[ "${dns_dry_run}" != *"Would upsert A home.feocco.com -> 192.168.1.43"* ]]; then
   echo "UniFi DNS dry-run should show Homepage A record upsert" >&2
   echo "${dns_dry_run}" >&2
   exit 1
@@ -42,7 +42,7 @@ records = [
         "id": f"record-{entry['service']}",
         "type": "A",
         "name": entry["hostname"],
-        "value": "192.168.1.118",
+        "value": "192.168.1.43",
     }
     for entry in route_entries(base, "macmini")
     if entry["dns"] == "unifi"
@@ -54,6 +54,41 @@ UNIFI_API_KEY=test-api-key \
 UNIFI_DNS_RECORDS_FIXTURE="${dns_fixture}" \
   "${REPO_DIR}/scripts/sync-unifi-dns" --host macmini --check >/dev/null
 rm -f "${dns_fixture}"
+
+cloudflare_dry_run="$("${REPO_DIR}/scripts/sync-cloudflare-dns" --host macmini --dry-run)"
+if [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A home.feocco.com -> 100.81.237.11 (DNS only)"* ]]; then
+  echo "Cloudflare DNS dry-run should show Homepage A record upsert" >&2
+  echo "${cloudflare_dry_run}" >&2
+  exit 1
+fi
+
+cloudflare_fixture="$(mktemp)"
+PYTHONPATH="${REPO_DIR}/scripts/lib" python3 - "${REPO_DIR}" "${cloudflare_fixture}" <<'PY'
+import json
+import pathlib
+import sys
+
+from homelab_catalog import route_entries
+
+base = pathlib.Path(sys.argv[1])
+fixture = pathlib.Path(sys.argv[2])
+records = [
+    {
+        "id": f"record-{entry['service']}",
+        "type": "A",
+        "name": entry["hostname"],
+        "content": "100.81.237.11",
+        "proxied": False,
+    }
+    for entry in route_entries(base, "macmini")
+]
+fixture.write_text(json.dumps({"result": records}, indent=2))
+PY
+CLOUDFLARE_API_TOKEN=test-api-key \
+CLOUDFLARE_ZONE_ID=test-zone \
+CLOUDFLARE_DNS_RECORDS_FIXTURE="${cloudflare_fixture}" \
+  "${REPO_DIR}/scripts/sync-cloudflare-dns" --host macmini --check >/dev/null
+rm -f "${cloudflare_fixture}"
 
 deploy_dry_run="$("${REPO_DIR}/scripts/homelab-deploy" --host macmini caddy --dry-run --deploy-base-dir "${REPO_DIR}")"
 if [[ "${deploy_dry_run}" != *"Would generate Caddy config"* ]]; then

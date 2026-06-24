@@ -192,6 +192,10 @@ Route:
   script uses `UNIFI_BASE_URL`, `UNIFI_API_KEY`, optional `UNIFI_SITE_ID`, and
   either optional `UNIFI_CERT_SHA256`/`UNIFI_TLS_SERVER_NAME` for pinned TLS or
   optional `UNIFI_SKIP_TLS_VERIFY` for temporary bootstrap.
+- `scripts/sync-cloudflare-dns` routes off-LAN Tailnet clients by public
+  DNS-only A records to `host.tailnet_addr`. It uses `CLOUDFLARE_API_TOKEN` or
+  `CADDY__CLOUDFLARE_API_TOKEN`, optional `CLOUDFLARE_ZONE_ID`, and defaults
+  the zone name to `feocco.com`.
 - Caddy gets certificates with Cloudflare DNS-01. `CLOUDFLARE_API_TOKEN` is a
   Caddy service secret and should be scoped to DNS edit/zone read for
   `feocco.com`.
