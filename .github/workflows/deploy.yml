@@ -116,6 +116,16 @@ jobs:
             echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           fi
 
+      - name: Build local Caddy image
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.service == 'caddy' || inputs.service == 'all'))
+        run: |
+          docker build \
+            --build-arg CADDY_VERSION=2.11.4 \
+            -t ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare \
+            services/caddy
+          docker run --rm ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare \
+            caddy list-modules | grep -qx 'dns.providers.cloudflare'
+
       - name: Deploy changed services
         if: github.event_name == 'push'
         env:
