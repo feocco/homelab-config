@@ -298,6 +298,7 @@ jobs:
           export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
           mkdir -p "${HOME}/.docker"
           printf '{}\n' > "${HOME}/.docker/config.json"
+          export DOCKER_CONFIG="${HOME}/.docker"
           MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
           ./scripts/homelab-deploy --host macmini --changed \
             --base-dir "${{ github.workspace }}" \
@@ -329,6 +330,7 @@ jobs:
           export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
           mkdir -p "${HOME}/.docker"
           printf '{}\n' > "${HOME}/.docker/config.json"
+          export DOCKER_CONFIG="${HOME}/.docker"
           MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
           ./scripts/homelab-deploy --host macmini "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
 
@@ -362,6 +364,7 @@ jobs:
           export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
           mkdir -p "${HOME}/.docker"
           printf '{}\n' > "${HOME}/.docker/config.json"
+          export DOCKER_CONFIG="${HOME}/.docker"
           MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
           ./scripts/homelab-deploy --host macmini --all "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
 
