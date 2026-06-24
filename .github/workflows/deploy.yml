@@ -286,6 +286,7 @@ jobs:
         run: |
           if [ -n "${GHCR_TOKEN}" ]; then
             echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            docker logout ghcr.io || true
           fi
 
       - name: Build local Caddy image
@@ -308,7 +309,6 @@ jobs:
           export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
           mkdir -p "${HOME}/.docker"
           printf '{}\n' > "${HOME}/.docker/config.json"
-          export DOCKER_CONFIG="${HOME}/.docker"
           MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
           ./scripts/homelab-deploy --host macmini --changed \
             --base-dir "${{ github.workspace }}" \
@@ -340,7 +340,6 @@ jobs:
           export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
           mkdir -p "${HOME}/.docker"
           printf '{}\n' > "${HOME}/.docker/config.json"
-          export DOCKER_CONFIG="${HOME}/.docker"
           MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
           ./scripts/homelab-deploy --host macmini "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
 
@@ -354,6 +353,12 @@ jobs:
           lsof -nP -iTCP:80 -sTCP:LISTEN || true
           lsof -nP -iTCP:443 -sTCP:LISTEN || true
           curl -I --max-time 5 http://192.168.1.43/
+          for attempt in $(seq 1 12); do
+            if curl -I --max-time 5 https://home.feocco.com/; then
+              exit 0
+            fi
+            sleep 5
+          done
           curl -I --max-time 5 https://home.feocco.com/
           curl -I --max-time 5 http://127.0.0.1/ || true
 
@@ -374,7 +379,6 @@ jobs:
           export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
           mkdir -p "${HOME}/.docker"
           printf '{}\n' > "${HOME}/.docker/config.json"
-          export DOCKER_CONFIG="${HOME}/.docker"
           MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
           ./scripts/homelab-deploy --host macmini --all "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
 
