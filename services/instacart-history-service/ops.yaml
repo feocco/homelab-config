@@ -12,6 +12,10 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8100
 tailnet: true
 monitoring: true
 sre: false
+route_hostname: instacart-history-service.home.feocco.com
+route_target_port: 8100
+route_https: true
+route_dns: unifi
 dashboard_name: Instacart History
 dashboard_group: Runtime Services
 dashboard_description: Instacart purchase history service

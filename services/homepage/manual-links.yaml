@@ -26,12 +26,12 @@ links:
     icon: github.png
   - name: OpenAI Cost / Usage
     group: Monitoring & Cost
-    href: http://grafana.home.arpa/d/openai-cost-usage/openai-cost-usage
+    href: https://grafana.home.feocco.com/d/openai-cost-usage/openai-cost-usage
     description: API cost and usage dashboard
     icon: openai.png
   - name: Prometheus Targets
     group: Monitoring & Cost
-    href: http://grafana.home.arpa/explore
+    href: https://grafana.home.feocco.com/explore
     description: Prometheus query entrypoint
     icon: prometheus.png
   - name: AWS Console

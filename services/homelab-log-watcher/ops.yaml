@@ -16,6 +16,12 @@ tailnet_hosts:
 monitoring_hosts:
   - macmini
 sre: true
+route_hostname: homelab-log-watcher.home.feocco.com
+route_target_port: 8093
+route_https: true
+route_dns: unifi
+route_hosts:
+  - macmini
 dashboard_name: homelab-log-watcher
 dashboard_group: Runtime Services
 dashboard_description: Docker log watcher

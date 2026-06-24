@@ -28,6 +28,8 @@ def service_hosts(manifest: dict[str, Any]) -> list[str]:
 def suggested_hostname(service: str) -> str:
     if service == "homepage":
         return HOME_DOMAIN
+    if service == "homelab-monitor":
+        return f"grafana.{HOME_DOMAIN}"
     return f"{service}.{HOME_DOMAIN}"
 
 

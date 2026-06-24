@@ -2,7 +2,7 @@
 
 Homarr is the primary homelab dashboard during the Dashy migration.
 
-- Primary LAN URL: `http://homarr.home.arpa`
+- Primary LAN URL: `https://homarr.home.feocco.com`
 - Tailscale fallback: `http://maclabs-mac-mini.taildf3445.ts.net:7575/`
 - Docker socket access is intentionally not mounted
 - Persistent application data is stored in `./data`

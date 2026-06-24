@@ -1,7 +1,9 @@
 # Mealie
 
 Mealie runs on the Mac mini and is intended to be published at
-`https://mealie.feocco.com` through Cloudflare Tunnel and Cloudflare Access.
+`https://mealie.home.feocco.com` through the LAN Caddy route. The older
+Cloudflare Tunnel path can stay deployed during migration, but the repo-managed
+runtime base URL now points at the LAN HTTPS route.
 Cloudflare Access should be the first auth gate; Mealie password login remains
 enabled for app accounts, households, recipes, meal plans, and admin settings.
 
@@ -12,14 +14,14 @@ enabled for app accounts, households, recipes, meal plans, and admin settings.
 - Database container: `mealie-postgres`
 - Tunnel container: `mealie-cloudflared`
 - Local-only debug URL on the Mac mini: `http://127.0.0.1:9925`
-- Public URL: `https://mealie.feocco.com`
+- LAN HTTPS URL: `https://mealie.home.feocco.com`
 
 The Docker port binds to `127.0.0.1`; do not add router port forwarding.
 
 ## Cloudflare
 
 The Cloudflare tunnel is named `mealie-macmini` and points
-`mealie.feocco.com` at:
+`mealie.home.feocco.com` at:
 
 ```text
 http://mealie:9000
@@ -32,8 +34,8 @@ Use a URL-safe value for `MEALIE__POSTGRES_PASSWORD`, such as a hex string.
 Mealie builds a Postgres connection URL from this value; characters that have
 special meaning in URLs can prevent the app from starting.
 
-Cloudflare Access protects `mealie.feocco.com` before traffic reaches Mealie.
-The initial Access policy allows `Joefeocco@gmail.com` with the one-time PIN
+Cloudflare Access can protect the legacy public tunnel before traffic reaches
+Mealie. The initial Access policy allows `Joefeocco@gmail.com` with the one-time PIN
 identity provider. Add family members to the same Access application policy
 before expecting them to log in.
 

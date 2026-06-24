@@ -492,7 +492,9 @@ class Validator:
                 self.fail("tailnet", f"Tailscale Serve dry-run failed: {apply_check.stdout.strip()}")
 
         route_hostname = str(manifest.get("route_hostname") or "")
-        if route_hostname:
+        route_hosts = manifest.get("route_hosts")
+        route_applies = not isinstance(route_hosts, list) or self.host in [str(value) for value in route_hosts]
+        if route_hostname and route_applies:
             route_target_port = manifest.get("route_target_port") or port
             if manifest.get("route_https") is not True:
                 self.fail("route", "route_hostname requires route_https: true for the Caddy HTTPS path")
@@ -543,6 +545,8 @@ class Validator:
                 self.pass_("route", "UniFi DNS dry-run contains route hostname and host bind address")
             else:
                 self.fail("route", f"UniFi DNS dry-run failed or omitted route: {dns_check.stdout.strip()}")
+        elif route_hostname:
+            self.pass_("route", f"Route hostname is scoped away from {self.host}")
 
         if host_scoped_enabled(manifest, "monitoring", self.host):
             if port is not None and manifest.get("health_path"):
@@ -618,7 +622,9 @@ class Validator:
                     (self.fail if self.strict else self.warn)("live proof", f"Status endpoint failed: {exc}")
 
         route_hostname = str(manifest.get("route_hostname") or "")
-        if route_hostname and manifest.get("route_https") is True:
+        route_hosts = manifest.get("route_hosts")
+        route_applies = not isinstance(route_hosts, list) or self.host in [str(value) for value in route_hosts]
+        if route_hostname and manifest.get("route_https") is True and route_applies:
             bind_addr = host_bind_addr(self.base_dir / "hosts" / self.host / "services.yaml")
             try:
                 resolved = {item[4][0] for item in socket.getaddrinfo(route_hostname, 443, type=socket.SOCK_STREAM)}

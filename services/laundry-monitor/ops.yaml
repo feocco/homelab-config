@@ -12,6 +12,10 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8102
 tailnet: true
 monitoring: true
 sre: true
+route_hostname: laundry-monitor.home.feocco.com
+route_target_port: 8102
+route_https: true
+route_dns: unifi
 dashboard_name: Laundry Monitor
 dashboard_group: Runtime Services
 dashboard_description: Washer and dryer notification service

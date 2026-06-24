@@ -17,7 +17,7 @@ High-level map for understanding the deployed homelab quickly.
 - Caddy terminates HTTPS for routed `home.feocco.com` LAN names.
 - UniFi DNS maps friendly names to Mac.
 - Homepage is the generated local front door at `https://home.feocco.com`.
-- Homarr remains available separately at `http://homarr.home.arpa`.
+- Homarr remains available separately at `https://homarr.home.feocco.com`.
 
 ## Deployment
 

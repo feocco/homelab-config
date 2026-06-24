@@ -12,6 +12,10 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8094
 tailnet: true
 monitoring: true
 sre: true
+route_hostname: homelab-sre-agent.home.feocco.com
+route_target_port: 8094
+route_https: true
+route_dns: unifi
 dashboard_name: homelab-sre-agent
 dashboard_group: Runtime Services
 dashboard_description: Homelab SRE triage agent

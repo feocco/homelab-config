@@ -349,7 +349,9 @@ def build_catalog(base_dir: pathlib.Path) -> dict[str, Any]:
 
 def homepage_url_for(service: str, host: str, manifest: dict[str, Any], caddy_routes: dict[int, str]) -> str:
     route_hostname = manifest_value(manifest, "route_hostname")
-    if route_hostname:
+    route_hosts = manifest.get("route_hosts")
+    route_applies = not isinstance(route_hosts, list) or host in [str(value) for value in route_hosts]
+    if route_hostname and route_applies:
         scheme = "https" if manifest.get("route_https") is True else "http"
         return f"{scheme}://{route_hostname.rstrip('/')}/"
     if service == "homepage":
@@ -382,6 +384,9 @@ def route_entries(base_dir: pathlib.Path, host: str | None = None) -> list[dict[
             manifest = manifests.get(service, {})
             hostname = manifest_value(manifest, "route_hostname")
             if not hostname:
+                continue
+            route_hosts = manifest.get("route_hosts")
+            if isinstance(route_hosts, list) and current_host not in [str(value) for value in route_hosts]:
                 continue
             target_port = manifest.get("route_target_port") or manifest.get("http_port")
             entries.append(

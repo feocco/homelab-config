@@ -12,6 +12,10 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8103
 tailnet: true
 monitoring: true
 sre: true
+route_hostname: pirate-radio.home.feocco.com
+route_target_port: 8103
+route_https: true
+route_dns: unifi
 secrets:
   - OPENAI_API_KEY
   - HA_URL

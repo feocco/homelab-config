@@ -11,6 +11,10 @@ health_path: /health
 tailnet: false
 monitoring: true
 sre: true
+route_hostname: mealie-planner.home.feocco.com
+route_target_port: 8097
+route_https: true
+route_dns: unifi
 dashboard_name: Mealie Planner
 dashboard_group: Runtime Services
 dashboard_description: Meal planning helper service

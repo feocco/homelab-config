@@ -12,6 +12,10 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8101
 tailnet: true
 monitoring: true
 sre: true
+route_hostname: dog-bowl-monitor.home.feocco.com
+route_target_port: 8101
+route_https: true
+route_dns: unifi
 dashboard_name: Dog Bowl Monitor
 dashboard_group: Runtime Services
 dashboard_description: Dog bowl camera monitoring service

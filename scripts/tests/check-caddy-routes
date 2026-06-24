@@ -8,6 +8,8 @@ caddy_tmp="$(mktemp -d)"
 "${REPO_DIR}/scripts/generate-caddy-config" --output "${caddy_tmp}/Caddyfile"
 assert_contains "${caddy_tmp}/Caddyfile" 'home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:7576'
+assert_contains "${caddy_tmp}/Caddyfile" 'grafana.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:3000'
 assert_contains "${caddy_tmp}/Caddyfile" 'tls {'
 assert_contains "${caddy_tmp}/Caddyfile" 'dns cloudflare {env.CLOUDFLARE_API_TOKEN}'
 assert_contains "${caddy_tmp}/Caddyfile" 'http://home.arpa {'
@@ -26,18 +28,27 @@ if [[ "${dns_dry_run}" != *"Would upsert A home.feocco.com -> 192.168.1.118"* ]]
 fi
 
 dns_fixture="$(mktemp)"
-cat > "${dns_fixture}" <<'JSON'
-{
-  "records": [
+PYTHONPATH="${REPO_DIR}/scripts/lib" python3 - "${REPO_DIR}" "${dns_fixture}" <<'PY'
+import json
+import pathlib
+import sys
+
+from homelab_catalog import route_entries
+
+base = pathlib.Path(sys.argv[1])
+fixture = pathlib.Path(sys.argv[2])
+records = [
     {
-      "id": "record-home",
-      "type": "A",
-      "name": "home.feocco.com",
-      "value": "192.168.1.118"
+        "id": f"record-{entry['service']}",
+        "type": "A",
+        "name": entry["hostname"],
+        "value": "192.168.1.118",
     }
-  ]
-}
-JSON
+    for entry in route_entries(base, "macmini")
+    if entry["dns"] == "unifi"
+]
+fixture.write_text(json.dumps({"records": records}, indent=2))
+PY
 UNIFI_BASE_URL=https://unifi.example.invalid \
 UNIFI_API_KEY=test-api-key \
 UNIFI_DNS_RECORDS_FIXTURE="${dns_fixture}" \

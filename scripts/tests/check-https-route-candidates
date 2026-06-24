@@ -17,10 +17,14 @@ if homepage["suggested_hostname"] != "home.feocco.com":
     raise SystemExit(f"homepage hostname mismatch: {homepage}")
 
 plant = items["plant-monitor"]
-if plant["status"] != "eligible":
-    raise SystemExit(f"plant-monitor should be eligible, got {plant}")
+if plant["status"] != "routed":
+    raise SystemExit(f"plant-monitor should be routed, got {plant}")
 if plant["suggested_hostname"] != "plant-monitor.home.feocco.com":
     raise SystemExit(f"plant-monitor hostname mismatch: {plant}")
+
+grafana = items["homelab-monitor"]
+if grafana["suggested_hostname"] != "grafana.home.feocco.com":
+    raise SystemExit(f"homelab-monitor should suggest grafana hostname, got {grafana}")
 
 bedtime = items["bedtime"]
 if bedtime["status"] != "blocked" or "no user-facing HTTP route" not in bedtime["reason"]:
@@ -31,9 +35,9 @@ if caddy["status"] != "blocked" or "terminator" not in caddy["reason"]:
     raise SystemExit(f"caddy should be blocked, got {caddy}")
 PY
 
-eligible_text="$("${REPO_DIR}/scripts/list-https-route-candidates" --status eligible)"
-if [[ "${eligible_text}" != *"plant-monitor.home.feocco.com"* ]]; then
-  echo "eligible output should include suggested service hostnames" >&2
-  echo "${eligible_text}" >&2
+routed_text="$("${REPO_DIR}/scripts/list-https-route-candidates" --status routed)"
+if [[ "${routed_text}" != *"plant-monitor.home.feocco.com"* ]]; then
+  echo "routed output should include configured service hostnames" >&2
+  echo "${routed_text}" >&2
   exit 1
 fi

@@ -12,6 +12,10 @@ live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8092
 tailnet: true
 monitoring: true
 sre: true
+route_hostname: hass-janitor.home.feocco.com
+route_target_port: 8092
+route_https: true
+route_dns: unifi
 dashboard_name: hass-janitor
 dashboard_group: Runtime Services
 dashboard_description: Home Assistant cleanup and action helper
