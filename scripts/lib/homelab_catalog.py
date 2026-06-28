@@ -430,6 +430,7 @@ def caddy_retired_redirects(base_dir: pathlib.Path) -> list[dict[str, str]]:
 
 def caddy_config(base_dir: pathlib.Path, host: str | None = None) -> str:
     entries = route_entries(base_dir, host)
+    entry_hostnames = {str(entry["hostname"]) for entry in entries}
     lines = [
         "{",
         "\temail {$CADDY_ACME_EMAIL}",
@@ -474,6 +475,8 @@ def caddy_config(base_dir: pathlib.Path, host: str | None = None) -> str:
             )
     for redirect in caddy_retired_redirects(base_dir):
         hostname = redirect["hostname"]
+        if hostname in entry_hostnames:
+            continue
         target = redirect["to"].rstrip("/")
         lines.extend(
             [
