@@ -112,6 +112,20 @@ service inventory questions. It is a view over the generated service catalog:
 ./scripts/list-homelab-services --format json
 ```
 
+Use `docs/source-of-truth.md` for a domain-level map of the current service,
+networking, infrastructure, observability, data/API, secrets, and runtime
+evidence sources.
+
+Use the MkDocs site for searchable homelab documentation. The service index is
+generated from the existing catalog during the docs build and should not be
+committed as source.
+
+```bash
+python3 -m venv .local/docs-venv
+.local/docs-venv/bin/python -m pip install -r docs/requirements.txt
+PATH="$PWD/.local/docs-venv/bin:$PATH" ./scripts/build-docs-site
+```
+
 Use `scripts/generate-service-catalog` to inspect the service catalog.
 Homepage config is generated at deploy time from service `ops.yaml` dashboard
 metadata plus `services/homepage/manual-links.yaml`; generated files under

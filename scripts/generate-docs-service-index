@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHONPATH="${SCRIPT_DIR}/lib${PYTHONPATH:+:${PYTHONPATH}}" python3 - "$@" <<'PY'
+from __future__ import annotations
+
+import argparse
+import pathlib
+from collections import defaultdict
+from typing import Any
+
+from homelab_catalog import build_catalog
+
+
+def truthy(value: Any) -> str:
+    return "yes" if value else "no"
+
+
+def service_href(row: dict[str, Any]) -> str:
+    return str(row.get("homepage_url") or row.get("live_base_url") or "")
+
+
+def service_line(row: dict[str, Any]) -> str:
+    bits = [
+        f"host: `{row['host']}`",
+        f"enabled: `{truthy(row['enabled'])}`",
+        f"kind: `{row.get('kind') or 'unknown'}`",
+    ]
+    if row.get("route_hostname"):
+        bits.append(f"route: `{row['route_hostname']}`")
+    if row.get("monitoring"):
+        bits.append("monitored")
+    if row.get("sre_enabled"):
+        bits.append("SRE")
+    href = service_href(row)
+    name = row.get("dashboard_name") or row.get("name") or row["service"]
+    label = f"[{name}]({href})" if href else str(name)
+    return f"- **{label}** (`{row['service']}`): " + ", ".join(bits)
+
+
+def write_index(catalog: dict[str, Any]) -> str:
+    rows = catalog["services"]
+    lines = [
+        "# Service Index",
+        "",
+        "Generated from `./scripts/generate-service-catalog --format json`.",
+        "This page is a rendered view over service manifests, host manifests,",
+        "Compose files, monitoring config, and SRE metadata. It is not a new",
+        "source of truth.",
+        "",
+        "## By Domain",
+        "",
+    ]
+
+    by_domain: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        domain = str(row.get("dashboard_group") or row.get("kind") or "Unclassified")
+        by_domain[domain].append(row)
+
+    for domain in sorted(by_domain):
+        lines.extend([f"### {domain}", ""])
+        for row in sorted(by_domain[domain], key=lambda item: (item["service"], item["host"])):
+            lines.append(service_line(row))
+        lines.append("")
+
+    lines.extend(["## By Host And Status", ""])
+    by_host_status: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        status = "enabled" if row.get("enabled") else "disabled"
+        by_host_status[(str(row["host"]), status)].append(row)
+
+    for host, status in sorted(by_host_status):
+        lines.extend([f"### {host} / {status}", ""])
+        for row in sorted(by_host_status[(host, status)], key=lambda item: item["service"]):
+            lines.append(service_line(row))
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Generate MkDocs service index markdown.")
+    parser.add_argument("--base-dir", default=".", help="Repository root")
+    parser.add_argument("--output", default="docs/generated/service-index.md", help="Output markdown path")
+    args = parser.parse_args()
+
+    base_dir = pathlib.Path(args.base_dir).resolve()
+    output = pathlib.Path(args.output)
+    if not output.is_absolute():
+        output = base_dir / output
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(write_index(build_catalog(base_dir)), encoding="utf-8")
+    return 0
+
+
+raise SystemExit(main())
+PY

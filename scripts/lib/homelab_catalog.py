@@ -520,6 +520,7 @@ def homepage_item(name: str, href: str, description: str, icon: str, site_monito
 GROUP_ORDER = [
     "Daily Ops",
     "Infrastructure",
+    "Sources of Truth",
     "Remote Access",
     "Runtime Services",
     "Monitoring & Cost",
@@ -598,6 +599,9 @@ layout:
   Infrastructure:
     style: row
     columns: 5
+  Sources of Truth:
+    style: row
+    columns: 4
   Runtime Services:
     style: row
     columns: 4

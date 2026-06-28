@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DOCS_SRC="${REPO_DIR}/.local/mkdocs-src"
+
+"${REPO_DIR}/scripts/generate-docs-service-index" --output "${REPO_DIR}/docs/generated/service-index.md"
+rm -rf "${DOCS_SRC}"
+mkdir -p "${DOCS_SRC}/docs" "${DOCS_SRC}/services"
+cp -R "${REPO_DIR}/docs/." "${DOCS_SRC}/docs/"
+for readme in "${REPO_DIR}"/services/*/README.md; do
+  service_dir="$(basename "$(dirname "${readme}")")"
+  mkdir -p "${DOCS_SRC}/services/${service_dir}"
+  cp "${readme}" "${DOCS_SRC}/services/${service_dir}/README.md"
+done
+python3 -m mkdocs build --strict --config-file "${REPO_DIR}/mkdocs.yml" "$@"

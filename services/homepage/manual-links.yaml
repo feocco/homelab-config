@@ -49,6 +49,41 @@ links:
     href: https://github.com/feocco/homelab-config
     description: Runtime source of truth
     icon: github.png
+  - name: Source-of-Truth Map
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config/blob/main/docs/source-of-truth.md
+    description: Domain inventory and current gaps
+    icon: github.png
+  - name: Homelab Docs
+    group: Sources of Truth
+    href: https://feocco.github.io/homelab-config/
+    description: Searchable documentation website
+    icon: book-open.png
+  - name: Service Catalog
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config#which-command-should-i-use
+    description: Generated service inventory entrypoint
+    icon: docker.png
+  - name: Deployment Truth
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config/blob/main/docs/deployment-source-of-truth.md
+    description: Durable deploy and runtime evidence model
+    icon: github.png
+  - name: Networking Routes
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config/blob/main/services/caddy/README.md
+    description: Caddy, DNS, and route declaration model
+    icon: caddy.png
+  - name: Secrets Workflow
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config/blob/main/service-secrets.yaml
+    description: Required service secret names
+    icon: lock.png
+  - name: SRE Metadata
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config/blob/main/services/homelab-sre-agent/services.yaml
+    description: Service runbooks and incident ownership
+    icon: grafana.png
   - name: OpenAI Cost / Usage
     group: Monitoring & Cost
     href: https://grafana.home.feocco.com/d/openai-cost-usage/openai-cost-usage

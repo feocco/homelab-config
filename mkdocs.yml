@@ -1,0 +1,64 @@
+site_name: Homelab Docs
+site_description: High-context documentation for Joe Feocco's homelab.
+site_url: https://feocco.github.io/homelab-config/
+repo_url: https://github.com/feocco/homelab-config
+repo_name: feocco/homelab-config
+docs_dir: .local/mkdocs-src
+site_dir: .site
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Start Here:
+      - Home: docs/index.md
+      - Overview: docs/overview.md
+      - Source Of Truth: docs/source-of-truth.md
+      - How To Navigate: docs/how-to-navigate.md
+  - Domains:
+      - Services: docs/generated/service-index.md
+      - Networking: services/caddy/README.md
+      - Observability: services/homelab-monitor/README.md
+      - Gaps And Roadmap: docs/gaps-roadmap.md
+  - Operations:
+      - Deployment Source Of Truth: docs/deployment-source-of-truth.md
+      - Deployment Validation: docs/deployment-validation.md
+      - HTTPS Route Rollout: docs/https-route-rollout-goal.md
+      - GitHub Runner: docs/github-runner.md
+      - GHCR And Synology: docs/ghcr-and-synology.md
+      - Mac Mini Bootstrap: docs/macmini-bootstrap.md
+      - Setup Status: docs/setup-status.md
+  - Services:
+      - Homepage: services/homepage/README.md
+      - Bedtime: services/bedtime/README.md
+      - Dog Bowl Monitor: services/dog-bowl-monitor/README.md
+      - hass-janitor: services/hass-janitor/README.md
+      - homelab-functions: services/homelab-functions/README.md
+      - Homelab Monitor: services/homelab-monitor/README.md
+      - Instacart History: services/instacart-history-service/README.md
+      - Laundry Monitor: services/laundry-monitor/README.md
+      - Mealie: services/mealie/README.md
+      - Mealie Planner: services/mealie-planner/README.md
+      - NetAlertX: services/netalertx/README.md
+      - Pirate Radio: services/pirate-radio/README.md
+      - Plant Monitor: services/plant-monitor/README.md
