@@ -16,7 +16,7 @@ port_env: MEALIE_HTTP_PORT
 tailnet: false
 monitoring: false
 sre: false
-route_hostname: mealie.home.feocco.com
+route_hostname: mealie.feocco.com
 route_target_port: 9925
 route_https: true
 route_dns: unifi

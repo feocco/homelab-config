@@ -1,0 +1,5 @@
+redirects:
+  - hostname: homarr.home.feocco.com
+    to: https://home.feocco.com
+  - hostname: mealie.home.feocco.com
+    to: https://mealie.feocco.com

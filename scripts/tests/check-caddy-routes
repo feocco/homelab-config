@@ -10,6 +10,10 @@ assert_contains "${caddy_tmp}/Caddyfile" 'home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:7576'
 assert_contains "${caddy_tmp}/Caddyfile" 'grafana.home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:3000'
+assert_contains "${caddy_tmp}/Caddyfile" 'mealie.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:9925'
+assert_contains "${caddy_tmp}/Caddyfile" 'mealie.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'redir https://mealie.feocco.com{uri} 308'
 assert_contains "${caddy_tmp}/Caddyfile" 'tls {'
 assert_contains "${caddy_tmp}/Caddyfile" 'dns cloudflare {env.CLOUDFLARE_API_TOKEN}'
 assert_contains "${caddy_tmp}/Caddyfile" 'http://home.arpa {'
@@ -26,6 +30,16 @@ if [[ "${dns_dry_run}" != *"Would upsert A home.feocco.com -> 192.168.1.43"* ]];
   echo "${dns_dry_run}" >&2
   exit 1
 fi
+if [[ "${dns_dry_run}" != *"Would upsert A mealie.feocco.com -> 192.168.1.43"* ]]; then
+  echo "UniFi DNS dry-run should show canonical Mealie A record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+if [[ "${dns_dry_run}" != *"Would upsert A mealie.home.feocco.com -> 192.168.1.43"* ]]; then
+  echo "UniFi DNS dry-run should show retired Mealie hostname A record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
 
 dns_fixture="$(mktemp)"
 PYTHONPATH="${REPO_DIR}/scripts/lib" python3 - "${REPO_DIR}" "${dns_fixture}" <<'PY'
@@ -33,7 +47,7 @@ import json
 import pathlib
 import sys
 
-from homelab_catalog import route_entries
+from homelab_catalog import caddy_retired_redirects, route_entries
 
 base = pathlib.Path(sys.argv[1])
 fixture = pathlib.Path(sys.argv[2])
@@ -47,6 +61,17 @@ records = [
     for entry in route_entries(base, "macmini")
     if entry["dns"] == "unifi"
 ]
+active_names = {record["name"] for record in records}
+records.extend(
+    {
+        "id": f"record-retired-{entry['hostname']}",
+        "type": "A",
+        "name": entry["hostname"],
+        "value": "192.168.1.43",
+    }
+    for entry in caddy_retired_redirects(base)
+    if entry["hostname"] not in active_names
+)
 fixture.write_text(json.dumps({"records": records}, indent=2))
 PY
 UNIFI_BASE_URL=https://unifi.example.invalid \
@@ -61,7 +86,7 @@ if [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A home.feocco.com -> 
   echo "${cloudflare_dry_run}" >&2
   exit 1
 fi
-if [[ "${cloudflare_dry_run}" == *"mealie.home.feocco.com"* ]]; then
+if [[ "${cloudflare_dry_run}" == *"mealie.feocco.com"* ]]; then
   echo "Cloudflare DNS dry-run should skip tunnel-managed Mealie public DNS" >&2
   echo "${cloudflare_dry_run}" >&2
   exit 1

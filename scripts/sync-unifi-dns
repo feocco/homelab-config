@@ -87,11 +87,35 @@ def parse_ops(path: pathlib.Path) -> dict[str, Any]:
     return data
 
 
+def parse_retired_routes(path: pathlib.Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    routes: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        match = re.match(r"^  - hostname:\s*(.+)\s*$", line)
+        if match:
+            current = {"hostname": str(clean_scalar(match.group(1)))}
+            routes.append(current)
+            continue
+        if current is None:
+            continue
+        match = re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.+)\s*$", line)
+        if match:
+            key, value = match.groups()
+            current[key] = str(clean_scalar(value))
+    return [route for route in routes if route.get("hostname") and route.get("to")]
+
+
 def desired_records(base_dir: pathlib.Path, host: str) -> list[dict[str, str]]:
     bind_addr, services = parse_host_file(base_dir / "hosts" / host / "services.yaml")
     if not bind_addr:
         raise SystemExit(f"hosts/{host}/services.yaml is missing host.bind_addr")
     records: list[dict[str, str]] = []
+    active_hostnames: set[str] = set()
     for service, entry in sorted(services.items()):
         if entry.get("enabled") is False:
             continue
@@ -101,7 +125,14 @@ def desired_records(base_dir: pathlib.Path, host: str) -> list[dict[str, str]]:
         hostname = str(manifest.get("route_hostname") or "")
         if not hostname:
             continue
+        active_hostnames.add(hostname)
         records.append({"service": service, "type": "A", "name": hostname, "value": bind_addr})
+    if services.get("caddy", {}).get("enabled") is not False:
+        for route in parse_retired_routes(base_dir / "services" / "caddy" / "retired-routes.yaml"):
+            hostname = route["hostname"]
+            if hostname in active_hostnames:
+                continue
+            records.append({"service": "caddy-retired-route", "type": "A", "name": hostname, "value": bind_addr})
     return records
 
 

@@ -20,6 +20,8 @@ Retired service hostnames that no longer have a service manifest belong in
 `services/caddy/retired-routes.yaml` so Caddy keeps DNS and TLS working while
 redirecting users to the replacement service. Active services can set
 `route_redirect_to` in their `ops.yaml`.
+UniFi DNS sync includes retired route hostnames so those redirects resolve on
+the LAN.
 
 Homepage is the first HTTPS route:
 

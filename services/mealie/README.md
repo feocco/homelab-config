@@ -1,14 +1,12 @@
 # Mealie
 
-Mealie runs on the Mac mini and is intended to be published at
-`https://mealie.home.feocco.com` through the LAN Caddy route. The older
-Cloudflare Tunnel path can stay deployed during migration, but the repo-managed
-runtime base URL now points at the LAN HTTPS route.
-Local LAN clients should reach this hostname through UniFi local DNS and Caddy,
+Mealie runs on the Mac mini and is published at `https://mealie.feocco.com`.
+LAN clients should reach this hostname through UniFi local DNS and Caddy,
 bypassing Cloudflare Access. Off-LAN clients that resolve public DNS should use
-the Cloudflare Tunnel and Access policy before reaching Mealie. Mealie password
-login remains enabled for app accounts, households, recipes, meal plans, and
-admin settings.
+the Cloudflare Tunnel and Access policy before reaching Mealie. The old
+`https://mealie.home.feocco.com` hostname redirects to the canonical URL.
+Mealie password login remains enabled for app accounts, households, recipes,
+meal plans, and admin settings.
 
 ## Runtime
 
@@ -17,7 +15,8 @@ admin settings.
 - Database container: `mealie-postgres`
 - Tunnel container: `mealie-cloudflared`
 - Local-only debug URL on the Mac mini: `http://127.0.0.1:9925`
-- LAN HTTPS URL: `https://mealie.home.feocco.com`
+- Canonical HTTPS URL: `https://mealie.feocco.com`
+- Legacy LAN URL: `https://mealie.home.feocco.com`, redirected by Caddy
 
 The Docker port binds to `127.0.0.1`; do not add router port forwarding.
 
@@ -25,9 +24,9 @@ The Docker port binds to `127.0.0.1`; do not add router port forwarding.
 
 Keep the same hostname for local and remote access:
 
-- UniFi local DNS: `mealie.home.feocco.com -> 192.168.1.43`, served by Caddy.
-- Cloudflare public DNS/Tunnel: `mealie.home.feocco.com`, protected by
-  Cloudflare Access.
+- UniFi local DNS: `mealie.feocco.com -> 192.168.1.43`, served by Caddy.
+- Cloudflare public DNS/Tunnel: `mealie.feocco.com`, protected by Cloudflare
+  Access.
 
 This avoids a Cloudflare login on the trusted LAN while preserving the Access
 gate outside the network. If a local device still sees Cloudflare Access, check
@@ -36,7 +35,7 @@ that it is using UniFi DNS rather than public DNS or encrypted DNS.
 ## Cloudflare
 
 The Cloudflare tunnel is named `mealie-macmini` and points
-`mealie.home.feocco.com` at:
+`mealie.feocco.com` at:
 
 ```text
 http://mealie:9000
