@@ -17,7 +17,6 @@ High-level map for understanding the deployed homelab quickly.
 - Caddy terminates HTTPS for routed `home.feocco.com` LAN names.
 - UniFi DNS maps friendly names to Mac.
 - Homepage is the generated local front door at `https://home.feocco.com`.
-- Homarr remains available separately at `https://homarr.home.feocco.com`.
 
 ## Deployment
 
@@ -32,8 +31,6 @@ High-level map for understanding the deployed homelab quickly.
 - Grafana centralizes health, uptime, and cost monitoring.
 - Prometheus scrapes containers, hosts, and HTTP endpoints.
 - Homepage is the primary clickable service dashboard.
-- Homarr remains a separate comparison/transition dashboard.
-- Dashy is disabled legacy config.
 - Portainer remains NAS Docker management.
 
 ## Alerting

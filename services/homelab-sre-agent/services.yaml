@@ -142,25 +142,6 @@ services:
       enabled: false
       autofix: false
 
-  homarr:
-    containers:
-      - homarr
-    images:
-      - ghcr.io/homarr-labs/homarr:*
-    source:
-      repo: feocco/homelab-config
-      path_hint: /Users/feocco/homelab-config/services/homarr
-    issue_repo: feocco/homelab-config
-    deploy:
-      path: services/homarr
-    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homarr
-    labels:
-      - homelab-sre
-      - homarr
-    sre:
-      enabled: false
-      autofix: false
-
   homepage:
     containers:
       - homepage
@@ -176,25 +157,6 @@ services:
     labels:
       - homelab-sre
       - homepage
-    sre:
-      enabled: false
-      autofix: false
-
-  dashy-redirect:
-    containers:
-      - dashy-redirect
-    images:
-      - nginx:*
-    source:
-      repo: feocco/homelab-config
-      path_hint: /Users/feocco/code/homelab-config/services/dashy-redirect
-    issue_repo: feocco/homelab-config
-    deploy:
-      path: services/dashy-redirect
-    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/dashy-redirect
-    labels:
-      - homelab-sre
-      - dashy-redirect
     sre:
       enabled: false
       autofix: false

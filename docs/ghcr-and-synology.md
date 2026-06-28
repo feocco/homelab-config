@@ -26,7 +26,7 @@ docker-compose pull
 docker-compose up -d
 ```
 
-Existing Docker Hub containers such as Pi-hole and Dashy can keep running. They
+Existing Docker Hub containers such as Pi-hole can keep running. They
 do not need to be moved to GHCR.
 
 ## NAS Login

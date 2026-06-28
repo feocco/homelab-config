@@ -16,18 +16,6 @@ services:
     path: services/portainer
     enabled: true
 
-  dashy:
-    path: services/dashy
-    enabled: false
-
-  dashy-redirect:
-    path: services/dashy-redirect
-    enabled: true
-
-  homarr:
-    path: services/homarr
-    enabled: false
-
   netalertx:
     path: services/netalertx
     enabled: false

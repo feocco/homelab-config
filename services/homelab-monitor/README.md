@@ -19,14 +19,13 @@ Metrics-first Grafana and Prometheus stack for `macmini`.
 - Mac mini host metrics through native Homebrew `node_exporter`.
 - Docker/container metrics through the local Docker socket `docker-stats-exporter`.
 - HTTP availability through blackbox_exporter:
-  - Dashy
+  - Homepage
   - Plant Monitor
   - homelab-functions
   - hass-janitor
   - homelab-log-watcher
   - homelab-sre-agent
   - Hello NAS
-  - Homarr
   - Grafana
   - Pi-hole
   - Portainer
@@ -41,7 +40,7 @@ flow. Cost alert thresholds are non-secret config in `.env.config`:
 
 `streamdeck-companion` and Raspberry Pi host metrics are intentionally deferred.
 The Pi at `192.168.1.250` responded to ICMP during planning, but the Companion
-HTTP port from Dashy was not reachable.
+HTTP port was not reachable.
 
 ## Mac Mini Notes
 

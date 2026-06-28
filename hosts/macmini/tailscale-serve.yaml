@@ -3,10 +3,6 @@ services:
     enabled: true
     http_port: 8099
     target: http://127.0.0.1:8099
-  dashy:
-    enabled: false
-    http_port: 8080
-    target: http://127.0.0.1:8080
   homepage:
     enabled: true
     http_port: 7576
@@ -31,10 +27,6 @@ services:
     enabled: true
     http_port: 8094
     target: http://127.0.0.1:8094
-  homarr:
-    enabled: true
-    http_port: 7575
-    target: http://127.0.0.1:7575
   homelab-monitor:
     enabled: true
     http_port: 3000

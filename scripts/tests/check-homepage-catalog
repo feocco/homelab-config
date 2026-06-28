@@ -18,8 +18,6 @@ for key in [
     ("plant-monitor", "macmini"),
     ("homelab-monitor", "macmini"),
     ("portainer", "nasfeo"),
-    ("dashy", "macmini"),
-    ("homarr", "macmini"),
     ("homepage", "macmini"),
 ]:
     if key not in services:
@@ -33,10 +31,6 @@ if services[("homelab-monitor", "macmini")]["kind"] != "multi-container":
     raise SystemExit("homelab-monitor kind should come from ops.yaml")
 if services[("portainer", "nasfeo")]["kind"] != "infra":
     raise SystemExit("portainer kind should come from ops.yaml")
-if services[("dashy", "macmini")]["enabled"] is not False:
-    raise SystemExit("dashy should be disabled after Homepage cutover")
-if services[("homarr", "macmini")]["enabled"] is not True:
-    raise SystemExit("homarr should remain enabled and separate")
 if services[("homepage", "macmini")]["homepage_url"] != "https://home.feocco.com/":
     raise SystemExit("homepage should use home.feocco.com as its primary URL")
 if services[("plant-monitor", "macmini")]["dashboard_description"] != "Home Assistant plant notifications":
@@ -58,12 +52,8 @@ import sys
 rows = json.loads(pathlib.Path(sys.argv[1]).read_text())
 services = {(row["service"], row["host"]): row for row in rows}
 
-if services[("dashy", "macmini")]["enabled"] is not False:
-    raise SystemExit("list-homelab-services should show dashy disabled on macmini")
 if services[("homepage", "macmini")]["enabled"] is not True:
     raise SystemExit("list-homelab-services should show homepage enabled on macmini")
-if services[("homarr", "macmini")]["enabled"] is not True:
-    raise SystemExit("list-homelab-services should show homarr still enabled")
 if services[("homepage", "macmini")]["source_repo"] != "feocco/homelab-config":
     raise SystemExit("homepage source_repo should be catalog-derived")
 PY
@@ -76,13 +66,18 @@ assert_contains "${homepage_tmp}/services.yaml" 'Daily Ops'
 assert_contains "${homepage_tmp}/services.yaml" 'Infrastructure'
 assert_contains "${homepage_tmp}/services.yaml" 'Runtime Services'
 assert_contains "${homepage_tmp}/services.yaml" 'Monitoring & Cost'
-assert_contains "${homepage_tmp}/services.yaml" 'Disabled / Legacy'
+assert_contains "${homepage_tmp}/services.yaml" 'Remote Access'
 assert_contains "${homepage_tmp}/services.yaml" 'Plant Monitor'
 assert_contains "${homepage_tmp}/services.yaml" 'Home Assistant plant notifications'
 assert_contains "${homepage_tmp}/services.yaml" 'OpenAI Cost / Usage'
-assert_contains "${homepage_tmp}/services.yaml" 'Homarr'
-assert_contains "${homepage_tmp}/services.yaml" 'https://homarr.home.feocco.com/'
-assert_contains "${homepage_tmp}/services.yaml" 'Dashy'
+assert_contains "${homepage_tmp}/services.yaml" 'NAS SSH'
+assert_contains "${homepage_tmp}/services.yaml" 'ssh://feocco@nasfeo'
+assert_contains "${homepage_tmp}/services.yaml" 'Mac mini SSH'
+assert_contains "${homepage_tmp}/services.yaml" 'ssh://maclab@192.168.1.43'
+assert_contains "${homepage_tmp}/services.yaml" 'Mac mini Screen Sharing'
+assert_contains "${homepage_tmp}/services.yaml" 'vnc://maclab@192.168.1.43'
+assert_contains "${homepage_tmp}/services.yaml" 'NAS DSM'
+assert_contains "${homepage_tmp}/services.yaml" 'https://nasfeo:5001/'
 assert_contains "${homepage_tmp}/services.yaml" 'https://home.feocco.com/'
 assert_contains "${homepage_tmp}/services.yaml" 'AWS Console'
 assert_contains "${homepage_tmp}/services.yaml" 'Prusa Connect'

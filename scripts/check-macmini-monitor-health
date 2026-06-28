@@ -3,7 +3,6 @@ set -euo pipefail
 
 BASE_URL="${MACMINI_TAILNET_BASE_URL:-http://maclabs-mac-mini.taildf3445.ts.net}"
 GRAFANA_URL="${GRAFANA_URL:-https://grafana.home.feocco.com}"
-HOMARR_URL="${HOMARR_URL:-${BASE_URL}:7575}"
 HOMEPAGE_URL="${HOMEPAGE_URL:-${BASE_URL}:7576}"
 ENV_FILE="${HOMELAB_MONITOR_ENV_FILE:-services/homelab-monitor/.env}"
 
@@ -97,7 +96,6 @@ PY
 
 check_http "Grafana API health" "${GRAFANA_URL}/api/health"
 check_http "Homepage" "${HOMEPAGE_URL}/"
-check_http "Homarr" "${HOMARR_URL}/"
 
 if [[ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
   check_prometheus_targets
@@ -106,8 +104,6 @@ if [[ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
   check_promql 'homelab_docker_container_memory_usage_bytes'
   check_promql 'probe_success{job="blackbox-http",service="homepage"}'
   check_promql 'homelab_docker_container_start_time_seconds{name="homepage"}'
-  check_promql 'probe_success{job="blackbox-http",service="homarr"}'
-  check_promql 'homelab_docker_container_start_time_seconds{name="homarr"}'
   check_promql 'probe_success{job="blackbox-http",service="hello-nas"}'
   check_promql 'homelab_docker_container_start_time_seconds{name="hello-nas"}'
   check_promql 'probe_success{job="blackbox-http",service="plant-monitor"}'

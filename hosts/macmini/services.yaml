@@ -15,10 +15,6 @@ services:
     path: services/plant-monitor
     enabled: true
 
-  dashy:
-    path: services/dashy
-    enabled: false
-
   homepage:
     path: services/homepage
     enabled: true
@@ -41,10 +37,6 @@ services:
 
   homelab-sre-agent:
     path: services/homelab-sre-agent
-    enabled: true
-
-  homarr:
-    path: services/homarr
     enabled: true
 
   homelab-monitor:

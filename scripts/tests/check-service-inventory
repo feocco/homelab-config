@@ -11,7 +11,6 @@ source "${REPO_DIR}/scripts/tests/lib-test-helpers"
 # - homelab-monitor: multi-container service
 HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host nasfeo --list
 HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host nasfeo portainer --dry-run --deploy-base-dir "${REPO_DIR}"
-HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host nasfeo dashy-redirect --dry-run --deploy-base-dir "${REPO_DIR}"
 HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host nasfeo --all --dry-run --deploy-base-dir "${REPO_DIR}"
 HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host macmini --list
 HOMELAB_CONFIG_DIR="${REPO_DIR}" "${REPO_DIR}/scripts/homelab-deploy" --host macmini plant-monitor --dry-run --deploy-base-dir "${REPO_DIR}"
@@ -29,7 +28,6 @@ by_service_host = {(row["service"], row["host"]): row for row in rows}
 for key in [
     ("plant-monitor", "macmini"),
     ("homelab-monitor", "macmini"),
-    ("homarr", "macmini"),
     ("portainer", "nasfeo"),
 ]:
     if key not in by_service_host:
@@ -62,6 +60,5 @@ inventory_table="$(mktemp)"
 "${REPO_DIR}/scripts/list-homelab-services" >"${inventory_table}"
 assert_contains "${inventory_table}" 'plant-monitor'
 assert_contains "${inventory_table}" 'homelab-monitor'
-assert_contains "${inventory_table}" 'homarr'
 assert_contains "${inventory_table}" 'portainer'
 rm -f "${inventory_table}"

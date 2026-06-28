@@ -259,13 +259,10 @@ def host_names(base_dir: pathlib.Path) -> list[str]:
 def display_name(service: str) -> str:
     fixed = {
         "caddy": "Caddy",
-        "dashy": "Dashy",
-        "dashy-redirect": "Dashy Redirect",
         "dog-bowl-monitor": "Dog Bowl Monitor",
         "grafana": "Grafana",
         "hass-janitor": "hass-janitor",
         "hello-nas": "Hello NAS",
-        "homarr": "Homarr",
         "homelab-functions": "homelab-functions",
         "homelab-log-watcher": "homelab-log-watcher",
         "homelab-monitor": "Homelab Monitor",
@@ -356,10 +353,6 @@ def homepage_url_for(service: str, host: str, manifest: dict[str, Any], caddy_ro
         return f"{scheme}://{route_hostname.rstrip('/')}/"
     if service == "homepage":
         return "http://home.arpa/"
-    if service == "homarr":
-        return "http://homarr.home.arpa/"
-    if service == "dashy":
-        return "http://dashy.home.arpa/"
     port = manifest.get("http_port")
     if isinstance(port, int) and port in caddy_routes:
         return caddy_routes[port]
@@ -514,6 +507,7 @@ def homepage_item(name: str, href: str, description: str, icon: str) -> list[str
 GROUP_ORDER = [
     "Daily Ops",
     "Infrastructure",
+    "Remote Access",
     "Runtime Services",
     "Monitoring & Cost",
     "Cloud & External",

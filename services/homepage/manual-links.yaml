@@ -14,6 +14,26 @@ links:
     href: http://nasfeo:8181/admin/
     description: DNS and ad blocking
     icon: pi-hole.png
+  - name: NAS SSH
+    group: Remote Access
+    href: ssh://feocco@nasfeo
+    description: Open an SSH session to the Synology NAS
+    icon: terminal.png
+  - name: NAS DSM
+    group: Remote Access
+    href: https://nasfeo:5001/
+    description: Open Synology DSM in the browser
+    icon: synology.png
+  - name: Mac mini SSH
+    group: Remote Access
+    href: ssh://maclab@192.168.1.43
+    description: Open an SSH session to the homelab Mac mini
+    icon: terminal.png
+  - name: Mac mini Screen Sharing
+    group: Remote Access
+    href: vnc://maclab@192.168.1.43
+    description: Open macOS Screen Sharing for the homelab Mac mini
+    icon: apple.png
   - name: Homelab Deploy
     group: Infrastructure
     href: https://github.com/feocco/homelab-config/actions
