@@ -10,6 +10,8 @@ assert_contains "${caddy_tmp}/Caddyfile" 'home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:7576'
 assert_contains "${caddy_tmp}/Caddyfile" 'grafana.home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:3000'
+assert_contains "${caddy_tmp}/Caddyfile" 'homarr.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'redir https://home.feocco.com{uri} 308'
 assert_contains "${caddy_tmp}/Caddyfile" 'tls {'
 assert_contains "${caddy_tmp}/Caddyfile" 'dns cloudflare {env.CLOUDFLARE_API_TOKEN}'
 assert_contains "${caddy_tmp}/Caddyfile" 'http://home.arpa {'
@@ -58,6 +60,11 @@ rm -f "${dns_fixture}"
 cloudflare_dry_run="$("${REPO_DIR}/scripts/sync-cloudflare-dns" --host macmini --dry-run)"
 if [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A home.feocco.com -> 100.81.237.11 (DNS only)"* ]]; then
   echo "Cloudflare DNS dry-run should show Homepage A record upsert" >&2
+  echo "${cloudflare_dry_run}" >&2
+  exit 1
+fi
+if [[ "${cloudflare_dry_run}" == *"mealie.home.feocco.com"* ]]; then
+  echo "Cloudflare DNS dry-run should skip tunnel-managed Mealie public DNS" >&2
   echo "${cloudflare_dry_run}" >&2
   exit 1
 fi

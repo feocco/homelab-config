@@ -107,6 +107,8 @@ def desired_records(base_dir: pathlib.Path, host_name: str) -> list[dict[str, st
         hostname = str(manifest.get("route_hostname") or "")
         if not hostname or manifest.get("route_https") is not True:
             continue
+        if str(manifest.get("route_public_dns") or "cloudflare-dns-only") == "cloudflare-tunnel":
+            continue
         records.append({"service": service, "type": "A", "name": hostname, "value": tailnet_addr})
     return records
 

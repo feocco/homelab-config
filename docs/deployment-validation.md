@@ -79,6 +79,12 @@ Optional fields enable additional units:
 - `route_dns: unifi` requires the route to be present in UniFi local DNS.
 - `route_aliases:` optionally lists legacy HTTP hostnames that redirect to the
   HTTPS route.
+- `route_redirect_to:` optionally turns a routed hostname into an HTTPS
+  redirect instead of proxying to `route_target_port`. Use this for retired
+  hostnames that should keep a useful destination.
+- `route_public_dns: cloudflare-tunnel` opts a route out of DNS-only Tailnet A
+  record sync when its public path is intentionally managed by Cloudflare Tunnel
+  and Access.
 - `monitoring: true` checks Prometheus, restart alert, monitor-health, and live
   monitor-health proof.
 - `sre: true` checks `homelab-sre-agent` service metadata.

@@ -16,6 +16,8 @@ route_dns: unifi
 `scripts/generate-caddy-config` builds the runtime `Caddyfile` from those
 manifests. Do not hand-maintain `services/caddy/Caddyfile`; it is generated
 during `homelab-deploy --host macmini caddy`.
+Retired hostnames can set `route_redirect_to` to keep DNS and TLS working while
+redirecting users to the replacement service.
 
 Homepage is the first HTTPS route:
 
@@ -82,3 +84,6 @@ Required Cloudflare environment for `--check` and `--apply`:
 For Homepage, UniFi should resolve `home.feocco.com` to the Mac mini bind
 address from `hosts/macmini/services.yaml`, and Cloudflare should resolve it
 to the Mac mini Tailnet address with proxying disabled.
+Routes with `route_public_dns: cloudflare-tunnel`, such as Mealie, are skipped
+by `sync-cloudflare-dns` because their public DNS path is managed by Cloudflare
+Tunnel and Access instead.

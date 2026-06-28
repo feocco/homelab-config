@@ -20,6 +20,7 @@ route_hostname: mealie.home.feocco.com
 route_target_port: 9925
 route_https: true
 route_dns: unifi
+route_public_dns: cloudflare-tunnel
 secrets:
   - POSTGRES_PASSWORD
   - CLOUDFLARE_TUNNEL_TOKEN

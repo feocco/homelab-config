@@ -555,22 +555,25 @@ class Validator:
                 self.pass_("route", "UniFi DNS dry-run contains route hostname and host bind address")
             else:
                 self.fail("route", f"UniFi DNS dry-run failed or omitted route: {dns_check.stdout.strip()}")
-            cloudflare_check = run(
-                [
-                    str(self.base_dir / "scripts/sync-cloudflare-dns"),
-                    "--host",
-                    self.host,
-                    "--base-dir",
-                    str(self.base_dir),
-                    "--dry-run",
-                ],
-                cwd=self.base_dir,
-            )
-            tailnet_addr = host_tailnet_addr(caddy_services_file)
-            if cloudflare_check.returncode == 0 and route_hostname in cloudflare_check.stdout and tailnet_addr in cloudflare_check.stdout:
-                self.pass_("route", "Cloudflare DNS dry-run contains route hostname and host Tailnet address")
+            if str(manifest.get("route_public_dns") or "cloudflare-dns-only") == "cloudflare-tunnel":
+                self.pass_("route", "Cloudflare public DNS is tunnel-managed for this route")
             else:
-                self.fail("route", f"Cloudflare DNS dry-run failed or omitted route: {cloudflare_check.stdout.strip()}")
+                cloudflare_check = run(
+                    [
+                        str(self.base_dir / "scripts/sync-cloudflare-dns"),
+                        "--host",
+                        self.host,
+                        "--base-dir",
+                        str(self.base_dir),
+                        "--dry-run",
+                    ],
+                    cwd=self.base_dir,
+                )
+                tailnet_addr = host_tailnet_addr(caddy_services_file)
+                if cloudflare_check.returncode == 0 and route_hostname in cloudflare_check.stdout and tailnet_addr in cloudflare_check.stdout:
+                    self.pass_("route", "Cloudflare DNS dry-run contains route hostname and host Tailnet address")
+                else:
+                    self.fail("route", f"Cloudflare DNS dry-run failed or omitted route: {cloudflare_check.stdout.strip()}")
         elif route_hostname:
             self.pass_("route", f"Route hostname is scoped away from {self.host}")
 

@@ -398,6 +398,7 @@ def route_entries(base_dir: pathlib.Path, host: str | None = None) -> list[dict[
                     "https": manifest.get("route_https") is True,
                     "dns": manifest_value(manifest, "route_dns"),
                     "aliases": [str(value) for value in manifest.get("route_aliases", []) if str(value)],
+                    "redirect_to": manifest_value(manifest, "route_redirect_to"),
                 }
             )
     return sorted(entries, key=lambda row: (str(row["hostname"]), str(row["service"])))
@@ -421,13 +422,19 @@ def caddy_config(base_dir: pathlib.Path, host: str | None = None) -> str:
     for entry in entries:
         hostname = str(entry["hostname"])
         target_port = entry["target_port"]
+        redirect_to = str(entry.get("redirect_to") or "")
+        route_action = (
+            f"\tredir {redirect_to.rstrip('/')}{{uri}} 308"
+            if redirect_to
+            else f"\treverse_proxy host.docker.internal:{target_port}"
+        )
         lines.extend(
             [
                 f"{hostname} {{",
                 "\ttls {",
                 "\t\tdns cloudflare {env.CLOUDFLARE_API_TOKEN}",
                 "\t}",
-                f"\treverse_proxy host.docker.internal:{target_port}",
+                route_action,
                 "}",
                 "",
             ]
@@ -436,7 +443,7 @@ def caddy_config(base_dir: pathlib.Path, host: str | None = None) -> str:
             lines.extend(
                 [
                     f"http://{alias} {{",
-                    f"\tredir https://{hostname}{{uri}} 308",
+                    f"\tredir {redirect_to.rstrip('/') if redirect_to else f'https://{hostname}'}{{uri}} 308",
                     "}",
                     "",
                 ]

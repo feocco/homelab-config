@@ -16,9 +16,10 @@ route_hostname: homarr.home.feocco.com
 route_target_port: 7575
 route_https: true
 route_dns: unifi
+route_redirect_to: https://home.feocco.com
 dashboard_name: Homarr
 dashboard_group: Daily Ops
-dashboard_description: Legacy dashboard kept separate
+dashboard_description: Legacy dashboard hostname redirects to Homepage
 dashboard_icon: homarr.png
 secrets:
   - SECRET_ENCRYPTION_KEY
