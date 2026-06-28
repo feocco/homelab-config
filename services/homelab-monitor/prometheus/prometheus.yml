@@ -81,6 +81,11 @@ scrape_configs:
           service: mealie-planner
           host: macmini
       - targets:
+          - http://host.docker.internal:8104/health
+        labels:
+          service: bedtime
+          host: macmini
+      - targets:
           - http://host.docker.internal:8100/health
         labels:
           service: instacart-history-service

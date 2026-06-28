@@ -1,13 +1,18 @@
 service: bedtime
-kind: worker
+kind: app
 host: macmini
 source_repo: feocco/bedtime
 image: ghcr.io/feocco/bedtime:latest
 public_image: true
 container: bedtime
-tailnet: false
-monitoring: false
+http_port: 8104
+port_env: SERVICE_PORT
+health_path: /health
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8104
+tailnet: true
+monitoring: true
 sre: true
+route_exempt_reason: backend health endpoint only
 dashboard_name: Bedtime
 dashboard_group: Runtime Services
 dashboard_description: Home Assistant bedtime automation worker

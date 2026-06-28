@@ -34,6 +34,12 @@
 - Homepage display metadata belongs in optional flat `dashboard_*` fields in
   each service `ops.yaml`. External/manual links belong in
   `services/homepage/manual-links.yaml`.
+- Dashboard-visible Mac mini `Runtime Services` should follow the backend app
+  service card convention: expose `GET /health`, declare `http_port`,
+  `port_env`, `health_path`, `live_base_url`, `tailnet: true`, and
+  `monitoring: true`, and let Homepage add the generated status dot. If a
+  service has a backend health endpoint but should not get a LAN HTTPS route,
+  declare `route_exempt_reason` in `ops.yaml`.
 - Classify deployment work before editing runtime config:
   - App code changed only: commit/push the app repo, publish the image, then
     run `./scripts/redeploy-image --host <host> <service>` from this repo. Do

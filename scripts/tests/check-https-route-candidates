@@ -27,8 +27,8 @@ if grafana["suggested_hostname"] != "grafana.home.feocco.com":
     raise SystemExit(f"homelab-monitor should suggest grafana hostname, got {grafana}")
 
 bedtime = items["bedtime"]
-if bedtime["status"] != "blocked" or "no user-facing HTTP route" not in bedtime["reason"]:
-    raise SystemExit(f"bedtime should be blocked as a worker, got {bedtime}")
+if bedtime["status"] != "blocked" or "backend health endpoint" not in bedtime["reason"]:
+    raise SystemExit(f"bedtime should be blocked as a backend health endpoint, got {bedtime}")
 
 caddy = items["caddy"]
 if caddy["status"] != "blocked" or "terminator" not in caddy["reason"]:

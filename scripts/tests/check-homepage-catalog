@@ -19,6 +19,7 @@ for key in [
     ("homelab-monitor", "macmini"),
     ("portainer", "nasfeo"),
     ("homepage", "macmini"),
+    ("bedtime", "macmini"),
 ]:
     if key not in services:
         raise SystemExit(f"Missing catalog service: {key}")
@@ -39,6 +40,21 @@ if services[("plant-monitor", "macmini")]["dashboard_group"] != "Runtime Service
     raise SystemExit("plant-monitor dashboard group should come from ops.yaml")
 if services[("homepage", "macmini")]["dashboard_icon"] != "homepage.png":
     raise SystemExit("homepage dashboard icon should come from ops.yaml")
+bedtime = services[("bedtime", "macmini")]
+if bedtime["kind"] != "app":
+    raise SystemExit("bedtime should follow the Mac mini app service convention")
+if bedtime["http_port"] != 8104 or bedtime["health_path"] != "/health":
+    raise SystemExit("bedtime should declare the standard HTTP health endpoint")
+if bedtime["monitoring"] is not True:
+    raise SystemExit("bedtime should have monitoring enabled")
+
+for row in services.values():
+    if row["host"] != "macmini" or not row["enabled"]:
+        continue
+    if row["dashboard_group"] != "Runtime Services":
+        continue
+    if row["http_port"] in (None, "") or not row["health_path"]:
+        raise SystemExit(f"{row['service']} Runtime Services card needs http_port and health_path")
 PY
 rm -f "${catalog_json}"
 
@@ -108,6 +124,7 @@ for line in services_yaml:
         items[current][key] = value.strip()
 
 expected_monitors = {
+    "Bedtime": "http://host.docker.internal:8104/health",
     "Homepage": "http://host.docker.internal:7576/",
     "Plant Monitor": "http://host.docker.internal:8088/health",
 }

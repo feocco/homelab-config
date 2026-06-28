@@ -118,6 +118,8 @@ if [[ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
   check_promql 'homelab_docker_container_start_time_seconds{name="homelab-sre-agent"}'
   check_promql 'probe_success{job="blackbox-http",service="mealie-planner"}'
   check_promql 'homelab_docker_container_start_time_seconds{name="mealie-planner"}'
+  check_promql 'probe_success{job="blackbox-http",service="bedtime"}'
+  check_promql 'homelab_docker_container_start_time_seconds{name="bedtime"}'
   check_promql 'probe_success{job="blackbox-http",service="instacart-history-service"}'
   check_promql 'homelab_docker_container_start_time_seconds{name="instacart-history-service"}'
   check_promql 'probe_success{job="blackbox-http",service="dog-bowl-monitor"}'

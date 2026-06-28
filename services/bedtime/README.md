@@ -10,6 +10,6 @@ history for morning follow-up replies.
 Deploy checks:
 
 ```bash
-./scripts/check-service-secrets
-./scripts/homelab-deploy --host nasfeo bedtime --dry-run --base-dir /Users/feocco/code/homelab-config --deploy-base-dir /Users/feocco/code/homelab-config
+LC_ALL=C ./scripts/validate-service-rollout --service bedtime --host macmini --check config --mode strict
+./scripts/homelab-deploy --host macmini bedtime --dry-run --base-dir /Users/feocco/code/homelab-config --deploy-base-dir /Users/feocco/code/homelab-config
 ```

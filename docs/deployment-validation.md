@@ -90,6 +90,9 @@ Optional fields enable additional units:
 - `route_public_dns: cloudflare-tunnel` opts a route out of DNS-only Tailnet A
   record sync when its public path is intentionally managed by Cloudflare Tunnel
   and Access.
+- `route_exempt_reason: backend health endpoint only` blocks a service from the
+  HTTPS route candidate list when it exposes health/metrics for operations but
+  intentionally has no browser-facing LAN HTTPS route.
 - `monitoring: true` checks Prometheus, restart alert, monitor-health, and live
   monitor-health proof.
 - `sre: true` checks `homelab-sre-agent` service metadata.
@@ -215,6 +218,10 @@ Monitoring/SRE:
 
 - `monitoring: true` requires a Prometheus blackbox target, Grafana container
   restart alert coverage, and `scripts/check-macmini-monitor-health` coverage.
+- Enabled Mac mini `Runtime Services` shown on Homepage should expose
+  `GET /health`, declare `http_port` and `health_path`, use Tailnet/live
+  validation, and enable monitoring unless they are explicitly documented as
+  non-HTTP workers.
 - `sre: true` requires a service entry in
   `services/homelab-sre-agent/services.yaml`.
 - For NAS-only infrastructure, use the declared service outcome instead of
