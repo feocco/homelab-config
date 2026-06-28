@@ -16,8 +16,10 @@ route_dns: unifi
 `scripts/generate-caddy-config` builds the runtime `Caddyfile` from those
 manifests. Do not hand-maintain `services/caddy/Caddyfile`; it is generated
 during `homelab-deploy --host macmini caddy`.
-Retired hostnames can set `route_redirect_to` to keep DNS and TLS working while
-redirecting users to the replacement service.
+Retired service hostnames that no longer have a service manifest belong in
+`services/caddy/retired-routes.yaml` so Caddy keeps DNS and TLS working while
+redirecting users to the replacement service. Active services can set
+`route_redirect_to` in their `ops.yaml`.
 
 Homepage is the first HTTPS route:
 

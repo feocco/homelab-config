@@ -82,6 +82,8 @@ Optional fields enable additional units:
 - `route_redirect_to:` optionally turns a routed hostname into an HTTPS
   redirect instead of proxying to `route_target_port`. Use this for retired
   hostnames that should keep a useful destination.
+- Retired hostnames without a service manifest belong in
+  `services/caddy/retired-routes.yaml`.
 - `route_public_dns: cloudflare-tunnel` opts a route out of DNS-only Tailnet A
   record sync when its public path is intentionally managed by Cloudflare Tunnel
   and Access.

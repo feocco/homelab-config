@@ -404,6 +404,30 @@ def route_entries(base_dir: pathlib.Path, host: str | None = None) -> list[dict[
     return sorted(entries, key=lambda row: (str(row["hostname"]), str(row["service"])))
 
 
+def caddy_retired_redirects(base_dir: pathlib.Path) -> list[dict[str, str]]:
+    path = base_dir / "services" / "caddy" / "retired-routes.yaml"
+    if not path.exists():
+        return []
+    redirects: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        item_match = re.match(r"^  - hostname:\s*(.+)\s*$", line)
+        if item_match:
+            current = {"hostname": str(clean_scalar(item_match.group(1)))}
+            redirects.append(current)
+            continue
+        if current is None:
+            continue
+        field_match = re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.+)\s*$", line)
+        if field_match:
+            key, value = field_match.groups()
+            current[key] = str(clean_scalar(value))
+    return [item for item in redirects if item.get("hostname") and item.get("to")]
+
+
 def caddy_config(base_dir: pathlib.Path, host: str | None = None) -> str:
     entries = route_entries(base_dir, host)
     lines = [
@@ -448,6 +472,20 @@ def caddy_config(base_dir: pathlib.Path, host: str | None = None) -> str:
                     "",
                 ]
             )
+    for redirect in caddy_retired_redirects(base_dir):
+        hostname = redirect["hostname"]
+        target = redirect["to"].rstrip("/")
+        lines.extend(
+            [
+                f"{hostname} {{",
+                "\ttls {",
+                "\t\tdns cloudflare {env.CLOUDFLARE_API_TOKEN}",
+                "\t}",
+                f"\tredir {target}{{uri}} 308",
+                "}",
+                "",
+            ]
+        )
     return "\n".join(lines).rstrip() + "\n"
 
 
