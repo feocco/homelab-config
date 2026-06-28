@@ -77,6 +77,9 @@ Optional fields enable additional units:
 - `route_target_port: 7576` declares the backend port Caddy should proxy to.
 - `route_https: true` requires the hostname to use Caddy HTTPS.
 - `route_dns: unifi` requires the route to be present in UniFi local DNS.
+- `route_dns_alias_target:` optionally makes the local DNS record a CNAME to a
+  local-only hostname, useful when the public hostname is Cloudflare-proxied and
+  would otherwise leak public AAAA records on LAN.
 - `route_aliases:` optionally lists legacy HTTP hostnames that redirect to the
   HTTPS route.
 - `route_redirect_to:` optionally turns a routed hostname into an HTTPS

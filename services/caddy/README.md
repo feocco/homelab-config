@@ -22,6 +22,9 @@ redirecting users to the replacement service. Active services can set
 `route_redirect_to` in their `ops.yaml`.
 UniFi DNS sync includes retired route hostnames so those redirects resolve on
 the LAN.
+Routes can set `route_dns_alias_target` when the LAN record should be a CNAME
+instead of an A record, for example to hide a Cloudflare-proxied hostname's
+public AAAA records from local clients.
 
 Homepage is the first HTTPS route:
 

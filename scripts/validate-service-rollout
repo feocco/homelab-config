@@ -551,7 +551,10 @@ class Validator:
                 cwd=self.base_dir,
             )
             bind_addr = host_bind_addr(caddy_services_file)
-            if dns_check.returncode == 0 and route_hostname in dns_check.stdout and bind_addr in dns_check.stdout:
+            alias_target = str(manifest.get("route_dns_alias_target") or "")
+            if alias_target and dns_check.returncode == 0 and route_hostname in dns_check.stdout and alias_target in dns_check.stdout:
+                self.pass_("route", "UniFi DNS dry-run contains route hostname and local alias target")
+            elif dns_check.returncode == 0 and route_hostname in dns_check.stdout and bind_addr in dns_check.stdout:
                 self.pass_("route", "UniFi DNS dry-run contains route hostname and host bind address")
             else:
                 self.fail("route", f"UniFi DNS dry-run failed or omitted route: {dns_check.stdout.strip()}")
