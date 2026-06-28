@@ -494,13 +494,26 @@ def yaml_scalar(value: Any) -> str:
     return json.dumps(text)
 
 
-def homepage_item(name: str, href: str, description: str, icon: str) -> list[str]:
+def homepage_site_monitor(row: dict[str, Any]) -> str:
+    port = row.get("http_port")
+    health_path = str(row.get("health_path") or "")
+    if row.get("host") != "macmini" or row.get("enabled") is not True:
+        return ""
+    if not isinstance(port, int) or not health_path:
+        return ""
+    path = health_path if health_path.startswith("/") else f"/{health_path}"
+    return f"http://host.docker.internal:{port}{path}"
+
+
+def homepage_item(name: str, href: str, description: str, icon: str, site_monitor: str = "") -> list[str]:
     lines = [f"    - {yaml_scalar(name)}:"]
     lines.append(f"        href: {yaml_scalar(href)}")
     if description:
         lines.append(f"        description: {yaml_scalar(description)}")
     if icon:
         lines.append(f"        icon: {yaml_scalar(icon)}")
+    if site_monitor:
+        lines.append(f"        siteMonitor: {yaml_scalar(site_monitor)}")
     return lines
 
 
@@ -563,6 +576,7 @@ def homepage_services(catalog: dict[str, Any], manual_links: list[dict[str, str]
                 href,
                 row["dashboard_description"],
                 row["dashboard_icon"],
+                homepage_site_monitor(row),
             )
         )
 
@@ -576,6 +590,7 @@ def homepage_settings() -> str:
     return """---
 title: Homelab
 description: Generated from homelab-config
+statusStyle: dot
 layout:
   Daily Ops:
     style: row

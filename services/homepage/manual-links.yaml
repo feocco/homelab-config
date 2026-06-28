@@ -14,6 +14,11 @@ links:
     href: http://nasfeo:8181/admin/
     description: DNS and ad blocking
     icon: pi-hole.png
+  - name: UniFi Devices
+    group: Infrastructure
+    href: https://unifi.ui.com/consoles/28704E855D7B00000000084C60F90000000008BD34F50000000066D9E198:941721887/network/default/clients/main
+    description: UniFi network clients
+    icon: unifi.png
   - name: NAS SSH
     group: Remote Access
     href: ssh://feocco@nasfeo

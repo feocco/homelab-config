@@ -62,6 +62,7 @@ rm -f "${inventory_json}"
 homepage_tmp="$(mktemp -d)"
 "${REPO_DIR}/scripts/generate-homepage-config" --output "${homepage_tmp}"
 assert_contains "${homepage_tmp}/settings.yaml" 'title: Homelab'
+assert_contains "${homepage_tmp}/settings.yaml" 'statusStyle: dot'
 assert_contains "${homepage_tmp}/services.yaml" 'Daily Ops'
 assert_contains "${homepage_tmp}/services.yaml" 'Infrastructure'
 assert_contains "${homepage_tmp}/services.yaml" 'Runtime Services'
@@ -78,9 +79,47 @@ assert_contains "${homepage_tmp}/services.yaml" 'Mac mini Screen Sharing'
 assert_contains "${homepage_tmp}/services.yaml" 'vnc://maclab@192.168.1.43'
 assert_contains "${homepage_tmp}/services.yaml" 'NAS DSM'
 assert_contains "${homepage_tmp}/services.yaml" 'https://nasfeo:5001/'
+assert_contains "${homepage_tmp}/services.yaml" 'UniFi Devices'
+assert_contains "${homepage_tmp}/services.yaml" 'https://unifi.ui.com/consoles/28704E855D7B00000000084C60F90000000008BD34F50000000066D9E198:941721887/network/default/clients/main'
 assert_contains "${homepage_tmp}/services.yaml" 'https://home.feocco.com/'
 assert_contains "${homepage_tmp}/services.yaml" 'AWS Console'
 assert_contains "${homepage_tmp}/services.yaml" 'Prusa Connect'
+python3 - "${homepage_tmp}/services.yaml" <<'PY'
+import pathlib
+import sys
+import json
+
+
+def clean(value: str) -> str:
+    if value.startswith('"') and value.endswith('"'):
+        return json.loads(value)
+    return value
+
+services_yaml = pathlib.Path(sys.argv[1]).read_text().splitlines()
+items: dict[str, dict[str, str]] = {}
+current = ""
+for line in services_yaml:
+    if line.startswith("    - "):
+        current = clean(line.split("- ", 1)[1].rstrip(":"))
+        items[current] = {}
+        continue
+    if current and line.startswith("        ") and ":" in line:
+        key, value = line.strip().split(":", 1)
+        items[current][key] = value.strip()
+
+expected_monitors = {
+    "Homepage": "http://host.docker.internal:7576/",
+    "Plant Monitor": "http://host.docker.internal:8088/health",
+}
+for name, expected in expected_monitors.items():
+    actual = items.get(name, {}).get("siteMonitor")
+    if actual != expected:
+        raise SystemExit(f"{name} siteMonitor expected {expected!r}, got {actual!r}")
+
+for name in ["NAS SSH", "Mac mini SSH", "Mac mini Screen Sharing", "UniFi Devices"]:
+    if "siteMonitor" in items.get(name, {}):
+        raise SystemExit(f"{name} should not have siteMonitor")
+PY
 test -f "${homepage_tmp}/service-catalog.json"
 rm -rf "${homepage_tmp}"
 

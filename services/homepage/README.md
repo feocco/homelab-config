@@ -10,6 +10,10 @@ Generated homelab front door sourced from `homelab-config`.
 - External/manual links come from `manual-links.yaml`
 - Remote access links in `manual-links.yaml` use browser protocol handlers such
   as `ssh://` and `vnc://`; client machines must allow those handlers.
+- Generated service tiles for enabled Mac mini HTTP services include Homepage
+  `siteMonitor` checks against `host.docker.internal:<port><health_path>`.
+  These green/red dots are best-effort UI hints; Grafana and Prometheus remain
+  the monitoring source of truth.
 - Docker socket access is intentionally not mounted
 
 Preview the generated config without writing tracked files:
