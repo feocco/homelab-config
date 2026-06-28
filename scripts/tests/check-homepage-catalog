@@ -133,6 +133,9 @@ for name, expected in expected_monitors.items():
     if actual != expected:
         raise SystemExit(f"{name} siteMonitor expected {expected!r}, got {actual!r}")
 
+if items.get("Bedtime", {}).get("href") != "https://github.com/feocco/bedtime":
+    raise SystemExit("Bedtime should link to the source repo while siteMonitor checks health")
+
 for name in ["NAS SSH", "Mac mini SSH", "Mac mini Screen Sharing", "UniFi Devices"]:
     if "siteMonitor" in items.get(name, {}):
         raise SystemExit(f"{name} should not have siteMonitor")

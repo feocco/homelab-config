@@ -17,6 +17,7 @@ dashboard_name: Bedtime
 dashboard_group: Runtime Services
 dashboard_description: Home Assistant bedtime automation worker
 dashboard_icon: home-assistant.png
+dashboard_url: https://github.com/feocco/bedtime
 secrets:
   - HA_URL
   - HA_LONG_LIVED_TOKEN
