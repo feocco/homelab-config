@@ -31,12 +31,14 @@ markdown_extensions:
 
 nav:
   - Start Here:
-      - Home: docs/index.md
+      - Home: index.md
       - Overview: docs/overview.md
       - Source Of Truth: docs/source-of-truth.md
       - How To Navigate: docs/how-to-navigate.md
+      - Service API Conventions: docs/service-api-conventions.md
   - Domains:
       - Services: docs/generated/service-index.md
+      - Service API Conventions: docs/service-api-conventions.md
       - Networking: services/caddy/README.md
       - Observability: services/homelab-monitor/README.md
       - Gaps And Roadmap: docs/gaps-roadmap.md

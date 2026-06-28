@@ -6,6 +6,7 @@ source "${REPO_DIR}/scripts/tests/lib-test-helpers"
 
 test -f "${REPO_DIR}/mkdocs.yml"
 assert_contains "${REPO_DIR}/mkdocs.yml" "material"
+assert_contains "${REPO_DIR}/mkdocs.yml" "Home: index.md"
 assert_contains "${REPO_DIR}/mkdocs.yml" "generated/service-index.md"
 assert_contains "${REPO_DIR}/mkdocs.yml" "services/homepage/README.md"
 assert_contains "${REPO_DIR}/mkdocs.yml" "mermaid"

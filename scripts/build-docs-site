@@ -8,6 +8,24 @@ DOCS_SRC="${REPO_DIR}/.local/mkdocs-src"
 rm -rf "${DOCS_SRC}"
 mkdir -p "${DOCS_SRC}/docs" "${DOCS_SRC}/services"
 cp -R "${REPO_DIR}/docs/." "${DOCS_SRC}/docs/"
+python3 - "${REPO_DIR}/docs/index.md" "${DOCS_SRC}/index.md" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1])
+target = pathlib.Path(sys.argv[2])
+text = source.read_text()
+for old, new in {
+    "(overview.md)": "(docs/overview.md)",
+    "(source-of-truth.md)": "(docs/source-of-truth.md)",
+    "(generated/service-index.md)": "(docs/generated/service-index.md)",
+    "(service-api-conventions.md)": "(docs/service-api-conventions.md)",
+    "(how-to-navigate.md)": "(docs/how-to-navigate.md)",
+}.items():
+    text = text.replace(old, new)
+target.write_text(text)
+PY
+rm -f "${DOCS_SRC}/docs/index.md"
 for readme in "${REPO_DIR}"/services/*/README.md; do
   service_dir="$(basename "$(dirname "${readme}")")"
   mkdir -p "${DOCS_SRC}/services/${service_dir}"
