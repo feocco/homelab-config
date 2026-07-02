@@ -210,9 +210,29 @@ Route:
   DNS-only A records to `host.tailnet_addr`. It uses `CLOUDFLARE_API_TOKEN` or
   `CADDY__CLOUDFLARE_API_TOKEN`, optional `CLOUDFLARE_ZONE_ID`, and defaults
   the zone name to `feocco.com`.
+- For services that should be reachable from the public internet without
+  Tailscale, use the private/public split-horizon pattern. The same public
+  hostname has two paths: UniFi DNS sends LAN clients to the Mac mini bind
+  address, while Cloudflare public DNS sends off-LAN clients through
+  Tunnel/Access. Use `route_public_dns: cloudflare-tunnel` so
+  `sync-cloudflare-dns` does not overwrite the Tunnel record. If local clients
+  still reach Cloudflare because public `AAAA` records leak through, set
+  `route_dns_alias_target` to a local-only hostname and keep that alias in
+  UniFi DNS.
 - Caddy gets certificates with Cloudflare DNS-01. `CLOUDFLARE_API_TOKEN` is a
   Caddy service secret and should be scoped to DNS edit/zone read for
   `feocco.com`.
+
+Split-horizon proof:
+
+- LAN resolver: `dig @192.168.1.1 <hostname> A` resolves to the Mac mini bind
+  address or to a local CNAME that resolves to that address.
+- LAN HTTPS: `curl -skI -w '%{remote_ip}' https://<hostname>/` returns the Mac
+  mini bind address and no Cloudflare Access redirect.
+- Public resolver: `dig @1.1.1.1 <hostname>` follows the intended public
+  Cloudflare path, not the private LAN address.
+- Public Access: forcing the public Cloudflare IP with `curl --resolve` returns
+  the Cloudflare Access login or redirect for protected services.
 
 Monitoring/SRE:
 

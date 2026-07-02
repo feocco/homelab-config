@@ -163,6 +163,15 @@ Use `./scripts/list-https-route-candidates --status eligible` to pick the next
 service and `docs/https-route-rollout-goal.md` for the repeatable canary and
 live-proof criteria.
 
+For a service that should be reachable from the public internet without
+Tailscale, use the Mealie-style split-horizon pattern for that service instead
+of a `*.home.feocco.com` canonical name. Keep the public Cloudflare
+Tunnel/Access record in Cloudflare, add `route_public_dns: cloudflare-tunnel`,
+and let UniFi DNS send LAN clients to Caddy. If public Cloudflare `AAAA`
+records leak through locally, set `route_dns_alias_target` to a local-only
+hostname that has a UniFi `A` record. Mealie is the reference implementation:
+`mealie.feocco.com` is local on LAN and Cloudflare Access-gated off LAN.
+
 Use `scripts/redeploy-image` when only app code changed and a fresh image has
 already been published. This triggers the existing GitHub Actions deploy
 workflow from `main` with `force_recreate=true`; it does not require a

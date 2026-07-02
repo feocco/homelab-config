@@ -94,3 +94,36 @@ to the Mac mini Tailnet address with proxying disabled.
 Routes with `route_public_dns: cloudflare-tunnel`, such as Mealie, are skipped
 by `sync-cloudflare-dns` because their public DNS path is managed by Cloudflare
 Tunnel and Access instead.
+
+## Private/Public Split-Horizon Routes
+
+Use this pattern only for services that should be reachable from the public
+internet without Tailscale while still bypassing Cloudflare Access on the
+trusted LAN:
+
+```yaml
+route_hostname: mealie.feocco.com
+route_target_port: 9925
+route_https: true
+route_dns: unifi
+route_dns_alias_target: mealie.home.feocco.com
+route_public_dns: cloudflare-tunnel
+```
+
+The DNS paths are intentionally different for the same hostname:
+
+- On the LAN, UniFi local DNS answers the public hostname and sends clients to
+  Caddy on the Mac mini bind address.
+- Off the LAN, normal public DNS reaches Cloudflare Tunnel and Access.
+
+This is one of several route patterns, not the default for every service. It
+does not require Tailscale for off-LAN users. A phone that is not on the home
+network and is not connected to Tailscale uses public DNS, reaches Cloudflare,
+and gets the Access policy. A phone on the home Wi-Fi uses UniFi DNS and
+reaches Caddy directly, as long as it is not bypassing local DNS with encrypted
+DNS or a manually configured public resolver.
+
+Prefer `route_dns_alias_target` when the public Cloudflare hostname has `AAAA`
+records. A local A record override can still allow public IPv6 answers to leak
+through on some clients. A local CNAME to a local-only hostname, plus a UniFi A
+record for that local-only hostname, keeps LAN resolution on the private path.

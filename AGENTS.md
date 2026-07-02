@@ -25,6 +25,12 @@
   files. Use `./scripts/generate-caddy-config`, `./scripts/sync-unifi-dns`,
   and `./scripts/sync-cloudflare-dns`; do not hand-edit or commit
   `services/caddy/Caddyfile`.
+- When a service should be reachable from the public internet without
+  Tailscale, use the Mealie-style split-horizon pattern only for that service:
+  keep the Cloudflare Tunnel/Access public DNS path intact with
+  `route_public_dns: cloudflare-tunnel`, use UniFi DNS for LAN access, and use
+  `route_dns_alias_target` if public Cloudflare AAAA records would otherwise
+  leak through locally.
 - For new Mac mini user-facing HTTP services, default to a LAN HTTPS route
   under `home.feocco.com` unless the service is a worker, disabled, not
   user-facing, or has incompatible base-URL assumptions. Use
