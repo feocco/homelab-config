@@ -11,8 +11,8 @@ truth lives, and which gaps are intentional.
 
 - [Overview](docs/overview.md) gives the operating model.
 - [Source Of Truth](docs/source-of-truth.md) maps current truth by engineering domain.
-- [Service Index](docs/generated/service-index.md) is generated from the existing
-  service catalog.
+- [Services](services/index.md) is generated from the existing service catalog
+  with one wrapper page per running service.
 - [Service API Conventions](docs/service-api-conventions.md) explains `/docs`,
   `/openapi.json`, and current framework divergence.
 - [Docs Site](docs/docs-site.md) explains how this site is generated, previewed,

@@ -17,12 +17,13 @@ Durable source-of-truth content stays in the files that already own it:
 - `services/*/ops.yaml`, host manifests, Compose files, monitoring config, and
   SRE metadata feed the generated service catalog.
 - Application-specific human docs stay with each app. When a service adopts the
-  convention, the central catalog links to the live app-owned `/docs` page and
-  `/openapi.json` schema instead of copying narrative documentation here.
+  convention, the central service page embeds the live app-owned `/docs` page
+  and links to `/openapi.json` instead of copying narrative documentation here.
 
 Generated files are views over existing truth:
 
-- `docs/generated/service-index.md` is generated during the docs build.
+- `docs/generated/service-index.md` and `docs/generated/services/*.md` are
+  generated during the docs build.
 - `.local/mkdocs-src/` is a temporary MkDocs source tree.
 - `.site/` is the rendered static site.
 
@@ -39,11 +40,13 @@ The build is intentionally small:
 4. It copies only cross-cutting service docs that belong in the central site,
    currently `services/caddy/README.md` and
    `services/homelab-monitor/README.md`.
-5. MkDocs builds the rendered site into `.site/`.
+5. Generated service pages are copied into the temporary MkDocs tree as
+   `/services/` and `/services/<service>/`.
+6. MkDocs builds the rendered site into `.site/`.
 
 This means service pages in the docs site are either central docs or generated
-catalog entries. App-specific docs should be discovered through catalog links to
-the service-owned `/docs` endpoint.
+catalog wrappers. App-specific docs are loaded live from the service-owned
+`/docs` endpoint when that endpoint validates.
 
 ## Local Preview
 
@@ -101,6 +104,14 @@ LC_ALL=C ./scripts/validate-service-rollout --service <service> --host <host> --
 
 The generated service index reports which active Mac mini app services have
 migrated and which still need separate app-repo work.
+
+The service wrapper pages use three docs statuses:
+
+- `Live docs available`: live `/docs` returns HTML and `/openapi.json` returns
+  valid OpenAPI during the docs build.
+- `Declared but failing`: docs metadata exists, but the live endpoints do not
+  validate.
+- `Not migrated`: no service docs metadata is declared.
 
 ## Migration Work
 

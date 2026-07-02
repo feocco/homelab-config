@@ -1,6 +1,6 @@
 site_name: Homelab Docs
 site_description: High-context documentation for Joe Feocco's homelab.
-site_url: https://feocco.github.io/homelab-config/
+site_url: https://docs.home.feocco.com/
 repo_url: https://github.com/feocco/homelab-config
 repo_name: feocco/homelab-config
 docs_dir: .local/mkdocs-src

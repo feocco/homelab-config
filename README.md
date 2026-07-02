@@ -121,7 +121,9 @@ raw health JSON to `/docs` and `/openapi.json`.
 Use the MkDocs site for searchable homelab documentation. The service index is
 generated from the existing catalog during the docs build and should not be
 committed as source. The deployed homelab route is
-`https://docs.home.feocco.com`.
+`https://docs.home.feocco.com`. Generated service pages publish under
+`/services/` and embed live app-owned `/docs` pages when those endpoints
+validate.
 
 ```bash
 python3 -m venv .local/docs-venv
