@@ -1,0 +1,75 @@
+#!/bin/bash
+set -euo pipefail
+
+ACTION="${1:-start}"
+CONTAINER_NAME="${PIRATE_RADIO_REAUTH_CONTAINER:-pirate-radio-login-browser}"
+HOST_PORT="${PIRATE_RADIO_REAUTH_PORT:-5801}"
+TAILNET_HOST="${PIRATE_RADIO_TAILNET_HOST:-maclabs-mac-mini.taildf3445.ts.net}"
+PROFILE_DIR="${PIRATE_RADIO_PROFILE_DIR:-${HOME}/homelab-config-runtime/services/pirate-radio/data/playwright-profile}"
+START_URL="${PIRATE_RADIO_LOGIN_URL:-https://www.piratewires.com/}"
+IMAGE="${PIRATE_RADIO_REAUTH_IMAGE:-jlesage/chromium:latest}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  pirate-radio-reauth-browser start
+  pirate-radio-reauth-browser stop
+  pirate-radio-reauth-browser status
+
+Starts or stops the temporary Tailnet-only Chromium/noVNC browser used to refresh
+the Pirate Radio Pirate Wires session.
+EOF
+}
+
+clear_profile_locks() {
+  rm -f \
+    "${PROFILE_DIR}/SingletonLock" \
+    "${PROFILE_DIR}/SingletonSocket" \
+    "${PROFILE_DIR}/SingletonCookie"
+}
+
+start_browser() {
+  mkdir -p "${PROFILE_DIR}"
+  clear_profile_locks
+  docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+  docker run --rm -d \
+    --name "${CONTAINER_NAME}" \
+    -p "127.0.0.1:${HOST_PORT}:5800" \
+    -e "CHROMIUM_APP_URL=${START_URL}" \
+    -v "${PROFILE_DIR}:/config/chromium" \
+    "${IMAGE}" >/dev/null
+  tailscale serve --bg --http="${HOST_PORT}" "http://127.0.0.1:${HOST_PORT}" >/dev/null
+  echo "Pirate Radio reauth browser: http://${TAILNET_HOST}:${HOST_PORT}/"
+}
+
+stop_browser() {
+  docker stop --timeout 15 "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+  tailscale serve --http="${HOST_PORT}" off >/dev/null 2>&1 || true
+  clear_profile_locks
+  echo "Pirate Radio reauth browser stopped."
+}
+
+status_browser() {
+  docker ps --filter "name=${CONTAINER_NAME}" --format 'container={{.Names}} status={{.Status}}'
+  tailscale serve status | awk -v port="${HOST_PORT}" '$0 ~ ":" port || $0 ~ "127.0.0.1:" port { print }'
+}
+
+case "${ACTION}" in
+  start)
+    start_browser
+    ;;
+  stop)
+    stop_browser
+    ;;
+  status)
+    status_browser
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    echo "Unknown action: ${ACTION}" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
