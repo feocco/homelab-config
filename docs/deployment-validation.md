@@ -69,6 +69,12 @@ Optional fields enable additional units:
 - `http_port` and `port_env` declare user-facing host ports when present.
 - `public_image: true` checks anonymous GHCR manifest access.
 - `health_path: /health` declares an HTTP health path when one exists.
+- `docs_path: /docs` declares the human-facing service docs page for Homepage
+  service cards.
+- `openapi_path: /openapi.json` declares the machine-readable OpenAPI schema
+  for externally callable service APIs.
+- `api_framework: aiohttp` records the current service API framework. Valid
+  values are `aiohttp`, `python-http-server`, `other`, and `none`.
 - `status_path: /v1/status` checks the status endpoint identifies the service.
 - `live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8102` enables live
   HTTP validation.

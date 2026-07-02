@@ -115,6 +115,8 @@ service inventory questions. It is a view over the generated service catalog:
 Use `docs/source-of-truth.md` for a domain-level map of the current service,
 networking, infrastructure, observability, data/API, secrets, and runtime
 evidence sources.
+Use `docs/service-api-conventions.md` when migrating backend service cards from
+raw health JSON to `/docs` and `/openapi.json`.
 
 Use the MkDocs site for searchable homelab documentation. The service index is
 generated from the existing catalog during the docs build and should not be

@@ -116,6 +116,10 @@ container: validator-demo
 http_port: 19080
 port_env: SERVICE_PORT
 health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: python-http-server
+live_base_url: http://127.0.0.1:19080
 tailnet: true
 monitoring: true
 sre: true
@@ -422,6 +426,128 @@ else
   echo "validator-demo fixture baseline should pass." >&2
   exit 1
 fi
+
+cp -R "${validator_fixture}" "${validator_tmp}/missing-docs-framework"
+python3 - "${validator_tmp}/missing-docs-framework/services/validator-demo/ops.yaml" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+path.write_text(path.read_text().replace("api_framework: python-http-server\n", ""))
+PY
+docs_framework_out="${validator_tmp}/missing-docs-framework.out"
+assert_fails "${docs_framework_out}" "${validator_tmp}/missing-docs-framework/scripts/validate-service-rollout" --base-dir "${validator_tmp}/missing-docs-framework" --service validator-demo --host macmini --check config --mode strict
+assert_contains "${docs_framework_out}" 'api_framework must be one of'
+
+cat >"${validator_tmp}/docs-live-server.py" <<'PY'
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import pathlib
+import sys
+
+port_file = pathlib.Path(sys.argv[1])
+openapi_valid = sys.argv[2] == "valid"
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/health":
+            self.send_json({"status": "ok", "service": "validator-demo"})
+            return
+        if self.path == "/docs":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"<!doctype html><title>validator-demo</title>")
+            return
+        if self.path == "/openapi.json":
+            payload = (
+                {"openapi": "3.1.0", "info": {"title": "validator-demo"}, "paths": {"/health": {}}}
+                if openapi_valid
+                else {"info": {"title": "validator-demo"}}
+            )
+            self.send_json(payload)
+            return
+        self.send_error(404)
+
+    def send_json(self, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, fmt, *args):
+        return
+
+
+server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+port_file.write_text(str(server.server_port))
+server.serve_forever()
+PY
+
+cp -R "${validator_fixture}" "${validator_tmp}/docs-live"
+python3 "${validator_tmp}/docs-live-server.py" "${validator_tmp}/docs-live-port" valid &
+docs_server_pid="$!"
+for _ in {1..50}; do
+  [[ -s "${validator_tmp}/docs-live-port" ]] && break
+  sleep 0.1
+done
+if [[ ! -s "${validator_tmp}/docs-live-port" ]]; then
+  kill "${docs_server_pid}" 2>/dev/null || true
+  echo "Docs live test server did not start." >&2
+  exit 1
+fi
+docs_live_port="$(cat "${validator_tmp}/docs-live-port")"
+python3 - "${validator_tmp}/docs-live/services/validator-demo/ops.yaml" "${docs_live_port}" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+port = sys.argv[2]
+path.write_text(path.read_text() + f"live_base_url: http://127.0.0.1:{port}\n")
+PY
+if "${validator_tmp}/docs-live/scripts/validate-service-rollout" --base-dir "${validator_tmp}/docs-live" --service validator-demo --host macmini --check live --mode smoketest >"${validator_tmp}/docs-live.out" 2>&1; then
+  :
+else
+  kill "${docs_server_pid}" 2>/dev/null || true
+  cat "${validator_tmp}/docs-live.out" >&2
+  echo "validator-demo docs live proof should pass." >&2
+  exit 1
+fi
+assert_contains "${validator_tmp}/docs-live.out" 'Docs page responds with HTML'
+assert_contains "${validator_tmp}/docs-live.out" 'OpenAPI schema responds'
+kill "${docs_server_pid}" 2>/dev/null || true
+wait "${docs_server_pid}" 2>/dev/null || true
+
+cp -R "${validator_fixture}" "${validator_tmp}/invalid-openapi-live"
+python3 "${validator_tmp}/docs-live-server.py" "${validator_tmp}/invalid-openapi-port" invalid &
+bad_docs_server_pid="$!"
+for _ in {1..50}; do
+  [[ -s "${validator_tmp}/invalid-openapi-port" ]] && break
+  sleep 0.1
+done
+if [[ ! -s "${validator_tmp}/invalid-openapi-port" ]]; then
+  kill "${bad_docs_server_pid}" 2>/dev/null || true
+  echo "Invalid OpenAPI live test server did not start." >&2
+  exit 1
+fi
+bad_docs_live_port="$(cat "${validator_tmp}/invalid-openapi-port")"
+python3 - "${validator_tmp}/invalid-openapi-live/services/validator-demo/ops.yaml" "${bad_docs_live_port}" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+port = sys.argv[2]
+path.write_text(path.read_text() + f"live_base_url: http://127.0.0.1:{port}\n")
+PY
+invalid_openapi_out="${validator_tmp}/invalid-openapi-live.out"
+assert_fails "${invalid_openapi_out}" "${validator_tmp}/invalid-openapi-live/scripts/validate-service-rollout" --base-dir "${validator_tmp}/invalid-openapi-live" --service validator-demo --host macmini --check live --mode strict
+assert_contains "${invalid_openapi_out}" 'OpenAPI schema failed'
+kill "${bad_docs_server_pid}" 2>/dev/null || true
+wait "${bad_docs_server_pid}" 2>/dev/null || true
+
 for fixture_case in \
   "validator-worker macmini" \
   "validator-multi macmini" \

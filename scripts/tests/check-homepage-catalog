@@ -47,6 +47,20 @@ if bedtime["http_port"] != 8104 or bedtime["health_path"] != "/health":
     raise SystemExit("bedtime should declare the standard HTTP health endpoint")
 if bedtime["monitoring"] is not True:
     raise SystemExit("bedtime should have monitoring enabled")
+hello = services[("hello-nas", "macmini")]
+if hello["health_path"] != "/health":
+    raise SystemExit("hello-nas should use /health for machine health checks")
+if hello["docs_path"] != "/docs" or hello["openapi_path"] != "/openapi.json":
+    raise SystemExit("hello-nas should declare docs and OpenAPI paths")
+if hello["api_framework"] != "python-http-server":
+    raise SystemExit("hello-nas should declare its current API framework")
+if hello["docs_url"] != "https://hello-nas.home.feocco.com/docs":
+    raise SystemExit("hello-nas docs URL should use the LAN HTTPS route")
+functions = services[("homelab-functions", "macmini")]
+if functions["docs_url"] != "https://homelab-functions.home.feocco.com/docs":
+    raise SystemExit("homelab-functions docs URL should use the LAN HTTPS route")
+if functions["api_framework"] != "aiohttp":
+    raise SystemExit("homelab-functions should declare its current API framework")
 
 for row in services.values():
     if row["host"] != "macmini" or not row["enabled"]:
@@ -132,7 +146,9 @@ for line in services_yaml:
 
 expected_monitors = {
     "Bedtime": "http://host.docker.internal:8104/health",
+    "Hello NAS": "http://host.docker.internal:8099/health",
     "Homepage": "http://host.docker.internal:7576/",
+    "homelab-functions": "http://host.docker.internal:8091/health",
     "Plant Monitor": "http://host.docker.internal:8088/health",
 }
 for name, expected in expected_monitors.items():
@@ -142,6 +158,10 @@ for name, expected in expected_monitors.items():
 
 if items.get("Bedtime", {}).get("href") != "https://github.com/feocco/bedtime":
     raise SystemExit("Bedtime should link to the source repo while siteMonitor checks health")
+if items.get("Hello NAS", {}).get("href") != "https://hello-nas.home.feocco.com/docs":
+    raise SystemExit("Hello NAS should link to service docs while siteMonitor checks health")
+if items.get("homelab-functions", {}).get("href") != "https://homelab-functions.home.feocco.com/docs":
+    raise SystemExit("homelab-functions should link to service docs while siteMonitor checks health")
 
 for name in ["NAS SSH", "Mac mini SSH", "Mac mini Screen Sharing", "UniFi Devices"]:
     if "siteMonitor" in items.get(name, {}):

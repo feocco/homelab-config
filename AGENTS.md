@@ -46,6 +46,9 @@
   `monitoring: true`, and let Homepage add the generated status dot. If a
   service has a backend health endpoint but should not get a LAN HTTPS route,
   declare `route_exempt_reason` in `ops.yaml`.
+- When migrating a backend service card to human docs, add `docs_path`,
+  `openapi_path`, and `api_framework` in `ops.yaml`; report framework/API
+  divergence before changing the service.
 - Classify deployment work before editing runtime config:
   - App code changed only: commit/push the app repo, publish the image, then
     run `./scripts/redeploy-image --host <host> <service>` from this repo. Do

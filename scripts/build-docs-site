@@ -20,15 +20,15 @@ for old, new in {
     "(source-of-truth.md)": "(docs/source-of-truth.md)",
     "(generated/service-index.md)": "(docs/generated/service-index.md)",
     "(service-api-conventions.md)": "(docs/service-api-conventions.md)",
+    "(docs-site.md)": "(docs/docs-site.md)",
     "(how-to-navigate.md)": "(docs/how-to-navigate.md)",
 }.items():
     text = text.replace(old, new)
 target.write_text(text)
 PY
 rm -f "${DOCS_SRC}/docs/index.md"
-for readme in "${REPO_DIR}"/services/*/README.md; do
-  service_dir="$(basename "$(dirname "${readme}")")"
+for service_dir in caddy homelab-monitor; do
   mkdir -p "${DOCS_SRC}/services/${service_dir}"
-  cp "${readme}" "${DOCS_SRC}/services/${service_dir}/README.md"
+  cp "${REPO_DIR}/services/${service_dir}/README.md" "${DOCS_SRC}/services/${service_dir}/README.md"
 done
 python3 -m mkdocs build --strict --config-file "${REPO_DIR}/mkdocs.yml" "$@"

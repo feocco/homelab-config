@@ -303,6 +303,7 @@ def build_catalog(base_dir: pathlib.Path) -> dict[str, Any]:
             monitoring = host_scoped_enabled(manifest, "monitoring", host) or service in monitored
             sre_enabled = host_scoped_enabled(manifest, "sre", host) or bool(sre.get(service, {}).get("sre_enabled"))
             dashboard_url = manifest_value(manifest, "dashboard_url")
+            docs_path = manifest_value(manifest, "docs_path")
             rows.append(
                 {
                     "service": service,
@@ -312,6 +313,10 @@ def build_catalog(base_dir: pathlib.Path) -> dict[str, Any]:
                     "dashboard_description": manifest_value(manifest, "dashboard_description"),
                     "dashboard_icon": manifest_value(manifest, "dashboard_icon"),
                     "dashboard_url": dashboard_url,
+                    "docs_path": docs_path,
+                    "docs_url": service_docs_url(service, host, manifest, caddy_routes),
+                    "openapi_path": manifest_value(manifest, "openapi_path"),
+                    "api_framework": manifest_value(manifest, "api_framework"),
                     "dashboard_visible": dashboard_visible(manifest),
                     "host": host,
                     "enabled": bool(entry.get("enabled", True)),
@@ -359,6 +364,24 @@ def homepage_url_for(service: str, host: str, manifest: dict[str, Any], caddy_ro
     live = host_scoped_value(manifest, "live_base_url", host)
     if live:
         return live.rstrip("/") + "/"
+    return ""
+
+
+def append_url_path(base_url: str, path: str) -> str:
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    return base_url.rstrip("/") + normalized_path
+
+
+def service_docs_url(service: str, host: str, manifest: dict[str, Any], caddy_routes: dict[int, str]) -> str:
+    docs_path = manifest_value(manifest, "docs_path")
+    if not docs_path:
+        return ""
+    homepage_url = homepage_url_for(service, host, manifest, caddy_routes)
+    if homepage_url:
+        return append_url_path(homepage_url, docs_path)
+    live = host_scoped_value(manifest, "live_base_url", host)
+    if live:
+        return append_url_path(live, docs_path)
     return ""
 
 
@@ -563,6 +586,7 @@ def homepage_services(catalog: dict[str, Any], manual_links: list[dict[str, str]
         seen_services.add(row["service"])
         href = (
             row["dashboard_url"]
+            or row["docs_url"]
             or row["homepage_url"]
             or row["live_base_url"]
             or (f"https://github.com/{row['source_repo']}" if row["source_repo"] else "")

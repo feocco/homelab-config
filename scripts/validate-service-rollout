@@ -22,6 +22,7 @@ REQUIRED_FIELDS = {
 }
 
 VALID_KINDS = {"app", "worker", "proxy", "infra", "multi-container"}
+VALID_API_FRAMEWORKS = {"aiohttp", "python-http-server", "other", "none"}
 
 
 def clean_scalar(value: str):
@@ -264,6 +265,28 @@ def run(cmd: list[str], *, cwd: pathlib.Path, timeout: int = 30) -> subprocess.C
     )
 
 
+def append_url_path(base_url: str, path: str) -> str:
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    return base_url.rstrip("/") + normalized_path
+
+
+def route_base_url(manifest: dict[str, object], host: str) -> str:
+    route_hostname = str(manifest.get("route_hostname") or "")
+    route_hosts = manifest.get("route_hosts")
+    route_applies = not isinstance(route_hosts, list) or host in [str(value) for value in route_hosts]
+    if route_hostname and route_applies:
+        scheme = "https" if manifest.get("route_https") is True else "http"
+        return f"{scheme}://{route_hostname}"
+    return ""
+
+
+def fetch_url(url: str, *, limit: int = 65536) -> tuple[int, str, str]:
+    with urllib.request.urlopen(url, timeout=10) as response:
+        body = response.read(limit).decode("utf-8", "replace")
+        content_type = response.headers.get("Content-Type", "")
+        return response.status, content_type, body
+
+
 class Validator:
     def __init__(self, *, base_dir: pathlib.Path, service: str, host: str, check: str, mode: str) -> None:
         self.base_dir = base_dir
@@ -408,6 +431,37 @@ class Validator:
                 )
         else:
             self.pass_("runtime config", "No HTTP port declared; skipping port checks")
+
+        docs_path = str(manifest.get("docs_path") or "")
+        openapi_path = str(manifest.get("openapi_path") or "")
+        api_framework = str(manifest.get("api_framework") or "")
+        if docs_path or openapi_path:
+            service_route_hostname = str(manifest.get("route_hostname") or "")
+            if port is None:
+                self.fail("service docs", "docs_path/openapi_path require http_port")
+            if not manifest.get("health_path"):
+                self.fail("service docs", "docs_path/openapi_path require health_path")
+            if not (host_scoped_value(manifest, "live_base_url", self.host) or service_route_hostname):
+                self.fail("service docs", "docs_path/openapi_path require live_base_url or route_hostname")
+            if not docs_path:
+                self.fail("service docs", "openapi_path requires docs_path")
+            elif docs_path.startswith("/"):
+                self.pass_("service docs", f"docs_path is declared: {docs_path}")
+            else:
+                self.fail("service docs", "docs_path must start with /")
+            if not openapi_path:
+                self.fail("service docs", "docs_path requires openapi_path")
+            elif openapi_path.startswith("/"):
+                self.pass_("service docs", f"openapi_path is declared: {openapi_path}")
+            else:
+                self.fail("service docs", "openapi_path must start with /")
+            if api_framework in VALID_API_FRAMEWORKS:
+                self.pass_("service docs", f"api_framework is declared: {api_framework}")
+            else:
+                self.fail(
+                    "service docs",
+                    f"api_framework must be one of: {', '.join(sorted(VALID_API_FRAMEWORKS))}",
+                )
 
         dry_run = run(
             [
@@ -652,6 +706,44 @@ class Validator:
                         self.fail("live proof", f"Status endpoint service mismatch: {payload.get('service')!r}")
                 except Exception as exc:
                     (self.fail if self.strict else self.warn)("live proof", f"Status endpoint failed: {exc}")
+
+        service_base_url = base_url or route_base_url(manifest, self.host)
+        docs_path = str(manifest.get("docs_path") or "")
+        openapi_path = str(manifest.get("openapi_path") or "")
+        if docs_path and service_base_url:
+            docs_url = append_url_path(service_base_url, docs_path)
+            try:
+                status, content_type, _body = fetch_url(docs_url)
+                if status < 400 and "text/html" in content_type.lower():
+                    self.pass_("live proof", f"Docs page responds with HTML: {docs_url}")
+                else:
+                    raise urllib.error.URLError(f"HTTP {status} content-type {content_type!r}")
+            except Exception as exc:
+                (self.fail if self.strict else self.warn)("live proof", f"Docs page failed: {exc}")
+        elif docs_path:
+            (self.fail if self.strict else self.warn)("live proof", "docs_path declared but no live or route base URL exists")
+
+        if openapi_path and service_base_url:
+            openapi_url = append_url_path(service_base_url, openapi_path)
+            try:
+                status, content_type, body = fetch_url(openapi_url)
+                payload = json.loads(body)
+                if status >= 400:
+                    raise urllib.error.URLError(f"HTTP {status}")
+                if "json" not in content_type.lower():
+                    raise ValueError(f"OpenAPI content-type is {content_type!r}")
+                if not isinstance(payload, dict):
+                    raise ValueError("OpenAPI payload is not a JSON object")
+                if not payload.get("openapi") or not isinstance(payload.get("paths"), dict):
+                    raise ValueError("OpenAPI payload must contain openapi and paths")
+                info = payload.get("info")
+                if not isinstance(info, dict) or not info.get("title"):
+                    raise ValueError("OpenAPI payload must contain info.title")
+                self.pass_("live proof", f"OpenAPI schema responds: {openapi_url}")
+            except Exception as exc:
+                (self.fail if self.strict else self.warn)("live proof", f"OpenAPI schema failed: {exc}")
+        elif openapi_path:
+            (self.fail if self.strict else self.warn)("live proof", "openapi_path declared but no live or route base URL exists")
 
         route_hostname = str(manifest.get("route_hostname") or "")
         route_hosts = manifest.get("route_hosts")

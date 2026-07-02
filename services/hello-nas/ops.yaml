@@ -7,7 +7,10 @@ public_image: true
 container: hello-nas
 http_port: 8099
 port_env: HOST_PORT
-health_path: /
+health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: python-http-server
 live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8099
 tailnet: true
 monitoring: true

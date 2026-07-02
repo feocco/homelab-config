@@ -18,7 +18,23 @@ def truthy(value: Any) -> str:
 
 
 def service_href(row: dict[str, Any]) -> str:
-    return str(row.get("homepage_url") or row.get("live_base_url") or "")
+    return str(row.get("docs_url") or row.get("homepage_url") or row.get("live_base_url") or "")
+
+
+def service_api_lines(row: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    docs_url = str(row.get("docs_url") or "")
+    openapi_path = str(row.get("openapi_path") or "")
+    api_framework = str(row.get("api_framework") or "")
+    if docs_url:
+        lines.append(f"  - Service docs: [{docs_url}]({docs_url})")
+    if openapi_path:
+        lines.append(f"  - OpenAPI: `{openapi_path}`")
+    if api_framework:
+        lines.append(f"  - Framework: `{api_framework}`")
+    if not docs_url and not openapi_path and not api_framework and row.get("enabled"):
+        lines.append("  - API docs convention: Not migrated yet")
+    return lines
 
 
 def service_line(row: dict[str, Any]) -> str:
@@ -39,6 +55,17 @@ def service_line(row: dict[str, Any]) -> str:
     return f"- **{label}** (`{row['service']}`): " + ", ".join(bits)
 
 
+def active_service_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rows
+        if row.get("enabled")
+        and row.get("host") == "macmini"
+        and row.get("kind") == "app"
+        and row.get("service") != "homepage"
+    ]
+
+
 def write_index(catalog: dict[str, Any]) -> str:
     rows = catalog["services"]
     lines = [
@@ -46,12 +73,39 @@ def write_index(catalog: dict[str, Any]) -> str:
         "",
         "Generated from `./scripts/generate-service-catalog --format json`.",
         "This page is a rendered view over service manifests, host manifests,",
-        "Compose files, monitoring config, and SRE metadata. It is not a new",
-        "source of truth.",
+        "Compose files, monitoring config, SRE metadata, and declared service",
+        "API docs metadata. It is not a new source of truth.",
         "",
-        "## By Domain",
+        "Service-owned `/docs` and `/openapi.json` pages remain in each app.",
+        "This index only links to them and reports migration status.",
+        "",
+        "## Service API Convention",
+        "",
+        "Migrated services expose app-owned docs and OpenAPI from their live",
+        "service route. Homepage should link to the same service docs URL while",
+        "`siteMonitor` continues probing machine health.",
         "",
     ]
+
+    migrated = [row for row in active_service_rows(rows) if row.get("docs_url")]
+    not_migrated = [row for row in active_service_rows(rows) if not row.get("docs_url")]
+    if migrated:
+        lines.extend(["### Migrated", ""])
+        for row in sorted(migrated, key=lambda item: item["service"]):
+            lines.append(service_line(row))
+            lines.extend(service_api_lines(row))
+        lines.append("")
+    if not_migrated:
+        lines.extend(["### Migrate these active services separately", ""])
+        for row in sorted(not_migrated, key=lambda item: item["service"]):
+            lines.append(service_line(row))
+            lines.extend(service_api_lines(row))
+        lines.append("")
+
+    lines.extend([
+        "## By Domain",
+        "",
+    ])
 
     by_domain: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:

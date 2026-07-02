@@ -9,11 +9,15 @@ truth lives, and which gaps are intentional.
 
 ## Start Here
 
-- [Overview](overview.md) gives the operating model.
-- [Source Of Truth](source-of-truth.md) maps current truth by engineering domain.
-- [Service Index](generated/service-index.md) is generated from the existing
+- [Overview](docs/overview.md) gives the operating model.
+- [Source Of Truth](docs/source-of-truth.md) maps current truth by engineering domain.
+- [Service Index](docs/generated/service-index.md) is generated from the existing
   service catalog.
-- [How To Navigate](how-to-navigate.md) explains how Homepage, Grafana, GitHub,
+- [Service API Conventions](docs/service-api-conventions.md) explains `/docs`,
+  `/openapi.json`, and current framework divergence.
+- [Docs Site](docs/docs-site.md) explains how this site is generated, previewed,
+  validated, and hosted.
+- [How To Navigate](docs/how-to-navigate.md) explains how Homepage, Grafana, GitHub,
   and this docs site fit together.
 
 ## Operating Principles
