@@ -19,6 +19,10 @@ services:
     path: services/homepage
     enabled: true
 
+  homelab-docs:
+    path: services/homelab-docs
+    enabled: true
+
   caddy:
     path: services/caddy
     enabled: true

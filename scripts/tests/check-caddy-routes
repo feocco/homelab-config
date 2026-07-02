@@ -10,6 +10,8 @@ assert_contains "${caddy_tmp}/Caddyfile" 'home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:7576'
 assert_contains "${caddy_tmp}/Caddyfile" 'grafana.home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:3000'
+assert_contains "${caddy_tmp}/Caddyfile" 'docs.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:8110'
 assert_contains "${caddy_tmp}/Caddyfile" 'mealie.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:9925'
 assert_contains "${caddy_tmp}/Caddyfile" 'mealie.home.feocco.com {'
@@ -27,6 +29,11 @@ dns_dry_run="$(
 )"
 if [[ "${dns_dry_run}" != *"Would upsert A home.feocco.com -> 192.168.1.43"* ]]; then
   echo "UniFi DNS dry-run should show Homepage A record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+if [[ "${dns_dry_run}" != *"Would upsert A docs.home.feocco.com -> 192.168.1.43"* ]]; then
+  echo "UniFi DNS dry-run should show Homelab Docs A record upsert" >&2
   echo "${dns_dry_run}" >&2
   exit 1
 fi
@@ -86,6 +93,11 @@ if [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A home.feocco.com -> 
   echo "${cloudflare_dry_run}" >&2
   exit 1
 fi
+if [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A docs.home.feocco.com -> 100.81.237.11 (DNS only)"* ]]; then
+  echo "Cloudflare DNS dry-run should show Homelab Docs A record upsert" >&2
+  echo "${cloudflare_dry_run}" >&2
+  exit 1
+fi
 if [[ "${cloudflare_dry_run}" == *"mealie.feocco.com"* ]]; then
   echo "Cloudflare DNS dry-run should skip tunnel-managed Mealie public DNS" >&2
   echo "${cloudflare_dry_run}" >&2
@@ -124,5 +136,12 @@ deploy_dry_run="$("${REPO_DIR}/scripts/homelab-deploy" --host macmini caddy --dr
 if [[ "${deploy_dry_run}" != *"Would generate Caddy config"* ]]; then
   echo "Caddy dry-run should show deploy-time config generation" >&2
   echo "${deploy_dry_run}" >&2
+  exit 1
+fi
+
+docs_deploy_dry_run="$("${REPO_DIR}/scripts/homelab-deploy" --host macmini homelab-docs --dry-run --deploy-base-dir "${REPO_DIR}")"
+if [[ "${docs_deploy_dry_run}" != *"Would build Homelab Docs site"* ]]; then
+  echo "Homelab Docs dry-run should show deploy-time site generation" >&2
+  echo "${docs_deploy_dry_run}" >&2
   exit 1
 fi

@@ -325,7 +325,8 @@ changed_services() {
       echo "${files}" | grep -qx "${host_config}" ||
       echo "${files}" | grep -q "^${path}/" ||
       { [[ "${service}" == "caddy" ]] && echo "${files}" | grep -Eq "^(scripts/generate-caddy-config|scripts/lib/homelab_catalog.py|services/[^/]+/ops.yaml)$"; } ||
-      { [[ "${service}" == "homepage" ]] && echo "${files}" | grep -Eq "^scripts/(generate-homepage-config|generate-service-catalog|lib/homelab_catalog.py)$"; }; then
+      { [[ "${service}" == "homepage" ]] && echo "${files}" | grep -Eq "^scripts/(generate-homepage-config|generate-service-catalog|lib/homelab_catalog.py)$"; } ||
+      { [[ "${service}" == "homelab-docs" ]] && echo "${files}" | grep -Eq "^(mkdocs.yml|docs/|services/[^/]+/README.md|services/[^/]+/ops.yaml|hosts/[^/]+/services.yaml|scripts/(build-docs-site|generate-docs-service-index|generate-service-catalog|lib/homelab_catalog.py))"; }; then
       echo "${service}"
     fi
   done < <(service_entries)
@@ -346,6 +347,25 @@ prepare_service() {
       --base-dir "${DEPLOY_BASE_DIR}" \
       --host "${HOST}" \
       --output "${service_dir}/Caddyfile"
+    return 0
+  fi
+
+  if [[ "${service}" == "homelab-docs" ]]; then
+    if [[ "${DRY_RUN}" == "true" ]]; then
+      echo "Would build Homelab Docs site in ${DEPLOY_BASE_DIR}/.site"
+      return 0
+    fi
+
+    echo "Building Homelab Docs site in ${DEPLOY_BASE_DIR}/.site"
+    (
+      cd "${DEPLOY_BASE_DIR}"
+      if ! python3 -m mkdocs --version >/dev/null 2>&1; then
+        python3 -m venv .local/docs-venv
+        .local/docs-venv/bin/python -m pip install -r docs/requirements.txt
+      fi
+      PATH="${DEPLOY_BASE_DIR}/.local/docs-venv/bin:${PATH}" \
+        "${DEPLOY_BASE_DIR}/scripts/build-docs-site"
+    )
     return 0
   fi
 

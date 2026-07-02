@@ -54,11 +54,6 @@ links:
     href: https://github.com/feocco/homelab-config/blob/main/docs/source-of-truth.md
     description: Domain inventory and current gaps
     icon: github.png
-  - name: Homelab Docs
-    group: Sources of Truth
-    href: https://feocco.github.io/homelab-config/
-    description: Searchable documentation website
-    icon: book-open.png
   - name: Service Catalog
     group: Sources of Truth
     href: https://github.com/feocco/homelab-config#which-command-should-i-use

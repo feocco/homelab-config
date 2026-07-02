@@ -30,6 +30,7 @@ on:
           - hello-nas
           - homarr
           - homepage
+          - homelab-docs
           - homelab-functions
           - homelab-log-watcher
           - homelab-monitor
@@ -134,7 +135,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer)
+            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
@@ -321,7 +322,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer)
+            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2

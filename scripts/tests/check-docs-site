@@ -24,8 +24,8 @@ assert_contains "${REPO_DIR}/docs/docs-site.md" "docs/generated/service-index.md
 assert_contains "${REPO_DIR}/docs/docs-site.md" ".local/mkdocs-src"
 assert_contains "${REPO_DIR}/docs/docs-site.md" ".site/"
 assert_contains "${REPO_DIR}/docs/docs-site.md" "http://127.0.0.1:8765/"
+assert_contains "${REPO_DIR}/docs/docs-site.md" "https://docs.home.feocco.com"
 assert_contains "${REPO_DIR}/docs/docs-site.md" "GitHub Pages"
-assert_contains "${REPO_DIR}/docs/docs-site.md" "not hosted on homelab DNS"
 assert_contains "${REPO_DIR}/docs/docs-site.md" "docs_path"
 assert_contains "${REPO_DIR}/docs/docs-site.md" "openapi_path"
 assert_contains "${REPO_DIR}/docs/docs-site.md" "api_framework"
@@ -62,8 +62,8 @@ if git -C "${REPO_DIR}" ls-files --error-unmatch docs/generated/service-index.md
   exit 1
 fi
 
-assert_contains "${REPO_DIR}/services/homepage/manual-links.yaml" "Homelab Docs"
-assert_contains "${REPO_DIR}/services/homepage/manual-links.yaml" "https://feocco.github.io/homelab-config/"
+assert_contains "${REPO_DIR}/services/homelab-docs/ops.yaml" "dashboard_name: Homelab Docs"
+assert_contains "${REPO_DIR}/services/homelab-docs/ops.yaml" "route_hostname: docs.home.feocco.com"
 
 if python3 -m mkdocs --version >/dev/null 2>&1; then
   "${REPO_DIR}/scripts/build-docs-site" --site-dir "${tmpdir}/site"

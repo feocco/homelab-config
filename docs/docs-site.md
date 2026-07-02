@@ -59,25 +59,22 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory .site
 
 Then open `http://127.0.0.1:8765/`.
 
-The local preview is private to this machine. It is not hosted on homelab DNS.
+The local preview is private to this machine. The deployed homelab route is
+`https://docs.home.feocco.com`.
 
 ## Hosting Status
 
-This repository has a GitHub Pages workflow in `.github/workflows/docs.yml`.
+The primary homelab route is `https://docs.home.feocco.com`. It is served by
+the `homelab-docs` Nginx container on the Mac mini, with Caddy terminating HTTPS
+and UniFi DNS resolving the hostname on the LAN.
+
+This repository also has a GitHub Pages workflow in `.github/workflows/docs.yml`.
 That workflow builds `.site/` and deploys it to GitHub Pages after the workflow
 is merged to `main` or manually dispatched from the default branch.
 
-There is not currently a `docs.home.feocco.com` route, Caddy service, or owned
-DNS record for the docs site in this repo. If the docs site should be reachable
-from Homepage on the LAN, treat that as a separate hosting decision:
-
-- keep local preview only,
-- use GitHub Pages,
-- add a private LAN HTTPS route under `home.feocco.com`, or
-- expose it some other way through existing homelab routing.
-
 Do not assume GitHub Pages and private homelab DNS are the same deployment
-model.
+model. The homelab route is private infrastructure; GitHub Pages is a separate
+publishing path.
 
 ## Validation
 
