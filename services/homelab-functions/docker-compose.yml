@@ -7,6 +7,7 @@ services:
     env_file:
       - .env
     volumes:
+      - ./config:/app/config:ro
       - ./data:/app/data
     ports:
       - "${HOST_BIND_ADDR:-127.0.0.1}:${SERVICE_PORT:-8091}:${SERVICE_PORT:-8091}"

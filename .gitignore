@@ -5,8 +5,8 @@
 !**/data/.gitkeep
 services/homepage/config/*
 !services/homepage/config/.gitkeep
-services/homelab-sentinel/config/*
-!services/homelab-sentinel/config/.gitkeep
+services/homelab-functions/config/*
+!services/homelab-functions/config/.gitkeep
 docs/generated/*
 !docs/generated/.gitkeep
 .site/

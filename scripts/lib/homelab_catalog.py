@@ -266,6 +266,7 @@ def display_name(service: str) -> str:
         "homelab-functions": "homelab-functions",
         "homelab-log-watcher": "homelab-log-watcher",
         "homelab-monitor": "Homelab Monitor",
+        "homelab-smoke-signal": "Smoke Signal",
         "homelab-sre-agent": "homelab-sre-agent",
         "homepage": "Homepage",
         "instacart-history-service": "Instacart History",
@@ -686,7 +687,7 @@ def write_homepage_config(base_dir: pathlib.Path, output_dir: pathlib.Path) -> N
     (output_dir / "widgets.yaml").write_text(homepage_widgets())
 
 
-def sentinel_target(name: str, url: str, service: str) -> dict[str, str]:
+def smoke_signal_target(name: str, url: str, service: str) -> dict[str, str]:
     return {
         "name": name,
         "url": url,
@@ -694,7 +695,7 @@ def sentinel_target(name: str, url: str, service: str) -> dict[str, str]:
     }
 
 
-def sentinel_config(catalog: dict[str, Any]) -> dict[str, Any]:
+def smoke_signal_config(catalog: dict[str, Any]) -> dict[str, Any]:
     rows = [
         row
         for row in catalog["services"]
@@ -714,7 +715,7 @@ def sentinel_config(catalog: dict[str, Any]) -> dict[str, Any]:
             continue
         url = health_url_for(row)
         if url and url not in seen_urls:
-            critical_canaries.append(sentinel_target(name, url, service))
+            critical_canaries.append(smoke_signal_target(name, url, service))
             seen_urls.add(url)
 
     runtime_services: list[dict[str, str]] = []
@@ -728,11 +729,11 @@ def sentinel_config(catalog: dict[str, Any]) -> dict[str, Any]:
         url = health_url_for(row)
         if not url or url in seen_urls:
             continue
-        runtime_services.append(sentinel_target(str(row["dashboard_name"] or row["service"]), url, str(row["service"])))
+        runtime_services.append(smoke_signal_target(str(row["dashboard_name"] or row["service"]), url, str(row["service"])))
         seen_urls.add(url)
 
     return {
-        "schema": "homelab-sentinel-targets.v1",
+        "schema": "homelab-smoke-signal-targets.v1",
         "critical_canary_failures": 3,
         "runtime_failure_ratio": 0.5,
         "critical_canaries": critical_canaries,
@@ -740,10 +741,10 @@ def sentinel_config(catalog: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def write_sentinel_config(base_dir: pathlib.Path, output_dir: pathlib.Path) -> None:
-    config = sentinel_config(build_catalog(base_dir))
+def write_smoke_signal_config(base_dir: pathlib.Path, output_dir: pathlib.Path) -> None:
+    config = smoke_signal_config(build_catalog(base_dir))
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "targets.json").write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+    (output_dir / "smoke-signal-targets.json").write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
 
 
 def table_text(rows: list[dict[str, Any]]) -> str:
@@ -844,12 +845,12 @@ def main_homepage(argv: list[str] | None = None) -> int:
     return 0
 
 
-def main_sentinel(argv: list[str] | None = None) -> int:
+def main_smoke_signal(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[2]))
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
-    write_sentinel_config(pathlib.Path(args.base_dir), pathlib.Path(args.output))
+    write_smoke_signal_config(pathlib.Path(args.base_dir), pathlib.Path(args.output))
     return 0
 
 

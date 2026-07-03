@@ -25,7 +25,7 @@ need monitoring evidence.
 
 ## Outage Alerts
 
-`homelab-sentinel` is the NAS-side backup alarm for broad Mac mini outages.
+`homelab-smoke-signal` is the NAS-side backup alarm for broad Mac mini outages.
 It sends direct Home Assistant phone alerts when the Mac stack is down enough
 that Grafana may not be able to alert.
 

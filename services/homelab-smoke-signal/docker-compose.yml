@@ -1,17 +1,14 @@
 services:
-  homelab-sentinel:
-    image: python:3.13-alpine
+  homelab-smoke-signal:
+    image: ghcr.io/feocco/homelab-smoke-signal:latest
     platform: ${SERVICE_PLATFORM:-linux/amd64}
-    container_name: homelab-sentinel
+    container_name: homelab-smoke-signal
     restart: unless-stopped
     env_file:
       - .env
-    command: ["python", "/app/sentinel.py"]
     ports:
       - "${HOST_BIND_ADDR:-127.0.0.1}:${SERVICE_PORT:-8095}:${SERVICE_PORT:-8095}"
     volumes:
-      - ./sentinel.py:/app/sentinel.py:ro
-      - ./config:/app/config:ro
       - ./data:/app/data
     logging:
       driver: local

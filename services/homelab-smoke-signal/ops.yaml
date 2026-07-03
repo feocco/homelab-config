@@ -1,21 +1,22 @@
-service: homelab-sentinel
+service: homelab-smoke-signal
 kind: app
 host: nasfeo
-source_repo: feocco/homelab-config
-image: python:3.13-alpine
+source_repo: feocco/homelab-smoke-signal
+image: ghcr.io/feocco/homelab-smoke-signal:latest
 public_image: true
-container: homelab-sentinel
+container: homelab-smoke-signal
 http_port: 8095
 port_env: SERVICE_PORT
 health_path: /health
 live_base_url: http://192.168.1.191:8095
 monitoring: false
 sre: false
-dashboard_name: Homelab Sentinel
+dashboard_name: Smoke Signal
 dashboard_group: Infrastructure
 dashboard_description: NAS-side Mac mini outage alarm
 dashboard_icon: alert-triangle.png
 secrets:
+  - HOMELAB_FUNCTIONS_TOKEN
   - HA_URL
   - HA_LONG_LIVED_TOKEN
   - HA_NOTIFY_JOE_SERVICE

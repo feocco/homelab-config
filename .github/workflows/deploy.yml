@@ -34,7 +34,7 @@ on:
           - homelab-functions
           - homelab-log-watcher
           - homelab-monitor
-          - homelab-sentinel
+          - homelab-smoke-signal
           - homelab-sre-agent
           - instacart-history-service
           - laundry-monitor
@@ -90,9 +90,10 @@ jobs:
           HOMELAB_LOG_WATCHER__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__HOMELAB_FUNCTIONS_TOKEN }}
           HOMELAB_LOG_WATCHER__LOG_WATCHER_ACTION_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__LOG_WATCHER_ACTION_TOKEN }}
           HOMELAB_LOG_WATCHER__LOG_WATCHER_INCIDENT_WEBHOOK_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__LOG_WATCHER_INCIDENT_WEBHOOK_TOKEN }}
-          HOMELAB_SENTINEL__HA_LONG_LIVED_TOKEN: ${{ secrets.HOMELAB_SENTINEL__HA_LONG_LIVED_TOKEN }}
-          HOMELAB_SENTINEL__HA_NOTIFY_JOE_SERVICE: ${{ secrets.HOMELAB_SENTINEL__HA_NOTIFY_JOE_SERVICE }}
-          HOMELAB_SENTINEL__HA_URL: ${{ secrets.HOMELAB_SENTINEL__HA_URL }}
+          HOMELAB_SMOKE_SIGNAL__HA_LONG_LIVED_TOKEN: ${{ secrets.HOMELAB_SMOKE_SIGNAL__HA_LONG_LIVED_TOKEN }}
+          HOMELAB_SMOKE_SIGNAL__HA_NOTIFY_JOE_SERVICE: ${{ secrets.HOMELAB_SMOKE_SIGNAL__HA_NOTIFY_JOE_SERVICE }}
+          HOMELAB_SMOKE_SIGNAL__HA_URL: ${{ secrets.HOMELAB_SMOKE_SIGNAL__HA_URL }}
+          HOMELAB_SMOKE_SIGNAL__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_SMOKE_SIGNAL__HOMELAB_FUNCTIONS_TOKEN }}
           # END GENERATED SERVICE SECRETS
         run: |
           ./scripts/render-service-env --host nasfeo --all \
@@ -140,7 +141,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sentinel|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer)
+            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
@@ -327,7 +328,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-sentinel|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer)
+            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2

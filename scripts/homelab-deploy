@@ -326,7 +326,7 @@ changed_services() {
       echo "${files}" | grep -q "^${path}/" ||
       { [[ "${service}" == "caddy" ]] && echo "${files}" | grep -Eq "^(scripts/generate-caddy-config|scripts/lib/homelab_catalog.py|services/[^/]+/ops.yaml)$"; } ||
       { [[ "${service}" == "homepage" ]] && echo "${files}" | grep -Eq "^scripts/(generate-homepage-config|generate-service-catalog|lib/homelab_catalog.py)$"; } ||
-      { [[ "${service}" == "homelab-sentinel" ]] && echo "${files}" | grep -Eq "^scripts/(generate-sentinel-config|generate-service-catalog|lib/homelab_catalog.py)$|^services/[^/]+/ops.yaml$|^hosts/macmini/services.yaml$"; } ||
+      { [[ "${service}" == "homelab-functions" ]] && echo "${files}" | grep -Eq "^scripts/(generate-smoke-signal-config|generate-service-catalog|lib/homelab_catalog.py)$|^services/[^/]+/ops.yaml$|^hosts/[^/]+/services.yaml$"; } ||
       { [[ "${service}" == "homelab-docs" ]] && echo "${files}" | grep -Eq "^(mkdocs.yml|docs/|services/[^/]+/README.md|services/[^/]+/ops.yaml|hosts/[^/]+/services.yaml|scripts/(build-docs-site|generate-docs-service-index|generate-service-catalog|lib/homelab_catalog.py))"; }; then
       echo "${service}"
     fi
@@ -370,16 +370,31 @@ prepare_service() {
     return 0
   fi
 
-  if [[ "${service}" == "homelab-sentinel" ]]; then
+  if [[ "${service}" == "homelab-functions" ]]; then
     if [[ "${DRY_RUN}" == "true" ]]; then
-      echo "Would generate Homelab Sentinel config in ${service_dir}/config"
+      echo "Would generate Homelab Functions catalog config in ${service_dir}/config"
       return 0
     fi
 
-    echo "Generating Homelab Sentinel config in ${service_dir}/config"
-    "${DEPLOY_BASE_DIR}/scripts/generate-sentinel-config" \
+    echo "Generating Homelab Functions catalog config in ${service_dir}/config"
+    mkdir -p "${service_dir}/config"
+    "${DEPLOY_BASE_DIR}/scripts/generate-service-catalog" \
+      --base-dir "${DEPLOY_BASE_DIR}" \
+      --output "${service_dir}/config/service-catalog.json"
+    "${DEPLOY_BASE_DIR}/scripts/generate-smoke-signal-config" \
       --base-dir "${DEPLOY_BASE_DIR}" \
       --output "${service_dir}/config"
+    return 0
+  fi
+
+  if [[ "${service}" == "homelab-smoke-signal" ]]; then
+    if [[ "${DRY_RUN}" == "true" ]]; then
+      echo "Would remove legacy homelab-sentinel container if present"
+      return 0
+    fi
+
+    echo "Removing legacy homelab-sentinel container if present"
+    docker rm -f homelab-sentinel >/dev/null 2>&1 || true
     return 0
   fi
 
