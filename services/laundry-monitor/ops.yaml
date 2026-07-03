@@ -8,6 +8,9 @@ container: laundry-monitor
 http_port: 8102
 health_path: /health
 status_path: /v1/status
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: python-http-server
 live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8102
 tailnet: true
 monitoring: true
