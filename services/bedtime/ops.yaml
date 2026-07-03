@@ -8,6 +8,9 @@ container: bedtime
 http_port: 8104
 port_env: SERVICE_PORT
 health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: aiohttp
 live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8104
 tailnet: true
 monitoring: true
