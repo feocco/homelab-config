@@ -10,6 +10,9 @@ container: homelab-log-watcher
 http_port: 8093
 port_env: SERVICE_PORT
 health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: python-http-server
 live_base_url_macmini: http://maclabs-mac-mini.taildf3445.ts.net:8093
 tailnet_hosts:
   - macmini
