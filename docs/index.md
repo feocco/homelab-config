@@ -25,5 +25,6 @@ truth lives, and which gaps are intentional.
 - Keep durable intent in git.
 - Treat generated pages as views, not new truth.
 - Keep Homepage as the fast launchpad.
-- Keep Grafana and Prometheus as monitoring truth.
+- Keep Grafana and Prometheus as monitoring evidence.
+- Keep the NAS sentinel as the out-of-band Mac outage alarm.
 - Prefer small docs that point to the right owner over duplicated explanations.

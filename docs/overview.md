@@ -7,6 +7,7 @@ High-level map for understanding the deployed homelab quickly.
 - Two Docker hosts split infrastructure and application workloads.
 - NAS keeps storage-adjacent, lightweight, always-on infrastructure.
 - Mac mini runs app, monitoring, automation workloads.
+- NAS also runs the small out-of-band sentinel for Mac mini outages.
 - Small Compose services follow a microservice-style pattern.
 
 ## Networking
@@ -30,12 +31,15 @@ High-level map for understanding the deployed homelab quickly.
 
 - Grafana centralizes health, uptime, and cost monitoring.
 - Prometheus scrapes containers, hosts, and HTTP endpoints.
+- `homelab-sentinel` watches Mac mini canaries from NAS.
 - Homepage is the primary clickable service dashboard.
 - Portainer remains NAS Docker management.
 
 ## Alerting
 
-- `homelab-functions` centralizes phone notification delivery.
+- Grafana handles normal service and cost alerts.
+- `homelab-sentinel` sends direct Home Assistant phone alerts when the Mac
+  stack is broadly down.
 - One log watcher runs per Docker host.
 - SRE agent creates issues from serious logs.
 - Autofix workflows draft PRs after approval.

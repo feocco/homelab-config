@@ -10,7 +10,9 @@ Metrics-first Grafana and Prometheus stack for `macmini`.
 - Exporters: internal only
 - Python exporter sidecars use `python:3.12-slim`; the exporter scripts are
   stdlib-only and do not require Python 3.13.
-- Phone alerts: Grafana webhook to Mac-hosted `homelab-functions`
+- Normal phone alerts: Grafana webhook to Mac-hosted `homelab-functions`
+- Broad Mac outage alerts: NAS-hosted `homelab-sentinel` direct to Home
+  Assistant
 - Homelab dashboard: `https://grafana.home.feocco.com/d/homelab-monitoring/homelab-monitoring`
 - OpenAI cost dashboard: `https://grafana.home.feocco.com/d/openai-cost-usage/openai-cost-usage`
 
@@ -37,6 +39,17 @@ OpenAI cost collection requires `OPENAI_ADMIN_KEY` through the managed secret
 flow. Cost alert thresholds are non-secret config in `.env.config`:
 `OPENAI_COST_DAILY_SPEND_SPIKE_THRESHOLD_USD` and
 `OPENAI_COST_7D_SPEND_HIGH_THRESHOLD_USD`.
+
+## Alerting Boundary
+
+Grafana is the normal alerting and review surface. It is allowed to depend on
+the Mac mini because it watches ordinary service, host, container, and cost
+signals.
+
+`homelab-sentinel` is the small independent alarm on NAS. It watches Grafana,
+Homepage, `homelab-functions`, and generated Mac runtime service health checks.
+It sends one grouped Home Assistant phone alert when the Mac stack is broadly
+down.
 
 `streamdeck-companion` and Raspberry Pi host metrics are intentionally deferred.
 The Pi at `192.168.1.250` responded to ICMP during planning, but the Companion

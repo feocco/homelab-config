@@ -58,12 +58,15 @@ Observability combines monitoring config, dashboards, and service metadata.
   `services/homelab-monitor/prometheus/prometheus.yml`.
 - Grafana dashboards live in `services/homelab-monitor/grafana/dashboards/`.
 - Blackbox probe config lives in `services/homelab-monitor/blackbox/`.
+- NAS-side outage sentinel config is generated during deploy from the service
+  catalog into `services/homelab-sentinel/config/`.
 - SRE issue/autofix metadata lives in `services/homelab-sre-agent/services.yaml`.
 - Homepage `siteMonitor` dots are UI hints only; Grafana and Prometheus remain
-  the monitoring source of truth.
+  the monitoring evidence source of truth.
 
-Gap: monitoring coverage and SRE coverage are related but separate. Keep both
-visible when auditing service readiness.
+Gap: Grafana cannot alert if the Mac mini Docker stack is down. The NAS
+sentinel covers that broad-outage phone alert only; it is not a metrics store.
+Monitoring coverage and SRE coverage remain related but separate.
 
 ## Data And API Domains
 
