@@ -91,11 +91,6 @@ scrape_configs:
           service: instacart-history-service
           host: macmini
       - targets:
-          - http://host.docker.internal:8101/health
-        labels:
-          service: dog-bowl-monitor
-          host: macmini
-      - targets:
           - http://host.docker.internal:8102/health
         labels:
           service: laundry-monitor

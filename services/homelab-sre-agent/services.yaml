@@ -305,7 +305,7 @@ services:
       - homelab-sre
       - dog-bowl-monitor
     sre:
-      enabled: true
+      enabled: false
       autofix: false
       repo_daily_limit: 1
 

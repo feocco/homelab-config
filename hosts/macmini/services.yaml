@@ -65,7 +65,7 @@ services:
 
   dog-bowl-monitor:
     path: services/dog-bowl-monitor
-    enabled: true
+    enabled: false
 
   laundry-monitor:
     path: services/laundry-monitor
