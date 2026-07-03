@@ -120,10 +120,11 @@ jobs:
 
       - name: Log in to GHCR
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           if [ -n "${GHCR_TOKEN}" ]; then
-            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
           fi
 
       - name: Deploy changed services
@@ -290,10 +291,11 @@ jobs:
 
       - name: Log in to GHCR
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           if [ -n "${GHCR_TOKEN}" ]; then
-            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
           fi
 
       - name: Load Caddy image metadata
