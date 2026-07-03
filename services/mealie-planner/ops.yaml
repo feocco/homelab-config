@@ -8,6 +8,9 @@ container: mealie-planner
 http_port: 8097
 port_env: MEALIE_PLANNER_PORT
 health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: fastapi
 tailnet: false
 monitoring: true
 sre: true
