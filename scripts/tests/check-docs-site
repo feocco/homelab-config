@@ -10,6 +10,9 @@ assert_contains "${REPO_DIR}/mkdocs.yml" "Home: index.md"
 assert_contains "${REPO_DIR}/mkdocs.yml" "generated/service-index.md"
 assert_contains "${REPO_DIR}/mkdocs.yml" "docs/docs-site.md"
 assert_contains "${REPO_DIR}/mkdocs.yml" "docs/service-docs-migration.md"
+assert_contains "${REPO_DIR}/mkdocs.yml" "Working Reports"
+assert_contains "${REPO_DIR}/mkdocs.yml" "docs/reports/index.md"
+assert_contains "${REPO_DIR}/mkdocs.yml" "docs/reports/service-docs-migration-review.md"
 assert_contains "${REPO_DIR}/mkdocs.yml" "services/caddy/README.md"
 if grep -q "services/homepage/README.md" "${REPO_DIR}/mkdocs.yml"; then
   echo "Application-specific service pages should come from generated service docs links, not static MkDocs nav." >&2
@@ -27,6 +30,7 @@ assert_contains "${REPO_DIR}/docs/docs-site.md" ".local/mkdocs-src"
 assert_contains "${REPO_DIR}/docs/docs-site.md" ".site/"
 assert_contains "${REPO_DIR}/docs/docs-site.md" "http://127.0.0.1:8765/"
 assert_contains "${REPO_DIR}/docs/docs-site.md" "https://docs.home.feocco.com"
+assert_contains "${REPO_DIR}/docs/docs-site.md" "Working Reports"
 if grep -q "GitHub Pages" "${REPO_DIR}/docs/docs-site.md"; then
   echo "Docs site documentation should describe only the private homelab route, not GitHub Pages." >&2
   exit 1
@@ -39,6 +43,11 @@ assert_contains "${REPO_DIR}/docs/service-docs-migration.md" "scripts/check-serv
 assert_contains "${REPO_DIR}/docs/service-docs-migration.md" "--format json"
 assert_contains "${REPO_DIR}/docs/service-docs-migration.md" "Live docs available"
 assert_contains "${REPO_DIR}/docs/service-api-conventions.md" "service-docs-migration.md"
+test -f "${REPO_DIR}/docs/reports/index.md"
+assert_contains "${REPO_DIR}/docs/reports/index.md" "not durable source-of-truth files"
+test -f "${REPO_DIR}/docs/reports/service-docs-migration-review.md"
+assert_contains "${REPO_DIR}/docs/reports/service-docs-migration-review.md" "subjective companion"
+assert_contains "${REPO_DIR}/docs/reports/service-docs-migration-review.md" "required before calling migrated"
 test -f "${REPO_DIR}/.github/workflows/docs.yml"
 assert_contains "${REPO_DIR}/.github/workflows/docs.yml" "scripts/build-docs-site"
 if grep -Eq "deploy-pages|upload-pages-artifact|github-pages|pages: write|id-token: write" "${REPO_DIR}/.github/workflows/docs.yml"; then

@@ -51,3 +51,6 @@ nav:
       - GHCR And Synology: docs/ghcr-and-synology.md
       - Mac Mini Bootstrap: docs/macmini-bootstrap.md
       - Setup Status: docs/setup-status.md
+  - Working Reports:
+      - Overview: docs/reports/index.md
+      - Service Docs Migration Review: docs/reports/service-docs-migration-review.md

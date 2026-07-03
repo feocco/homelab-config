@@ -118,6 +118,24 @@ The service wrapper pages use three docs statuses:
   validate.
 - `Not migrated`: no service docs metadata is declared.
 
+## Working Reports
+
+The docs site also has a `Working Reports` section for one-time subjective
+review output. These reports are useful during a migration or cleanup campaign,
+but they are not durable sources of truth and should not duplicate app-owned
+documentation.
+
+Use `docs/reports/` when the output is:
+
+- human judgment rather than a boolean validator result;
+- temporary or campaign-specific;
+- useful to revisit while doing follow-up work;
+- safe to delete after the underlying work is complete.
+
+Prefer links and concise findings over copied content. If a report starts to
+describe a permanent operating model, move that content into the relevant
+durable doc instead.
+
 ## Migration Work
 
 Do not migrate every service as part of docs-site plumbing. The service API
