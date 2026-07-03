@@ -50,6 +50,20 @@ settings while still using the same image tag.
 The Dockerfile includes the `org.opencontainers.image.source` label so GHCR can
 associate the package with `feocco/homelab-config` when the image is published.
 
+## Version Updates
+
+For future Caddy version bumps, start by updating `CADDY_VERSION` and
+`CADDY_IMAGE_REF` in `services/caddy/.env.config`. Then run:
+
+```bash
+LC_ALL=C ./scripts/tests/check-deploy-guards
+```
+
+That guard intentionally keeps the Dockerfile default, Compose fallback,
+`ops.yaml` image, and workflow image metadata aligned. If it fails after a
+version bump, update the stale file it names before publishing or deploying the
+new custom image.
+
 Required runtime values:
 
 - `CADDY_IMAGE`, `CADDY_VERSION`, and `CADDY_IMAGE_REF` in `.env.config`
