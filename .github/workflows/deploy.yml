@@ -291,7 +291,6 @@ jobs:
         run: |
           if [ -n "${GHCR_TOKEN}" ]; then
             echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-            docker logout ghcr.io || true
           fi
 
       - name: Build local Caddy image

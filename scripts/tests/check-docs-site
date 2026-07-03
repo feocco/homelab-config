@@ -25,13 +25,19 @@ assert_contains "${REPO_DIR}/docs/docs-site.md" ".local/mkdocs-src"
 assert_contains "${REPO_DIR}/docs/docs-site.md" ".site/"
 assert_contains "${REPO_DIR}/docs/docs-site.md" "http://127.0.0.1:8765/"
 assert_contains "${REPO_DIR}/docs/docs-site.md" "https://docs.home.feocco.com"
-assert_contains "${REPO_DIR}/docs/docs-site.md" "GitHub Pages"
+if grep -q "GitHub Pages" "${REPO_DIR}/docs/docs-site.md"; then
+  echo "Docs site documentation should describe only the private homelab route, not GitHub Pages." >&2
+  exit 1
+fi
 assert_contains "${REPO_DIR}/docs/docs-site.md" "docs_path"
 assert_contains "${REPO_DIR}/docs/docs-site.md" "openapi_path"
 assert_contains "${REPO_DIR}/docs/docs-site.md" "api_framework"
 test -f "${REPO_DIR}/.github/workflows/docs.yml"
-assert_contains "${REPO_DIR}/.github/workflows/docs.yml" "github-pages"
 assert_contains "${REPO_DIR}/.github/workflows/docs.yml" "scripts/build-docs-site"
+if grep -Eq "deploy-pages|upload-pages-artifact|github-pages|pages: write|id-token: write" "${REPO_DIR}/.github/workflows/docs.yml"; then
+  echo "Docs workflow should build the private docs site only; GitHub Pages deployment must stay disabled." >&2
+  exit 1
+fi
 assert_contains "${REPO_DIR}/.gitignore" "docs/generated/*"
 assert_contains "${REPO_DIR}/.gitignore" "!docs/generated/.gitkeep"
 

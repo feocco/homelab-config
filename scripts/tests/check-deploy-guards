@@ -195,3 +195,8 @@ if grep -R '\${{ github.event.inputs\.' "${REPO_DIR}/.github/workflows"; then
   echo "Deploy workflows must not interpolate github.event.inputs directly into shell scripts." >&2
   exit 1
 fi
+
+if grep -q 'docker logout ghcr.io' "${REPO_DIR}/.github/workflows/deploy.yml"; then
+  echo "Deploy workflow must keep GHCR credentials available for compose pull." >&2
+  exit 1
+fi

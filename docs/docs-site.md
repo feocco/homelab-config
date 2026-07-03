@@ -71,13 +71,11 @@ The primary homelab route is `https://docs.home.feocco.com`. It is served by
 the `homelab-docs` Nginx container on the Mac mini, with Caddy terminating HTTPS
 and UniFi DNS resolving the hostname on the LAN.
 
-This repository also has a GitHub Pages workflow in `.github/workflows/docs.yml`.
-That workflow builds `.site/` and deploys it to GitHub Pages after the workflow
-is merged to `main` or manually dispatched from the default branch.
-
-Do not assume GitHub Pages and private homelab DNS are the same deployment
-model. The homelab route is private infrastructure; GitHub Pages is a separate
-publishing path.
+The docs workflow in `.github/workflows/docs.yml` is a build check only. It
+does not publish a public mirror for this private repository. Production
+publishing happens through the normal `homelab-docs` service deploy, which
+builds `.site/` on the Mac mini runtime path and serves it through the private
+homelab route.
 
 ## Validation
 
