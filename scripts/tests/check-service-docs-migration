@@ -44,14 +44,13 @@ assert_json_value "${tmpdir}/hello-manifest.json" "payload['stages'][0]['success
 assert_json_field "${tmpdir}/hello-docs-site.json" "success" "true"
 assert_json_value "${tmpdir}/hello-docs-site.json" "payload['stages'][0]['docs_status']" "Live docs available"
 
-assert_fails "${tmpdir}/functions-docs-site.out" \
-  "${REPO_DIR}/scripts/check-service-docs-migration" \
-    --service homelab-functions \
-    --host macmini \
-    --stage docs-site \
-    --format json
-assert_json_field "${tmpdir}/functions-docs-site.out" "success" "false"
-assert_json_value "${tmpdir}/functions-docs-site.out" "payload['stages'][0]['docs_status']" "Declared but failing"
+"${REPO_DIR}/scripts/check-service-docs-migration" \
+  --service homelab-functions \
+  --host macmini \
+  --stage docs-site \
+  --format json >"${tmpdir}/functions-docs-site.json"
+assert_json_field "${tmpdir}/functions-docs-site.json" "success" "true"
+assert_json_value "${tmpdir}/functions-docs-site.json" "payload['stages'][0]['docs_status']" "Live docs available"
 
 assert_fails "${tmpdir}/pirate-radio-docs-site.out" \
   "${REPO_DIR}/scripts/check-service-docs-migration" \
