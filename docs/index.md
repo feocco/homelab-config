@@ -15,6 +15,8 @@ truth lives, and which gaps are intentional.
   with one wrapper page per running service.
 - [Service API Conventions](docs/service-api-conventions.md) explains `/docs`,
   `/openapi.json`, and current framework divergence.
+- [Service Docs Migration](docs/service-docs-migration.md) gives agents the
+  staged validator and task flow for migrating one service.
 - [Docs Site](docs/docs-site.md) explains how this site is generated, previewed,
   validated, and hosted.
 - [How To Navigate](docs/how-to-navigate.md) explains how Homepage, Grafana, GitHub,

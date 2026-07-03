@@ -59,6 +59,9 @@ the first pilot migration.
 
 ## Migration Checklist
 
+For the agent-oriented task flow and staged pass/fail command, see
+[Service Docs Migration](service-docs-migration.md).
+
 1. Inspect the app repo and record the actual framework.
 2. Add `/docs` and `/openapi.json` in the app repo without changing unrelated
    behavior.

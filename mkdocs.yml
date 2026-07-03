@@ -37,6 +37,7 @@ nav:
       - How To Navigate: docs/how-to-navigate.md
       - Docs Site: docs/docs-site.md
       - Service API Conventions: docs/service-api-conventions.md
+      - Service Docs Migration: docs/service-docs-migration.md
   - Domains:
       - Services: docs/generated/service-index.md
       - Networking: services/caddy/README.md

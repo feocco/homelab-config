@@ -100,6 +100,13 @@ LC_ALL=C ./scripts/validate-service-rollout --service <service> --host <host> --
 LC_ALL=C ./scripts/validate-service-rollout --service <service> --host <host> --check live --mode strict
 ```
 
+For migration work, prefer the staged validator because it wraps the app,
+manifest, live, and generated-docs checks in one pass/fail interface:
+
+```bash
+./scripts/check-service-docs-migration --service <service> --host <host> --stage docs-site
+```
+
 The generated service index reports which active Mac mini app services have
 migrated and which still need separate app-repo work.
 
@@ -125,3 +132,6 @@ convention should move one service at a time:
 
 The first pilots are `hello-nas` and `homelab-functions`. The remaining active
 services should be migrated separately after the convention lands.
+
+See [Service Docs Migration](service-docs-migration.md) for the executable task
+flow agents should follow for one service.
