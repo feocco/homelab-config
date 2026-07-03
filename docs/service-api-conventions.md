@@ -33,6 +33,7 @@ api_framework: aiohttp
 Valid `api_framework` values are:
 
 - `aiohttp`
+- `fastapi`
 - `python-http-server`
 - `other`
 - `none`
@@ -49,6 +50,7 @@ Initial local inspection found these API framework differences:
 | `hello-nas` | Python `http.server` | Pilot service. |
 | `homelab-functions` | `aiohttp` | Pilot service with protected APIs. |
 | `laundry-monitor` | Python `http.server` | Health/status service. |
+| `instacart-history-service` | `FastAPI` | Purchase history and recommendation API. |
 | `hass-janitor` | Python `http.server` | Protected mutation API. |
 | `bedtime` | `aiohttp` | Health endpoint only. |
 | `plant-monitor` | `aiohttp` | Health/status-style backend. |

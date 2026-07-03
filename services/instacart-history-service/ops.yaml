@@ -8,6 +8,9 @@ container: instacart-history-service
 http_port: 8100
 port_env: INSTACART_HISTORY_PORT
 health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: fastapi
 live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8100
 tailnet: true
 monitoring: true
