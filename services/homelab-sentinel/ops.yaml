@@ -8,7 +8,7 @@ container: homelab-sentinel
 http_port: 8095
 port_env: SERVICE_PORT
 health_path: /health
-live_base_url: http://nasfeo:8095
+live_base_url: http://192.168.1.191:8095
 monitoring: false
 sre: false
 dashboard_name: Homelab Sentinel
