@@ -75,6 +75,10 @@ if pirate_radio["dashboard_description"] != "Pirate Wires audio reader":
     raise SystemExit("pirate-radio dashboard metadata should come from ops.yaml")
 if pirate_radio["homepage_url"] != "https://pirate-radio.home.feocco.com/":
     raise SystemExit("pirate-radio should link to the LAN HTTPS route")
+if pirate_radio["docs_url"] != "https://pirate-radio.home.feocco.com/docs":
+    raise SystemExit("pirate-radio docs URL should use the LAN HTTPS route")
+if pirate_radio["api_framework"] != "node-http-server":
+    raise SystemExit("pirate-radio should declare its current API framework")
 
 for row in services.values():
     if row["host"] != "macmini" or not row["enabled"]:
@@ -184,8 +188,8 @@ if items.get("Mealie", {}).get("href") != "https://mealie.feocco.com/":
     raise SystemExit("Mealie should link to the canonical HTTPS route")
 if "siteMonitor" in items.get("Mealie", {}):
     raise SystemExit("Mealie should not get a generated status dot without health metadata")
-if items.get("Pirate Radio", {}).get("href") != "https://pirate-radio.home.feocco.com/":
-    raise SystemExit("Pirate Radio should link to the LAN HTTPS route while siteMonitor checks health")
+if items.get("Pirate Radio", {}).get("href") != "https://pirate-radio.home.feocco.com/docs":
+    raise SystemExit("Pirate Radio should link to service docs while siteMonitor checks health")
 
 for name in ["NAS SSH", "Mac mini SSH", "Mac mini Screen Sharing", "UniFi Devices"]:
     if "siteMonitor" in items.get(name, {}):

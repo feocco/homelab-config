@@ -34,6 +34,7 @@ Valid `api_framework` values are:
 
 - `aiohttp`
 - `fastapi`
+- `node-http-server`
 - `python-http-server`
 - `other`
 - `none`

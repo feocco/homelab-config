@@ -74,7 +74,8 @@ Optional fields enable additional units:
 - `openapi_path: /openapi.json` declares the machine-readable OpenAPI schema
   for externally callable service APIs.
 - `api_framework: aiohttp` records the current service API framework. Valid
-  values are `aiohttp`, `fastapi`, `python-http-server`, `other`, and `none`.
+  values are `aiohttp`, `fastapi`, `node-http-server`, `python-http-server`,
+  `other`, and `none`.
 - `status_path: /v1/status` checks the status endpoint identifies the service.
 - `live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8102` enables live
   HTTP validation.

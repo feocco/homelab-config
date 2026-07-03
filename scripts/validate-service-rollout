@@ -22,7 +22,7 @@ REQUIRED_FIELDS = {
 }
 
 VALID_KINDS = {"app", "worker", "proxy", "infra", "multi-container"}
-VALID_API_FRAMEWORKS = {"aiohttp", "fastapi", "python-http-server", "other", "none"}
+VALID_API_FRAMEWORKS = {"aiohttp", "fastapi", "node-http-server", "python-http-server", "other", "none"}
 
 
 def clean_scalar(value: str):

@@ -52,14 +52,14 @@ assert_json_value "${tmpdir}/hello-docs-site.json" "payload['stages'][0]['docs_s
 assert_json_field "${tmpdir}/functions-docs-site.json" "success" "true"
 assert_json_value "${tmpdir}/functions-docs-site.json" "payload['stages'][0]['docs_status']" "Live docs available"
 
-assert_fails "${tmpdir}/pirate-radio-docs-site.out" \
+assert_fails "${tmpdir}/caddy-docs-site.out" \
   "${REPO_DIR}/scripts/check-service-docs-migration" \
-    --service pirate-radio \
+    --service caddy \
     --host macmini \
     --stage docs-site \
     --format json
-assert_json_field "${tmpdir}/pirate-radio-docs-site.out" "success" "false"
-assert_json_value "${tmpdir}/pirate-radio-docs-site.out" "payload['stages'][0]['docs_status']" "Not migrated"
+assert_json_field "${tmpdir}/caddy-docs-site.out" "success" "false"
+assert_json_value "${tmpdir}/caddy-docs-site.out" "payload['stages'][0]['docs_status']" "Not migrated"
 
 assert_fails "${tmpdir}/app-no-proof.out" \
   "${REPO_DIR}/scripts/check-service-docs-migration" \
