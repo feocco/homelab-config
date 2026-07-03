@@ -8,6 +8,9 @@ container: homelab-sre-agent
 http_port: 8094
 port_env: SERVICE_PORT
 health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: python-http-server
 live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8094
 tailnet: true
 monitoring: true
