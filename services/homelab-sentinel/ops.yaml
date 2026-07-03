@@ -1,0 +1,21 @@
+service: homelab-sentinel
+kind: app
+host: nasfeo
+source_repo: feocco/homelab-config
+image: python:3.13-alpine
+public_image: true
+container: homelab-sentinel
+http_port: 8095
+port_env: SERVICE_PORT
+health_path: /health
+live_base_url: http://nasfeo:8095
+monitoring: false
+sre: false
+dashboard_name: Homelab Sentinel
+dashboard_group: Infrastructure
+dashboard_description: NAS-side Mac mini outage alarm
+dashboard_icon: alert-triangle.png
+secrets:
+  - HA_URL
+  - HA_LONG_LIVED_TOKEN
+  - HA_NOTIFY_JOE_SERVICE

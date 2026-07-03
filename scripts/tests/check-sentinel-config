@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "${tmp_dir}"' EXIT
+
+"${REPO_DIR}/scripts/generate-sentinel-config" --output "${tmp_dir}"
+
+python3 - "${tmp_dir}/targets.json" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+
+if payload["schema"] != "homelab-sentinel-targets.v1":
+    raise SystemExit("Unexpected sentinel target schema")
+
+critical = {target["service"]: target for target in payload["critical_canaries"]}
+for service in ("homelab-monitor", "homepage", "homelab-functions"):
+    if service not in critical:
+        raise SystemExit(f"Missing critical sentinel canary: {service}")
+    if not critical[service]["url"].startswith("https://"):
+        raise SystemExit(f"Critical canary should use routed HTTPS URL: {service}")
+
+runtime = {target["service"]: target for target in payload["runtime_services"]}
+for service in ("plant-monitor", "hass-janitor", "homelab-sre-agent"):
+    if service not in runtime:
+        raise SystemExit(f"Missing runtime sentinel target: {service}")
+    if "/health" not in runtime[service]["url"]:
+        raise SystemExit(f"Runtime target should use health path: {service}")
+
+if "homelab-sentinel" in runtime:
+    raise SystemExit("NAS sentinel should not monitor itself as a Mac runtime service")
+PY
+
+if git -C "${REPO_DIR}" ls-files --error-unmatch services/homelab-sentinel/config/targets.json >/dev/null 2>&1; then
+  echo "Generated sentinel targets must not be tracked." >&2
+  exit 1
+fi
+
+echo "Sentinel config checks passed."

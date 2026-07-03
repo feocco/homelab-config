@@ -1,0 +1,21 @@
+services:
+  homelab-sentinel:
+    image: python:3.13-alpine
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
+    container_name: homelab-sentinel
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: ["python", "/app/sentinel.py"]
+    ports:
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${SERVICE_PORT:-8095}:${SERVICE_PORT:-8095}"
+    volumes:
+      - ./sentinel.py:/app/sentinel.py:ro
+      - ./config:/app/config:ro
+      - ./data:/app/data
+    logging:
+      driver: local
+      options:
+        max-size: "5m"
+        max-file: "1"
+        compress: "false"

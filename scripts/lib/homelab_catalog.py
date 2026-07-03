@@ -372,6 +372,20 @@ def append_url_path(base_url: str, path: str) -> str:
     return base_url.rstrip("/") + normalized_path
 
 
+def health_url_for(row: dict[str, Any]) -> str:
+    health_path = str(row.get("health_path") or "")
+    if not health_path:
+        return ""
+    base_url = str(row.get("homepage_url") or row.get("live_base_url") or "")
+    if not base_url:
+        port = row.get("http_port")
+        if row.get("host") == "macmini" and isinstance(port, int):
+            base_url = f"http://maclabs-mac-mini.taildf3445.ts.net:{port}"
+    if not base_url:
+        return ""
+    return append_url_path(base_url, health_path)
+
+
 def service_docs_url(service: str, host: str, manifest: dict[str, Any], caddy_routes: dict[int, str]) -> str:
     docs_path = manifest_value(manifest, "docs_path")
     if not docs_path:
@@ -672,6 +686,66 @@ def write_homepage_config(base_dir: pathlib.Path, output_dir: pathlib.Path) -> N
     (output_dir / "widgets.yaml").write_text(homepage_widgets())
 
 
+def sentinel_target(name: str, url: str, service: str) -> dict[str, str]:
+    return {
+        "name": name,
+        "url": url,
+        "service": service,
+    }
+
+
+def sentinel_config(catalog: dict[str, Any]) -> dict[str, Any]:
+    rows = [
+        row
+        for row in catalog["services"]
+        if row["host"] == "macmini" and row["enabled"] is True
+    ]
+    by_service = {str(row["service"]): row for row in rows}
+    critical_services = [
+        ("Grafana", "homelab-monitor"),
+        ("Homepage", "homepage"),
+        ("homelab-functions", "homelab-functions"),
+    ]
+    critical_canaries: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for name, service in critical_services:
+        row = by_service.get(service)
+        if not row:
+            continue
+        url = health_url_for(row)
+        if url and url not in seen_urls:
+            critical_canaries.append(sentinel_target(name, url, service))
+            seen_urls.add(url)
+
+    runtime_services: list[dict[str, str]] = []
+    for row in sorted(rows, key=lambda item: str(item["service"])):
+        if row["service"] in {"caddy", "homelab-monitor", "homepage"}:
+            continue
+        if row["kind"] not in {"app", "multi-container"}:
+            continue
+        if row["monitored"] is not True:
+            continue
+        url = health_url_for(row)
+        if not url or url in seen_urls:
+            continue
+        runtime_services.append(sentinel_target(str(row["dashboard_name"] or row["service"]), url, str(row["service"])))
+        seen_urls.add(url)
+
+    return {
+        "schema": "homelab-sentinel-targets.v1",
+        "critical_canary_failures": 3,
+        "runtime_failure_ratio": 0.5,
+        "critical_canaries": critical_canaries,
+        "runtime_services": runtime_services,
+    }
+
+
+def write_sentinel_config(base_dir: pathlib.Path, output_dir: pathlib.Path) -> None:
+    config = sentinel_config(build_catalog(base_dir))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "targets.json").write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+
+
 def table_text(rows: list[dict[str, Any]]) -> str:
     columns = [
         "service",
@@ -767,6 +841,15 @@ def main_homepage(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     write_homepage_config(pathlib.Path(args.base_dir), pathlib.Path(args.output))
+    return 0
+
+
+def main_sentinel(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[2]))
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args(argv)
+    write_sentinel_config(pathlib.Path(args.base_dir), pathlib.Path(args.output))
     return 0
 
 

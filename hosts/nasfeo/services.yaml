@@ -40,6 +40,10 @@ services:
     path: services/homelab-monitor
     enabled: false
 
+  homelab-sentinel:
+    path: services/homelab-sentinel
+    enabled: true
+
   bedtime:
     path: services/bedtime
     enabled: false
