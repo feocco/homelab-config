@@ -20,6 +20,7 @@ dashboard_name: homelab-sre-agent
 dashboard_group: Runtime Services
 dashboard_description: Homelab SRE triage agent
 dashboard_icon: grafana.png
+dashboard_url: https://homelab-sre-agent.home.feocco.com/incidents
 secrets:
   - HA_URL
   - HA_LONG_LIVED_TOKEN
