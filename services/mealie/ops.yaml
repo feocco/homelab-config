@@ -22,6 +22,10 @@ route_https: true
 route_dns: unifi
 route_dns_alias_target: mealie.home.feocco.com
 route_public_dns: cloudflare-tunnel
+dashboard_name: Mealie
+dashboard_group: Daily Ops
+dashboard_description: Recipes and meal planning
+dashboard_icon: mealie.png
 secrets:
   - POSTGRES_PASSWORD
   - CLOUDFLARE_TUNNEL_TOKEN

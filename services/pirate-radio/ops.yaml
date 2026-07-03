@@ -16,6 +16,10 @@ route_hostname: pirate-radio.home.feocco.com
 route_target_port: 8103
 route_https: true
 route_dns: unifi
+dashboard_name: Pirate Radio
+dashboard_group: Runtime Services
+dashboard_description: Pirate Wires audio reader
+dashboard_icon: radio.png
 secrets:
   - OPENAI_API_KEY
   - HA_URL
