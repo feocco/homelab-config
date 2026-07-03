@@ -424,11 +424,7 @@ deploy_service() {
   (
     cd "${service_dir}"
     if [[ "${service}" == "caddy" ]]; then
-      anonymous_docker_config="$(mktemp -d)"
-      if ! DOCKER_CONFIG="${anonymous_docker_config}" compose pull; then
-        echo "Image pull failed for ${service}; continuing with cached image if available." >&2
-      fi
-      rm -rf "${anonymous_docker_config}"
+      echo "Skipping image pull for caddy; deploy workflow builds the local Caddy image before deploy."
     elif ! compose pull; then
       echo "Image pull failed for ${service}; continuing with cached image if available." >&2
     fi

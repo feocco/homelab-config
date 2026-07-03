@@ -41,6 +41,10 @@ keeps the Mac mini private: Let's Encrypt validates temporary
 The deployed image is `ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare`, built
 from `services/caddy/Dockerfile`. The image workflow verifies
 `dns.providers.cloudflare` before pushing.
+The deploy workflow also builds that image locally on the Mac mini before
+deploying Caddy, so `homelab-deploy` skips the normal remote image pull for
+this service. That keeps Caddy deploys independent from GHCR package access
+settings while still using the same image tag.
 
 Required runtime values:
 
