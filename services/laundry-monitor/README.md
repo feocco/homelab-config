@@ -6,6 +6,7 @@ The service runs on `macmini`, reads washer and dryer power from Home Assistant,
 and sends mobile notifications for laundry lifecycle workflows. The primary
 workflow reminds Joe and Jess when a washer load has not moved to the dryer
 within 6 hours, then repeats every 8 hours until cleared or the dryer starts.
+Washer and dryer completion notifications are both enabled for Joe and Jess.
 
 Secrets live in GitHub Actions secrets and the local ignored `.env` file:
 
