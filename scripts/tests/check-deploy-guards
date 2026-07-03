@@ -11,6 +11,21 @@ bash -n "${REPO_DIR}/scripts/list-homelab-services"
 bash -n "${REPO_DIR}/scripts/redeploy-image"
 python3 -m py_compile "${REPO_DIR}/scripts/validate-service-rollout"
 
+caddy_image_env="$("${REPO_DIR}/scripts/caddy-image-env")"
+eval "${caddy_image_env}"
+expected_caddy_ref="${CADDY_IMAGE}:${CADDY_VERSION}-cloudflare"
+if [ "${CADDY_IMAGE_REF}" != "${expected_caddy_ref}" ]; then
+  echo "CADDY_IMAGE_REF must be derived from CADDY_IMAGE and CADDY_VERSION." >&2
+  exit 1
+fi
+assert_contains "${REPO_DIR}/services/caddy/.env.config" "CADDY_IMAGE_REF=${expected_caddy_ref}"
+assert_contains "${REPO_DIR}/services/caddy/Dockerfile" "ARG CADDY_VERSION=${CADDY_VERSION}"
+assert_contains "${REPO_DIR}/services/caddy/Dockerfile" "org.opencontainers.image.source=https://github.com/feocco/homelab-config"
+assert_contains "${REPO_DIR}/services/caddy/docker-compose.yml" "${expected_caddy_ref}"
+assert_contains "${REPO_DIR}/services/caddy/ops.yaml" "image: ${expected_caddy_ref}"
+assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" "scripts/caddy-image-env"
+assert_contains "${REPO_DIR}/.github/workflows/caddy-image.yml" "scripts/caddy-image-env"
+
 python3 - \
   "${REPO_DIR}/services/homelab-monitor/exporters/openai_cost_exporter.py" \
   "${REPO_DIR}/services/homelab-monitor/exporters/docker_stats_exporter.py" <<'PY'

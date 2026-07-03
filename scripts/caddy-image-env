@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_DIR="${HOMELAB_CONFIG_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+ENV_FILE="${BASE_DIR}/services/caddy/.env.config"
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+  echo "Missing Caddy env config: ${ENV_FILE}" >&2
+  exit 2
+fi
+
+set -a
+# shellcheck source=/dev/null
+source "${ENV_FILE}"
+set +a
+
+: "${CADDY_IMAGE:?CADDY_IMAGE is required in ${ENV_FILE}}"
+: "${CADDY_VERSION:?CADDY_VERSION is required in ${ENV_FILE}}"
+: "${CADDY_IMAGE_REF:?CADDY_IMAGE_REF is required in ${ENV_FILE}}"
+
+expected_ref="${CADDY_IMAGE}:${CADDY_VERSION}-cloudflare"
+if [[ "${CADDY_IMAGE_REF}" != "${expected_ref}" ]]; then
+  echo "CADDY_IMAGE_REF must be ${expected_ref}, got ${CADDY_IMAGE_REF}" >&2
+  exit 2
+fi
+
+printf 'CADDY_IMAGE=%s\n' "${CADDY_IMAGE}"
+printf 'CADDY_VERSION=%s\n' "${CADDY_VERSION}"
+printf 'CADDY_IMAGE_REF=%s\n' "${CADDY_IMAGE_REF}"

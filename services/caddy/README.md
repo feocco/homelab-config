@@ -39,15 +39,20 @@ keeps the Mac mini private: Let's Encrypt validates temporary
 `_acme-challenge` TXT records in Cloudflare, not inbound access to the Mac mini.
 
 The deployed image is `ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare`, built
-from `services/caddy/Dockerfile`. The image workflow verifies
-`dns.providers.cloudflare` before pushing.
+from `services/caddy/Dockerfile`. The image version and tag live in
+`services/caddy/.env.config`; use `scripts/caddy-image-env` to load the same
+metadata in workflows. The image workflow verifies `dns.providers.cloudflare`
+before pushing.
 The deploy workflow also builds that image locally on the Mac mini before
 deploying Caddy, so `homelab-deploy` skips the normal remote image pull for
 this service. That keeps Caddy deploys independent from GHCR package access
 settings while still using the same image tag.
+The Dockerfile includes the `org.opencontainers.image.source` label so GHCR can
+associate the package with `feocco/homelab-config` when the image is published.
 
 Required runtime values:
 
+- `CADDY_IMAGE`, `CADDY_VERSION`, and `CADDY_IMAGE_REF` in `.env.config`
 - `CADDY_ACME_EMAIL` in `.env.config`
 - `CADDY_HOME_DOMAIN=home.feocco.com` in `.env.config`
 - `CLOUDFLARE_API_TOKEN` as a GitHub Actions secret named

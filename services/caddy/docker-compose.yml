@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare
+    image: ${CADDY_IMAGE_REF:-ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare}
     container_name: caddy
     restart: unless-stopped
     env_file:
