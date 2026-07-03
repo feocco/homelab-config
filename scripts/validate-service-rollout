@@ -516,16 +516,20 @@ class Validator:
                 with tempfile.TemporaryDirectory() as tmp:
                     env = os.environ.copy()
                     env["DOCKER_CONFIG"] = tmp
-                    image_check = subprocess.run(
-                        ["docker", "manifest", "inspect", inspect_image],
-                        cwd=self.base_dir,
-                        env=env,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        timeout=45,
-                        check=False,
-                    )
+                    try:
+                        image_check = subprocess.run(
+                            ["docker", "manifest", "inspect", inspect_image],
+                            cwd=self.base_dir,
+                            env=env,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            timeout=45,
+                            check=False,
+                        )
+                    except subprocess.TimeoutExpired:
+                        self.warn("app image", f"Public image check timed out for {image}")
+                        continue
                 if image_check.returncode == 0:
                     self.pass_("app image", f"Public image is anonymously inspectable: {image}")
                 elif "toomanyrequests" in image_check.stdout.lower() or "rate limit" in image_check.stdout.lower():

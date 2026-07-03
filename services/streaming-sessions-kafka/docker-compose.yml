@@ -1,0 +1,34 @@
+services:
+  streaming-sessions-kafka:
+    image: apache/kafka:4.2.1
+    container_name: streaming-sessions-kafka
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${KAFKA_PORT:-19092}:19092"
+    environment:
+      CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@streaming-sessions-kafka:19093"
+      KAFKA_LISTENERS: "PLAINTEXT://:19092,CONTROLLER://:19093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://host.docker.internal:19092"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
+      KAFKA_MIN_INSYNC_REPLICAS: "1"
+      KAFKA_NUM_PARTITIONS: "32"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - ./data:/tmp/kraft-combined-logs
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"

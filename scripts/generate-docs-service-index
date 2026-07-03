@@ -93,6 +93,10 @@ def service_page(row: dict[str, Any], rows: list[dict[str, Any]], status: tuple[
     openapi = openapi_url(row)
     source_repo = str(row.get("source_repo") or "")
     status_label, status_detail = status
+    hosts = ", ".join(
+        f"`{item['host']}`"
+        for item in sorted(rows, key=lambda value: str(value["host"]))
+    )
     lines = [
         f"# {display_name(row)}",
         "",
@@ -102,7 +106,7 @@ def service_page(row: dict[str, Any], rows: list[dict[str, Any]], status: tuple[
         "",
         f"- Service: `{row['service']}`",
         f"- Kind: `{row.get('kind') or 'unknown'}`",
-        f"- Hosts: {', '.join(f'`{item["host"]}`' for item in sorted(rows, key=lambda value: str(value['host'])))}",
+        f"- Hosts: {hosts}",
         f"- Route: `{row.get('route_hostname') or 'none'}`",
         f"- Health: `{row.get('health_path') or 'none'}`",
         f"- Monitoring: `{truthy(row.get('monitoring'))}`",

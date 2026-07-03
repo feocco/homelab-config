@@ -3,7 +3,7 @@
 Static MkDocs site for searchable homelab documentation.
 
 - LAN HTTPS URL: `https://docs.home.feocco.com`
-- Local container port: `127.0.0.1:8110`
+- Local container port: `127.0.0.1:8112`
 - Rendered site: `.site/`
 - Build script: `scripts/build-docs-site`
 

@@ -177,7 +177,8 @@ App image:
 - `public_image: true` runs anonymous `docker manifest inspect <image>` to
   prove the declared public pull expectation. Docker Hub rate limits are
   reported as warnings because they do not prove the image is private or
-  missing.
+  missing. Registry timeouts are also warnings because they prove the registry
+  probe was inconclusive, not that the service image contract is wrong.
 - Private images can opt out of that public check; package auth remains a
   deployment concern for the target host.
 

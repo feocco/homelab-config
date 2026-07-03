@@ -74,3 +74,15 @@ services:
   pirate-radio:
     path: services/pirate-radio
     enabled: true
+
+  streaming-sessions-kafka:
+    path: services/streaming-sessions-kafka
+    enabled: true
+
+  streaming-sessions-postgres:
+    path: services/streaming-sessions-postgres
+    enabled: true
+
+  streaming-sessions:
+    path: services/streaming-sessions
+    enabled: true

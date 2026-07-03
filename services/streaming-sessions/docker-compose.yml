@@ -1,0 +1,54 @@
+services:
+  streaming-sessions-api:
+    image: ghcr.io/feocco/streaming-sessions:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
+    container_name: streaming-sessions-api
+    restart: unless-stopped
+    command: streaming-sessions-api
+    env_file:
+      - .env
+    ports:
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${STREAMING_SESSIONS_HOST_PORT:-8110}:${SERVICE_PORT:-8110}"
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"
+
+  streaming-sessions-collector:
+    image: ghcr.io/feocco/streaming-sessions:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
+    container_name: streaming-sessions-collector
+    restart: unless-stopped
+    command: streaming-sessions-collector
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - /Users/maclab/.codex:/host-codex:ro
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"
+
+  streaming-sessions-materializer:
+    image: ghcr.io/feocco/streaming-sessions:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
+    container_name: streaming-sessions-materializer
+    restart: unless-stopped
+    command: streaming-sessions-materializer
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"

@@ -1,0 +1,12 @@
+service: streaming-sessions-postgres
+kind: infra
+host: macmini
+source_repo: feocco/homelab-config
+image: postgres:18.4
+public_image: true
+container: streaming-sessions-postgres
+monitoring: false
+sre: false
+route_exempt_reason: localhost Postgres projection database only
+secrets:
+  - POSTGRES_PASSWORD

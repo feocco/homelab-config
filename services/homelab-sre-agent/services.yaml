@@ -348,3 +348,62 @@ services:
       enabled: true
       autofix: false
       repo_daily_limit: 1
+
+  streaming-sessions-kafka:
+    containers:
+      - streaming-sessions-kafka
+    images:
+      - apache/kafka:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/streaming-sessions-kafka
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/streaming-sessions-kafka
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/streaming-sessions-kafka
+    labels:
+      - homelab-sre
+      - streaming-sessions
+    sre:
+      enabled: false
+      autofix: false
+
+  streaming-sessions-postgres:
+    containers:
+      - streaming-sessions-postgres
+    images:
+      - postgres:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/streaming-sessions-postgres
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/streaming-sessions-postgres
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/streaming-sessions-postgres
+    labels:
+      - homelab-sre
+      - streaming-sessions
+    sre:
+      enabled: false
+      autofix: false
+
+  streaming-sessions:
+    containers:
+      - streaming-sessions-api
+      - streaming-sessions-collector
+      - streaming-sessions-materializer
+    images:
+      - ghcr.io/feocco/streaming-sessions:*
+    source:
+      repo: feocco/streaming-sessions
+      path_hint: /Users/feocco/code/streaming-sessions
+    issue_repo: feocco/streaming-sessions
+    deploy:
+      path: services/streaming-sessions
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/streaming-sessions
+    labels:
+      - homelab-sre
+      - streaming-sessions
+    sre:
+      enabled: false
+      autofix: false

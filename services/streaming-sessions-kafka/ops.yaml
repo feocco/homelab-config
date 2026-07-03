@@ -1,0 +1,11 @@
+service: streaming-sessions-kafka
+kind: infra
+host: macmini
+source_repo: feocco/homelab-config
+image: apache/kafka:4.2.1
+public_image: true
+container: streaming-sessions-kafka
+monitoring: false
+sre: false
+route_exempt_reason: localhost Kafka broker only
+secrets:

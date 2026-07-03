@@ -168,10 +168,11 @@ expected_monitors = {
     "Bedtime": "http://host.docker.internal:8104/health",
     "Hello NAS": "http://host.docker.internal:8099/health",
     "Homepage": "http://host.docker.internal:7576/",
-    "Homelab Docs": "http://host.docker.internal:8110/",
+    "Homelab Docs": "http://host.docker.internal:8112/",
     "homelab-functions": "http://host.docker.internal:8091/health",
     "Pirate Radio": "http://host.docker.internal:8103/health",
     "Plant Monitor": "http://host.docker.internal:8088/health",
+    "Streaming Sessions": "http://host.docker.internal:8110/health",
 }
 for name, expected in expected_monitors.items():
     actual = items.get(name, {}).get("siteMonitor")

@@ -11,6 +11,8 @@ assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:757
 assert_contains "${caddy_tmp}/Caddyfile" 'grafana.home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:3000'
 assert_contains "${caddy_tmp}/Caddyfile" 'docs.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:8112'
+assert_contains "${caddy_tmp}/Caddyfile" 'streaming-sessions.home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:8110'
 assert_contains "${caddy_tmp}/Caddyfile" 'mealie.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:9925'
@@ -34,6 +36,11 @@ if [[ "${dns_dry_run}" != *"Would upsert A home.feocco.com -> 192.168.1.43"* ]];
 fi
 if [[ "${dns_dry_run}" != *"Would upsert A docs.home.feocco.com -> 192.168.1.43"* ]]; then
   echo "UniFi DNS dry-run should show Homelab Docs A record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+if [[ "${dns_dry_run}" != *"Would upsert A streaming-sessions.home.feocco.com -> 192.168.1.43"* ]]; then
+  echo "UniFi DNS dry-run should show Streaming Sessions A record upsert" >&2
   echo "${dns_dry_run}" >&2
   exit 1
 fi

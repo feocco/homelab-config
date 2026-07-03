@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     ports:
-      - "${HOST_BIND_ADDR:-127.0.0.1}:${HOMELAB_DOCS_HTTP_PORT:-8110}:80"
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${HOMELAB_DOCS_HTTP_PORT:-8112}:80"
     volumes:
       - ../../.site:/usr/share/nginx/html:ro
     logging:
