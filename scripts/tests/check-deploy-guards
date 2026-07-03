@@ -191,6 +191,105 @@ assert_fails "${identity_out}" env PATH="${identity_fakebin}:$PATH" HOMELAB_CONF
 assert_contains "${identity_out}" 'does not have bind_addr 203.0.113.254'
 rm -rf "${identity_tmp}"
 
+caddy_tmp="$(mktemp -d)"
+caddy_repo="${caddy_tmp}/repo"
+caddy_runtime="${caddy_tmp}/runtime"
+caddy_fakebin="${caddy_tmp}/bin"
+caddy_auth_config="${caddy_tmp}/auth-config"
+caddy_pull_config_file="${caddy_tmp}/pull-config.txt"
+mkdir -p \
+  "${caddy_repo}/scripts" \
+  "${caddy_repo}/hosts/macmini" \
+  "${caddy_repo}/services/caddy" \
+  "${caddy_runtime}/scripts" \
+  "${caddy_runtime}/services/caddy" \
+  "${caddy_fakebin}" \
+  "${caddy_auth_config}"
+cp "${REPO_DIR}/scripts/homelab-deploy" "${caddy_repo}/scripts/homelab-deploy"
+cp "${REPO_DIR}/scripts/lib-service-secrets" "${caddy_repo}/scripts/lib-service-secrets"
+chmod +x "${caddy_repo}/scripts/homelab-deploy"
+cat > "${caddy_repo}/hosts/macmini/services.yaml" <<EOF
+host:
+  name: macmini
+  deploy_base_dir: ${caddy_runtime}
+
+services:
+  caddy:
+    path: services/caddy
+    enabled: true
+EOF
+cat > "${caddy_runtime}/services/caddy/docker-compose.yml" <<'EOF'
+services:
+  caddy:
+    image: ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare
+EOF
+cat > "${caddy_runtime}/scripts/generate-caddy-config" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output)
+      output="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+printf '# generated\n' > "${output}"
+EOF
+chmod +x "${caddy_runtime}/scripts/generate-caddy-config"
+cat > "${caddy_fakebin}/docker" <<'EOF'
+#!/usr/bin/env bash
+config="${DOCKER_CONFIG:-}"
+if [ "${1:-}" = "--config" ]; then
+  config="$2"
+  shift 2
+fi
+if [ "${1:-}" = "compose" ] && [ "${2:-}" = "version" ]; then
+  exit 0
+fi
+if [ "${1:-}" = "compose" ] && [ "${2:-}" = "pull" ]; then
+  printf '%s\n' "${config}" > "${CADDY_PULL_CONFIG_FILE}"
+  if [ "${config}" = "${ORIGINAL_DOCKER_CONFIG}" ]; then
+    echo "caddy pull used the authenticated GHCR Docker config" >&2
+    exit 42
+  fi
+  exit 0
+fi
+if [ "${1:-}" = "compose" ] && [ "${2:-}" = "up" ]; then
+  exit 0
+fi
+if [ "${1:-}" = "ps" ]; then
+  echo "CONTAINER ID   IMAGE   NAMES"
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "${caddy_fakebin}/docker"
+(
+  cd "${caddy_repo}"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Tooling Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+PATH="${caddy_fakebin}:$PATH" \
+  DOCKER_CONFIG="${caddy_auth_config}" \
+  ORIGINAL_DOCKER_CONFIG="${caddy_auth_config}" \
+  CADDY_PULL_CONFIG_FILE="${caddy_pull_config_file}" \
+  HOMELAB_CONFIG_DIR="${caddy_repo}" \
+  "${caddy_repo}/scripts/homelab-deploy" --host macmini caddy --deploy-base-dir "${caddy_runtime}" >/dev/null
+if [ "$(cat "${caddy_pull_config_file}")" = "${caddy_auth_config}" ]; then
+  echo "Caddy deploy should pull with an anonymous Docker config." >&2
+  exit 1
+fi
+rm -rf "${caddy_tmp}"
+
 if grep -R '\${{ github.event.inputs\.' "${REPO_DIR}/.github/workflows"; then
   echo "Deploy workflows must not interpolate github.event.inputs directly into shell scripts." >&2
   exit 1

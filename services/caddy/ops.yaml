@@ -3,6 +3,7 @@ kind: infra
 host: macmini
 source_repo: feocco/homelab-config
 image: ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare
+public_image: true
 container: caddy
 http_port: 80
 port_env: CADDY_HTTP_PORT
