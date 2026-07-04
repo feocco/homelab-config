@@ -407,7 +407,14 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: homelab_docker_container_memory_usage_bytes{name!=""} > 700 * 1024 * 1024
+              expr: |
+                (
+                  homelab_docker_container_memory_usage_bytes{name!="",name!="streaming-sessions-kafka"} > 700 * 1024 * 1024
+                )
+                or
+                (
+                  homelab_docker_container_memory_usage_bytes{name="streaming-sessions-kafka"} > 1300 * 1024 * 1024
+                )
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -431,8 +438,8 @@ groups:
         execErrState: Error
         for: 15m
         annotations:
-          summary: A Docker container is using more than 700 MiB RAM.
-          description: Inspect the container and its recent workload.
+          summary: A Docker container crossed its memory alert threshold.
+          description: Default threshold is 700 MiB; streaming-sessions-kafka is allowed 1300 MiB because its Kafka JVM normally reserves about 1 GiB.
         labels:
           severity: critical
 

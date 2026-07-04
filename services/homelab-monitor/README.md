@@ -40,6 +40,9 @@ flow. Cost alert thresholds are non-secret config in `.env.config`:
 `OPENAI_COST_DAILY_SPEND_SPIKE_THRESHOLD_USD` and
 `OPENAI_COST_7D_SPEND_HIGH_THRESHOLD_USD`.
 
+Container memory alerts page at 700 MiB by default. `streaming-sessions-kafka`
+uses a 1300 MiB threshold because the Kafka JVM normally reserves about 1 GiB.
+
 ## Alerting Boundary
 
 Grafana is the normal alerting and review surface. It is allowed to depend on
