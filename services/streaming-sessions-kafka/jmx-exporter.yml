@@ -4,16 +4,18 @@ lowercaseOutputName: true
 lowercaseOutputLabelNames: true
 jmxUrl: service:jmx:rmi:///jndi/rmi://streaming-sessions-kafka:19094/jmxrmi
 rules:
-  - pattern: 'java.lang<name=(.+),type=GarbageCollector><>CollectionTime'
+  - pattern: 'java.lang<name=(.+), type=GarbageCollector><>CollectionTime: (.*)'
     name: kafka_jvm_gc_collection_seconds_total
     labels:
       gc: "$1"
+    value: "$2"
     valueFactor: 0.001
     type: COUNTER
-  - pattern: 'java.lang<name=(.+),type=GarbageCollector><>CollectionCount'
+  - pattern: 'java.lang<name=(.+), type=GarbageCollector><>CollectionCount: (.*)'
     name: kafka_jvm_gc_collection_count_total
     labels:
       gc: "$1"
+    value: "$2"
     type: COUNTER
   - pattern: 'java.lang<type=Memory><HeapMemoryUsage>(used|committed|max)'
     name: kafka_jvm_memory_heap_$1_bytes
