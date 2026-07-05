@@ -20,7 +20,7 @@ groups:
                 type: prometheus
                 uid: prometheus
               editorMode: code
-              expr: up{job=~"prometheus|node-exporter|docker-stats-exporter|blackbox-exporter|openai-cost-exporter"} == bool 0
+              expr: up{job=~"prometheus|node-exporter|docker-stats-exporter|streaming-sessions-kafka-jmx|blackbox-exporter|openai-cost-exporter"} == bool 0
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -442,6 +442,50 @@ groups:
           description: Default threshold is 700 MiB; streaming-sessions-kafka is allowed 1300 MiB because its Kafka JVM normally reserves about 1 GiB.
         labels:
           severity: critical
+
+      - uid: homelab_kafka_gc_pressure
+        title: Streaming Sessions Kafka GC pressure
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 100 * sum(rate(kafka_jvm_gc_collection_seconds_total{job="streaming-sessions-kafka-jmx"}[5m])) > 10
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: Streaming Sessions Kafka is spending more than 10 percent of time in GC.
+          description: Kafka may be under heap pressure after the 512 MiB heap cap; check the Kafka JVM GC and heap panels.
+        labels:
+          severity: critical
+          service: streaming-sessions-kafka
 
   - orgId: 1
     name: Homelab cost critical

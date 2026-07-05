@@ -3,12 +3,17 @@ services:
     image: apache/kafka:4.2.1
     container_name: streaming-sessions-kafka
     restart: unless-stopped
+    mem_limit: 1536m
+    memswap_limit: 1536m
     env_file:
       - .env
     ports:
       - "${HOST_BIND_ADDR:-127.0.0.1}:${KAFKA_PORT:-19092}:19092"
+    expose:
+      - "19094"
     environment:
       CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx512m"
       KAFKA_NODE_ID: "1"
       KAFKA_PROCESS_ROLES: "broker,controller"
       KAFKA_CONTROLLER_QUORUM_VOTERS: "1@streaming-sessions-kafka:19093"
@@ -26,8 +31,30 @@ services:
       KAFKA_REPLICA_FETCH_MAX_BYTES: "20971520"
       KAFKA_NUM_PARTITIONS: "32"
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_JMX_PORT: "19094"
+      KAFKA_JMX_HOSTNAME: "streaming-sessions-kafka"
     volumes:
       - ./data:/tmp/kraft-combined-logs
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"
+
+  jmx-exporter:
+    image: bitnami/jmx-exporter@sha256:3689ebfe4fab0059fcbb765dd9cc738f889dc275973270105f9c75b04b0969b1
+    container_name: streaming-sessions-kafka-jmx
+    restart: unless-stopped
+    ports:
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${KAFKA_JMX_EXPORTER_PORT:-19104}:5556"
+    command:
+      - "5556"
+      - /etc/jmx-exporter/kafka.yml
+    volumes:
+      - ./jmx-exporter.yml:/etc/jmx-exporter/kafka.yml:ro
+    depends_on:
+      - streaming-sessions-kafka
     logging:
       driver: local
       options:
