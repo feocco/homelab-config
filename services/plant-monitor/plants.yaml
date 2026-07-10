@@ -87,3 +87,23 @@ plants:
     sensors:
       moisture: sensor.soil_6_soil_moisture
       battery: sensor.soil_6_battery
+
+  - id: back_sun_room_tinker_wandering_dude
+    plant_entity:
+    name: Tinker Wandering Dude
+    location: Back sun room
+    species: wandering_dude
+    sensors:
+      moisture: sensor.back_sun_room_tinker_wandering_dude_soil_sensor_soil_moisture
+      temperature: sensor.back_sun_room_tinker_wandering_dude_soil_sensor_temperature
+      battery: sensor.back_sun_room_tinker_wandering_dude_soil_sensor_battery
+
+  - id: golden_pothos_office_hanging_2
+    plant_entity:
+    name: Golden Pothos
+    location: Office hanging 2
+    species: golden_pothos
+    sensors:
+      moisture: sensor.hanging_golden_pothos_office_soil_moisture
+      temperature: sensor.hanging_golden_pothos_office_temperature
+      battery: sensor.hanging_golden_pothos_office_battery
