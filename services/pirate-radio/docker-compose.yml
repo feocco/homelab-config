@@ -28,8 +28,6 @@ services:
     image: postgres:17-alpine
     container_name: pirate-radio-postgres
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       POSTGRES_DB: pirate_radio
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

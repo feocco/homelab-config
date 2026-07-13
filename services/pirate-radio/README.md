@@ -33,6 +33,9 @@ GitHub Actions secrets and rendered into the ignored runtime `.env`:
 - `PIRATE_RADIO_OIDC_CLIENT_ID`
 - `PIRATE_RADIO_OIDC_CLIENT_SECRET`
 
+The Postgres container receives only its explicit database variables, not the
+application's OpenAI, Home Assistant, or OIDC credentials.
+
 The public route uses Authentik issuer
 `https://auth.home.feocco.com/application/o/pirate-radio/`. Friends reach the
 same Caddy virtual host through `svc:pirate-radio`; no direct Tailscale Serve

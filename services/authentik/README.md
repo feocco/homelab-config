@@ -9,6 +9,8 @@ The mounted `blueprints/` directory owns the Feocco Home brand, verified local
 enrollment, email recovery, Google verified-email linking, member/admin groups,
 and Pirate Radio OIDC application. Secrets are rendered into the ignored `.env`
 through the normal service-secret workflow.
+The database container receives only its explicit Postgres settings; SMTP,
+Google, bootstrap, and OIDC secrets are limited to the Authentik processes.
 
 The independent `akadmin` user is break-glass only. Its password is generated
 locally, hashed with `ak hash_password`, and supplied only as

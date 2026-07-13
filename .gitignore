@@ -1,4 +1,5 @@
 **/.env
+**/.break-glass-password.txt
 **/__pycache__/
 .local/
 **/data/*
