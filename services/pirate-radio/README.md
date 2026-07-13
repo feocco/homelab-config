@@ -1,8 +1,8 @@
 # Pirate Radio
 
-Pirate Radio polls the Pirate Wires Substack RSS feed, sends Joe a Home
-Assistant mobile notification for new articles, converts approved articles with
-OpenAI TTS, and serves the generated audio library on the Tailnet.
+Pirate Radio polls configured article RSS feeds, sends Joe a Home Assistant
+mobile notification for new articles, converts approved articles with OpenAI
+TTS, and serves the generated audio library on the Tailnet.
 
 ## Runtime
 
