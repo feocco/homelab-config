@@ -27,6 +27,10 @@ services:
     path: services/caddy
     enabled: true
 
+  authentik:
+    path: services/authentik
+    enabled: true
+
   homelab-functions:
     path: services/homelab-functions
     enabled: true

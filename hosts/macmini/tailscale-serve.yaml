@@ -47,7 +47,3 @@ services:
     enabled: true
     http_port: 8102
     target: http://127.0.0.1:8102
-  pirate-radio:
-    enabled: true
-    http_port: 8103
-    target: http://127.0.0.1:8103

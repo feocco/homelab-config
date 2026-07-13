@@ -1,0 +1,35 @@
+service: authentik
+kind: multi-container
+host: macmini
+source_repo: feocco/homelab-config
+images:
+  - ghcr.io/goauthentik/server:2026.5.4
+  - postgres:16-alpine
+public_image: true
+containers:
+  - authentik-server
+  - authentik-worker
+  - authentik-postgres
+http_port: 9000
+port_env: AUTHENTIK_HTTP_PORT
+health_path: /-/health/ready/
+live_base_url: https://auth.home.feocco.com
+tailnet: false
+monitoring: true
+sre: false
+route_hostname: auth.home.feocco.com
+route_target_port: 9000
+route_https: true
+route_dns: unifi
+dashboard_visible: false
+secrets:
+  - POSTGRES_PASSWORD
+  - AUTHENTIK_SECRET_KEY
+  - AUTHENTIK_BOOTSTRAP_PASSWORD_HASH
+  - AUTHENTIK_EMAIL__USERNAME
+  - AUTHENTIK_EMAIL__PASSWORD
+  - AUTHENTIK_EMAIL__FROM
+  - GOOGLE_OAUTH_CLIENT_ID
+  - GOOGLE_OAUTH_CLIENT_SECRET
+  - PIRATE_RADIO_OIDC_CLIENT_ID
+  - PIRATE_RADIO_OIDC_CLIENT_SECRET

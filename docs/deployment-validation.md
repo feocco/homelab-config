@@ -204,6 +204,14 @@ Tailnet:
 
 - `tailnet: true` requires an entry in `hosts/<host>/tailscale-serve.yaml` with
   the manifest HTTP port.
+- `route_tailscale_service: svc:<name>` requires an enabled entry under
+  `named_services` with a recorded CGNAT TailVIP and raw
+  `tcp:443 -> tcp://127.0.0.1:443` forwarding. This remains separate from
+  legacy node HTTP mappings and preserves Caddy TLS SNI.
+- A Tailscale Service host must have a tag-based identity. Before converting an
+  existing user-owned node, audit its user-based grants and add an appropriate
+  `tagOwners` entry. Merge `docs/tailscale-friends-policy.hujson` into the
+  existing policy; do not replace the policy wholesale.
 - `scripts/apply-tailscale-serve --dry-run` must pass.
 
 Route:
@@ -215,7 +223,8 @@ Route:
   either optional `UNIFI_CERT_SHA256`/`UNIFI_TLS_SERVER_NAME` for pinned TLS or
   optional `UNIFI_SKIP_TLS_VERIFY` for temporary bootstrap.
 - `scripts/sync-cloudflare-dns` routes off-LAN Tailnet clients by public
-  DNS-only A records to `host.tailnet_addr`. It uses `CLOUDFLARE_API_TOKEN` or
+  DNS-only A records. Routes with `route_tailscale_service` use that service's
+  TailVIP; other routes use `host.tailnet_addr`. It uses `CLOUDFLARE_API_TOKEN` or
   `CADDY__CLOUDFLARE_API_TOKEN`, optional `CLOUDFLARE_ZONE_ID`, and defaults
   the zone name to `feocco.com`.
 - For services that should be reachable from the public internet without

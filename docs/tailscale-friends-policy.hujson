@@ -1,0 +1,22 @@
+// Merge these entries into the existing tailnet policy. Replace the example
+// login before saving; Joe remains the owner of group membership.
+{
+  "groups": {
+    "group:friends": [
+      "friend@example.com",
+    ],
+  },
+
+  // Tailscale Services require every serving device to use a tag identity.
+  "tagOwners": {
+    "tag:homelab-service-host": ["autogroup:admin"],
+  },
+
+  "grants": [
+    {
+      "src": ["group:friends"],
+      "dst": ["svc:authentik", "svc:pirate-radio"],
+      "ip": ["tcp:443"],
+    },
+  ],
+}

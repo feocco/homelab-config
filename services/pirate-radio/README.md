@@ -6,16 +6,19 @@ TTS, and serves the generated audio library on the Tailnet.
 
 ## Runtime
 
-- Image: `ghcr.io/feocco/pirate-radio:latest`
+- Images: `ghcr.io/feocco/pirate-radio:latest`, `postgres:17-alpine`
 - Host: `macmini`
 - Local bind: `127.0.0.1:8103`
 - Container bind: `0.0.0.0:8103`
 - LAN HTTPS URL: `https://pirate-radio.home.feocco.com/`
 - Health: `/health`
-- Library/state volume: `services/pirate-radio/data`
+- Library/state/Postgres volume: `services/pirate-radio/data`
 
-The reader lists audio from the generated manifest and lets the browser request
-MP3 files directly. It does not scan MP3 file contents to build the listing.
+The reader lists audio from the generated manifest and streams MP3 ranges only
+after native OIDC session validation. It does not scan MP3 file contents to
+build the listing. Postgres owns application users, hashed sessions, OIDC
+transactions, private progress, completion, and submission attribution; media,
+story files, RSS state, and manifests remain filesystem-owned.
 
 ## Configuration
 
@@ -26,6 +29,14 @@ GitHub Actions secrets and rendered into the ignored runtime `.env`:
 - `HA_URL`
 - `HA_LONG_LIVED_TOKEN`
 - `HOMELAB_FUNCTIONS_TOKEN`
+- `POSTGRES_PASSWORD`
+- `PIRATE_RADIO_OIDC_CLIENT_ID`
+- `PIRATE_RADIO_OIDC_CLIENT_SECRET`
+
+The public route uses Authentik issuer
+`https://auth.home.feocco.com/application/o/pirate-radio/`. Friends reach the
+same Caddy virtual host through `svc:pirate-radio`; no direct Tailscale Serve
+port is retained.
 
 `PWR_HEADLESS=true` is required for the containerized Playwright extraction
 path. `PWR_PROFILE_DIR=/data/playwright-profile` keeps the logged-in browser

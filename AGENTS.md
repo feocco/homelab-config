@@ -25,6 +25,10 @@
   files. Use `./scripts/generate-caddy-config`, `./scripts/sync-unifi-dns`,
   and `./scripts/sync-cloudflare-dns`; do not hand-edit or commit
   `services/caddy/Caddyfile`.
+- Friend-facing HTTPS routes use `route_tailscale_service: svc:<name>` and a
+  matching `hosts/<host>/tailscale-serve.yaml` `named_services` entry with its
+  actual TailVIP. Keep raw TCP 443 pointed at Caddy; never reintroduce a direct
+  app-port friend path that bypasses TLS SNI or application authentication.
 - When a service should be reachable from the public internet without
   Tailscale, use the Mealie-style split-horizon pattern only for that service:
   keep the Cloudflare Tunnel/Access public DNS path intact with

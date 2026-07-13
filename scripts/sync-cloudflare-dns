@@ -94,11 +94,54 @@ def parse_ops(path: pathlib.Path) -> dict[str, Any]:
     return data
 
 
+def parse_named_tailscale_services(path: pathlib.Path) -> dict[str, str]:
+    services: dict[str, str] = {}
+    section = ""
+    current = ""
+    identity = ""
+    tailvip = ""
+    enabled = False
+
+    def emit() -> None:
+        if current and enabled and identity and tailvip:
+            services[identity] = tailvip
+
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        top = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):\s*$", line)
+        if top:
+            emit()
+            section = top.group(1)
+            current = identity = tailvip = ""
+            enabled = False
+            continue
+        item = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if item and section == "named_services":
+            emit()
+            current = item.group(1)
+            identity = tailvip = ""
+            enabled = False
+            continue
+        if section != "named_services" or not current:
+            continue
+        field = re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$", line)
+        if not field:
+            continue
+        key, value = field.groups()
+        value = str(clean_scalar(value))
+        if key == "service": identity = value
+        elif key == "tailvip": tailvip = value
+        elif key == "enabled": enabled = value == "True"
+    emit()
+    return services
+
+
 def desired_records(base_dir: pathlib.Path, host_name: str) -> list[dict[str, str]]:
     host, services = parse_host_file(base_dir / "hosts" / host_name / "services.yaml")
     tailnet_addr = host.get("tailnet_addr", "")
     if not tailnet_addr:
         raise SystemExit(f"hosts/{host_name}/services.yaml is missing host.tailnet_addr")
+    named_services = parse_named_tailscale_services(base_dir / "hosts" / host_name / "tailscale-serve.yaml")
     records: list[dict[str, str]] = []
     for service, entry in sorted(services.items()):
         if entry.get("enabled") is False:
@@ -109,7 +152,14 @@ def desired_records(base_dir: pathlib.Path, host_name: str) -> list[dict[str, st
             continue
         if str(manifest.get("route_public_dns") or "cloudflare-dns-only") == "cloudflare-tunnel":
             continue
-        records.append({"service": service, "type": "A", "name": hostname, "value": tailnet_addr})
+        tailscale_service = str(manifest.get("route_tailscale_service") or "")
+        if tailscale_service:
+            if tailscale_service not in named_services:
+                raise SystemExit(f"{service} links unknown or disabled Tailscale Service {tailscale_service}")
+            value = named_services[tailscale_service]
+        else:
+            value = tailnet_addr
+        records.append({"service": service, "type": "A", "name": hostname, "value": value})
     return records
 
 

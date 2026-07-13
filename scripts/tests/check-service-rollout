@@ -174,8 +174,8 @@ prometheus.write_text(prometheus.read_text().replace(
 rules = base / "services/homelab-monitor/grafana/provisioning/alerting/rules.yml"
 rules_text = rules.read_text()
 rules_text = rules_text.replace(
-    "pirate-radio|laundry-monitor|bedtime|homelab-monitor-",
-    "pirate-radio|laundry-monitor|validator-demo|bedtime|homelab-monitor-",
+    "pirate-radio|pirate-radio-postgres|authentik-server|authentik-worker|authentik-postgres|laundry-monitor|bedtime|homelab-monitor-",
+    "pirate-radio|validator-demo|pirate-radio-postgres|authentik-server|authentik-worker|authentik-postgres|laundry-monitor|bedtime|homelab-monitor-",
 )
 rules.write_text(rules_text)
 

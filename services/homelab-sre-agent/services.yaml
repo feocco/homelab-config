@@ -332,8 +332,10 @@ services:
   pirate-radio:
     containers:
       - pirate-radio
+      - pirate-radio-postgres
     images:
       - ghcr.io/feocco/pirate-radio:*
+      - postgres:17-alpine
     source:
       repo: feocco/pirate-wires-reader
       path_hint: /Users/feocco/code/pirate-wires-reader
@@ -348,6 +350,28 @@ services:
       enabled: true
       autofix: false
       repo_daily_limit: 1
+
+  authentik:
+    containers:
+      - authentik-server
+      - authentik-worker
+      - authentik-postgres
+    images:
+      - ghcr.io/goauthentik/server:2026.5.4
+      - postgres:16-alpine
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/authentik
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/authentik
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/authentik
+    labels:
+      - homelab-sre
+      - authentik
+    sre:
+      enabled: false
+      autofix: false
 
   streaming-sessions-kafka:
     containers:
