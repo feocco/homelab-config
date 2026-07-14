@@ -449,6 +449,9 @@ deploy_service() {
       compose up -d --remove-orphans
     fi
     docker ps --filter "name=${service}"
+    if [[ "${service}" == "authentik" ]]; then
+      "${DEPLOY_BASE_DIR}/scripts/configure-authentik-settings" --apply
+    fi
   )
   write_deploy_state "${service}"
 }

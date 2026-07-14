@@ -42,6 +42,10 @@ with:
 ./scripts/configure-authentik-settings --check
 ```
 
+`homelab-deploy` runs the apply command after each Authentik deployment, so a
+fresh host converges automatically; the explicit commands remain useful for
+inspection and repair.
+
 Pirate Radio's OIDC provider uses its own invalidation flow with Authentik's
 built-in User Logout stage. Its account menu first revokes the application
 session, then visits the provider end-session endpoint without requesting a

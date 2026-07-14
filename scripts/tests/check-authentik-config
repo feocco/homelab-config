@@ -16,6 +16,12 @@ for expected in \
   }
 done
 
+grep -Fq '"${DEPLOY_BASE_DIR}/scripts/configure-authentik-settings" --apply' \
+  "${REPO_DIR}/scripts/homelab-deploy" || {
+  echo "Authentik deploys must apply the tenant settings contract." >&2
+  exit 1
+}
+
 mkdir -p "${TMP_DIR}/bin"
 cat >"${TMP_DIR}/bin/docker" <<'EOF'
 #!/bin/bash
