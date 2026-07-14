@@ -1,5 +1,6 @@
-// Joe remains the owner of group membership. Add or remove friend logins here;
-// the plus-address below is the isolated rollout acceptance-test identity.
+// Joe remains the owner of group membership. Replace the placeholder below
+// with the exact login recorded after the alternate identity accepts its invite.
+// A Gmail plus-address is not guaranteed to be a distinct Google identity.
 {
   "groups": {
     "group:friends": [
