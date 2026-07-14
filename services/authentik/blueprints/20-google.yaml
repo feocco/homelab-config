@@ -79,3 +79,11 @@ entries:
       target: !KeyOf google-source
       policy: !KeyOf google-verified-email-policy
       order: 0
+  - model: authentik_stages_identification.identificationstage
+    conditions:
+      - !If [!Context google_client_id]
+      - !If [!Context google_client_secret]
+    identifiers:
+      name: default-authentication-identification
+    attrs:
+      sources: [!KeyOf google-source]

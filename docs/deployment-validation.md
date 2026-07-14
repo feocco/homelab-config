@@ -73,6 +73,8 @@ Optional fields enable additional units:
   service cards.
 - `openapi_path: /openapi.json` declares the machine-readable OpenAPI schema
   for externally callable service APIs.
+- `docs_auth_required: true` declares that unauthenticated live validation must
+  receive `401` from both the docs and OpenAPI paths.
 - `api_framework: aiohttp` records the current service API framework. Valid
   values are `aiohttp`, `fastapi`, `node-http-server`, `python-http-server`,
   `other`, and `none`.

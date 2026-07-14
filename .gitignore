@@ -1,6 +1,7 @@
 **/.env
 **/.break-glass-password.txt
 **/.google-oauth-client.json
+**/.initial-local-accounts.json
 **/__pycache__/
 .local/
 **/data/*

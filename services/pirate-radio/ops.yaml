@@ -14,6 +14,7 @@ port_env: SERVICE_PORT
 health_path: /health
 docs_path: /docs
 openapi_path: /openapi.json
+docs_auth_required: true
 api_framework: node-http-server
 live_base_url: https://pirate-radio.home.feocco.com
 tailnet: false
