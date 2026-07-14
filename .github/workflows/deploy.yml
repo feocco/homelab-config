@@ -21,6 +21,7 @@ on:
         default: plant-monitor
         options:
           - all
+          - authentik
           - bedtime
           - caddy
           - dashy
@@ -145,7 +146,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
+            authentik|bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
@@ -208,6 +209,16 @@ jobs:
       - name: Render service environments
         env:
           # BEGIN GENERATED SERVICE SECRETS
+          AUTHENTIK__AUTHENTIK_BOOTSTRAP_PASSWORD_HASH: ${{ secrets.AUTHENTIK__AUTHENTIK_BOOTSTRAP_PASSWORD_HASH }}
+          AUTHENTIK__AUTHENTIK_EMAIL__FROM: ${{ secrets.AUTHENTIK__AUTHENTIK_EMAIL__FROM }}
+          AUTHENTIK__AUTHENTIK_EMAIL__PASSWORD: ${{ secrets.AUTHENTIK__AUTHENTIK_EMAIL__PASSWORD }}
+          AUTHENTIK__AUTHENTIK_EMAIL__USERNAME: ${{ secrets.AUTHENTIK__AUTHENTIK_EMAIL__USERNAME }}
+          AUTHENTIK__AUTHENTIK_SECRET_KEY: ${{ secrets.AUTHENTIK__AUTHENTIK_SECRET_KEY }}
+          AUTHENTIK__GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.AUTHENTIK__GOOGLE_OAUTH_CLIENT_ID }}
+          AUTHENTIK__GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.AUTHENTIK__GOOGLE_OAUTH_CLIENT_SECRET }}
+          AUTHENTIK__PIRATE_RADIO_OIDC_CLIENT_ID: ${{ secrets.AUTHENTIK__PIRATE_RADIO_OIDC_CLIENT_ID }}
+          AUTHENTIK__PIRATE_RADIO_OIDC_CLIENT_SECRET: ${{ secrets.AUTHENTIK__PIRATE_RADIO_OIDC_CLIENT_SECRET }}
+          AUTHENTIK__POSTGRES_PASSWORD: ${{ secrets.AUTHENTIK__POSTGRES_PASSWORD }}
           BEDTIME__HA_LONG_LIVED_TOKEN: ${{ secrets.BEDTIME__HA_LONG_LIVED_TOKEN }}
           BEDTIME__HA_URL: ${{ secrets.BEDTIME__HA_URL }}
           BEDTIME__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.BEDTIME__HOMELAB_FUNCTIONS_TOKEN }}
@@ -253,6 +264,9 @@ jobs:
           PIRATE_RADIO__HA_URL: ${{ secrets.PIRATE_RADIO__HA_URL }}
           PIRATE_RADIO__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.PIRATE_RADIO__HOMELAB_FUNCTIONS_TOKEN }}
           PIRATE_RADIO__OPENAI_API_KEY: ${{ secrets.PIRATE_RADIO__OPENAI_API_KEY }}
+          PIRATE_RADIO__PIRATE_RADIO_OIDC_CLIENT_ID: ${{ secrets.PIRATE_RADIO__PIRATE_RADIO_OIDC_CLIENT_ID }}
+          PIRATE_RADIO__PIRATE_RADIO_OIDC_CLIENT_SECRET: ${{ secrets.PIRATE_RADIO__PIRATE_RADIO_OIDC_CLIENT_SECRET }}
+          PIRATE_RADIO__POSTGRES_PASSWORD: ${{ secrets.PIRATE_RADIO__POSTGRES_PASSWORD }}
           PLANT_MONITOR__HA_LONG_LIVED_TOKEN: ${{ secrets.PLANT_MONITOR__HA_LONG_LIVED_TOKEN }}
           PLANT_MONITOR__HA_URL: ${{ secrets.PLANT_MONITOR__HA_URL }}
           PLANT_MONITOR__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.PLANT_MONITOR__HOMELAB_FUNCTIONS_TOKEN }}
@@ -336,7 +350,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
+            authentik|bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2

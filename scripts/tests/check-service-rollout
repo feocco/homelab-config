@@ -157,12 +157,18 @@ service_secrets.write_text(service_secrets.read_text().rstrip() + """
 """)
 
 tailscale = base / "hosts/macmini/tailscale-serve.yaml"
-tailscale.write_text(tailscale.read_text().rstrip() + """
+tailscale_text = tailscale.read_text()
+legacy_entry = """
   validator-demo:
     enabled: true
     http_port: 19080
     target: http://127.0.0.1:19080
-""")
+"""
+if "\nnamed_services:\n" in tailscale_text:
+    tailscale_text = tailscale_text.replace("\nnamed_services:\n", legacy_entry + "\nnamed_services:\n", 1)
+else:
+    tailscale_text = tailscale_text.rstrip() + legacy_entry
+tailscale.write_text(tailscale_text)
 
 prometheus = base / "services/homelab-monitor/prometheus/prometheus.yml"
 prometheus.write_text(prometheus.read_text().replace(
@@ -174,8 +180,8 @@ prometheus.write_text(prometheus.read_text().replace(
 rules = base / "services/homelab-monitor/grafana/provisioning/alerting/rules.yml"
 rules_text = rules.read_text()
 rules_text = rules_text.replace(
-    "pirate-radio|laundry-monitor|bedtime|homelab-monitor-",
-    "pirate-radio|laundry-monitor|validator-demo|bedtime|homelab-monitor-",
+    "pirate-radio|pirate-radio-postgres|authentik-server|authentik-worker|authentik-postgres|laundry-monitor|bedtime|homelab-monitor-",
+    "pirate-radio|validator-demo|pirate-radio-postgres|authentik-server|authentik-worker|authentik-postgres|laundry-monitor|bedtime|homelab-monitor-",
 )
 rules.write_text(rules_text)
 
@@ -383,12 +389,18 @@ for host in ("macmini", "nasfeo"):
 """)
 
 tailscale = base / "hosts/macmini/tailscale-serve.yaml"
-tailscale.write_text(tailscale.read_text().rstrip() + """
+tailscale_text = tailscale.read_text()
+legacy_entry = """
   validator-multihost:
     enabled: true
     http_port: 19082
     target: http://127.0.0.1:19082
-""")
+"""
+if "\nnamed_services:\n" in tailscale_text:
+    tailscale_text = tailscale_text.replace("\nnamed_services:\n", legacy_entry + "\nnamed_services:\n", 1)
+else:
+    tailscale_text = tailscale_text.rstrip() + legacy_entry
+tailscale.write_text(tailscale_text)
 PY
 }
 
@@ -447,6 +459,7 @@ import sys
 
 port_file = pathlib.Path(sys.argv[1])
 openapi_valid = sys.argv[2] == "valid"
+auth_required = sys.argv[2] == "auth"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -455,12 +468,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"status": "ok", "service": "validator-demo"})
             return
         if self.path == "/docs":
+            if auth_required:
+                self.send_error(401)
+                return
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(b"<!doctype html><title>validator-demo</title>")
             return
         if self.path == "/openapi.json":
+            if auth_required:
+                self.send_error(401)
+                return
             payload = (
                 {"openapi": "3.1.0", "info": {"title": "validator-demo"}, "paths": {"/health": {}}}
                 if openapi_valid
@@ -520,6 +539,40 @@ assert_contains "${validator_tmp}/docs-live.out" 'Docs page responds with HTML'
 assert_contains "${validator_tmp}/docs-live.out" 'OpenAPI schema responds'
 kill "${docs_server_pid}" 2>/dev/null || true
 wait "${docs_server_pid}" 2>/dev/null || true
+
+cp -R "${validator_fixture}" "${validator_tmp}/docs-auth-live"
+python3 "${validator_tmp}/docs-live-server.py" "${validator_tmp}/docs-auth-live-port" auth &
+docs_auth_server_pid="$!"
+for _ in {1..50}; do
+  [[ -s "${validator_tmp}/docs-auth-live-port" ]] && break
+  sleep 0.1
+done
+if [[ ! -s "${validator_tmp}/docs-auth-live-port" ]]; then
+  kill "${docs_auth_server_pid}" 2>/dev/null || true
+  echo "Authenticated docs live test server did not start." >&2
+  exit 1
+fi
+docs_auth_live_port="$(cat "${validator_tmp}/docs-auth-live-port")"
+python3 - "${validator_tmp}/docs-auth-live/services/validator-demo/ops.yaml" "${docs_auth_live_port}" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+port = sys.argv[2]
+path.write_text(path.read_text() + f"live_base_url: http://127.0.0.1:{port}\ndocs_auth_required: true\n")
+PY
+if "${validator_tmp}/docs-auth-live/scripts/validate-service-rollout" --base-dir "${validator_tmp}/docs-auth-live" --service validator-demo --host macmini --check live --mode strict >"${validator_tmp}/docs-auth-live.out" 2>&1; then
+  :
+else
+  kill "${docs_auth_server_pid}" 2>/dev/null || true
+  cat "${validator_tmp}/docs-auth-live.out" >&2
+  echo "validator-demo authenticated docs live proof should pass." >&2
+  exit 1
+fi
+assert_contains "${validator_tmp}/docs-auth-live.out" 'Docs page requires authentication'
+assert_contains "${validator_tmp}/docs-auth-live.out" 'OpenAPI schema requires authentication'
+kill "${docs_auth_server_pid}" 2>/dev/null || true
+wait "${docs_auth_server_pid}" 2>/dev/null || true
 
 cp -R "${validator_fixture}" "${validator_tmp}/invalid-openapi-live"
 python3 "${validator_tmp}/docs-live-server.py" "${validator_tmp}/invalid-openapi-port" invalid &

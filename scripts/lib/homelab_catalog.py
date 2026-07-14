@@ -333,6 +333,7 @@ def build_catalog(base_dir: pathlib.Path) -> dict[str, Any]:
                     "route_https": manifest.get("route_https") is True,
                     "route_dns": manifest_value(manifest, "route_dns"),
                     "route_target_port": manifest.get("route_target_port"),
+                    "route_tailscale_service": manifest_value(manifest, "route_tailscale_service"),
                     "monitoring": monitoring,
                     "monitored": monitoring,
                     "sre_metadata": service in sre,
@@ -430,6 +431,7 @@ def route_entries(base_dir: pathlib.Path, host: str | None = None) -> list[dict[
                     "dns": manifest_value(manifest, "route_dns"),
                     "aliases": [str(value) for value in manifest.get("route_aliases", []) if str(value)],
                     "redirect_to": manifest_value(manifest, "route_redirect_to"),
+                    "tailscale_service": manifest_value(manifest, "route_tailscale_service"),
                 }
             )
     return sorted(entries, key=lambda row: (str(row["hostname"]), str(row["service"])))

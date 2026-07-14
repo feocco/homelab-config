@@ -1,0 +1,89 @@
+version: 1
+metadata:
+  name: Feocco Home Google source
+context:
+  google_client_id: !Env [GOOGLE_OAUTH_CLIENT_ID, null]
+  google_client_secret: !Env [GOOGLE_OAUTH_CLIENT_SECRET, null]
+entries:
+  - id: google-verified-email-policy
+    model: authentik_policies_expression.expressionpolicy
+    identifiers:
+      name: feocco-google-requires-verified-email
+    attrs:
+      expression: |
+        profile = request.context.get("oauth_userinfo", {})
+        if not profile.get("verified_email", False):
+            ak_message("Google must report a verified email address.")
+            return False
+        return True
+  - id: google-enrollment-flow
+    model: authentik_flows.flow
+    identifiers:
+      slug: feocco-google-enrollment
+    attrs:
+      name: Feocco Home Google enrollment
+      title: Choose your Feocco Home username
+      designation: enrollment
+      authentication: none
+  - id: google-username
+    model: authentik_stages_prompt.prompt
+    identifiers:
+      name: feocco-google-enrollment-username
+    attrs: {field_key: username, label: Username, type: username, required: true, placeholder: Short username, placeholder_expression: false, order: 10}
+  - id: google-prompts
+    model: authentik_stages_prompt.promptstage
+    identifiers:
+      name: feocco-google-enrollment-prompts
+    attrs:
+      fields: [!KeyOf google-username]
+  - id: google-write
+    model: authentik_stages_user_write.userwritestage
+    identifiers:
+      name: feocco-google-enrollment-write
+    attrs:
+      create_users_group: !Find [authentik_core.group, [name, pirate-radio-users]]
+      user_creation_mode: always_create
+  - id: google-login
+    model: authentik_stages_user_login.userloginstage
+    identifiers:
+      name: feocco-google-enrollment-login
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf google-enrollment-flow, stage: !KeyOf google-prompts, order: 10}
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf google-enrollment-flow, stage: !KeyOf google-write, order: 20}
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf google-enrollment-flow, stage: !KeyOf google-login, order: 100}
+  - id: google-source
+    model: authentik_sources_oauth.oauthsource
+    conditions:
+      - !If [!Context google_client_id]
+      - !If [!Context google_client_secret]
+    identifiers:
+      slug: google
+    attrs:
+      name: Google
+      enabled: true
+      promoted: true
+      provider_type: google
+      consumer_key: !Context google_client_id
+      consumer_secret: !Context google_client_secret
+      authentication_flow: !Find [authentik_flows.flow, [slug, default-source-authentication]]
+      enrollment_flow: !KeyOf google-enrollment-flow
+      user_matching_mode: email_link
+      policy_engine_mode: all
+  - model: authentik_policies.policybinding
+    conditions:
+      - !If [!Context google_client_id]
+      - !If [!Context google_client_secret]
+    identifiers:
+      target: !KeyOf google-source
+      policy: !KeyOf google-verified-email-policy
+      order: 0
+  - model: authentik_stages_identification.identificationstage
+    conditions:
+      - !If [!Context google_client_id]
+      - !If [!Context google_client_secret]
+    identifiers:
+      name: default-authentication-identification
+    attrs:
+      sources: [!KeyOf google-source]

@@ -47,7 +47,17 @@ services:
     enabled: true
     http_port: 8102
     target: http://127.0.0.1:8102
+
+named_services:
+  authentik:
+    enabled: true
+    service: svc:authentik
+    tcp_port: 443
+    target: tcp://127.0.0.1:443
+    tailvip: 100.95.132.249
   pirate-radio:
     enabled: true
-    http_port: 8103
-    target: http://127.0.0.1:8103
+    service: svc:pirate-radio
+    tcp_port: 443
+    target: tcp://127.0.0.1:443
+    tailvip: 100.120.139.67

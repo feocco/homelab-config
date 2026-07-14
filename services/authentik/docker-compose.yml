@@ -1,0 +1,76 @@
+services:
+  authentik-postgres:
+    image: postgres:16-alpine
+    container_name: authentik-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-authentik}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER:-authentik}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: local
+      options: &logging
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2026.5.4
+    container_name: authentik-server
+    restart: unless-stopped
+    command: server
+    env_file:
+      - .env
+    environment: &authentik-environment
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+      AUTHENTIK_POSTGRESQL__NAME: ${POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD}
+      AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_USER:-authentik}
+    ports:
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${AUTHENTIK_HTTP_PORT:-9000}:9000"
+    volumes:
+      - ./blueprints:/blueprints/feocco:ro
+      - ./data/media:/media
+      - ./data/custom-templates:/templates
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "ak", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: local
+      options: *logging
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2026.5.4
+    container_name: authentik-worker
+    restart: unless-stopped
+    command: worker
+    env_file:
+      - .env
+    environment: *authentik-environment
+    volumes:
+      - ./blueprints:/blueprints/feocco:ro
+      - ./data/media:/media
+      - ./data/custom-templates:/templates
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "ak", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: local
+      options: *logging

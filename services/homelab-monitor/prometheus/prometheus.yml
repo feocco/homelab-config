@@ -104,6 +104,11 @@ scrape_configs:
           service: laundry-monitor
           host: macmini
       - targets:
+          - http://host.docker.internal:9000/-/health/ready/
+        labels:
+          service: authentik
+          host: macmini
+      - targets:
           - http://host.docker.internal:8103/health
         labels:
           service: pirate-radio

@@ -211,6 +211,35 @@ def tailnet_entry(path: pathlib.Path, service: str) -> str:
     return match.group("body") if match else ""
 
 
+def named_tailscale_service(path: pathlib.Path, identity: str) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    section = ""
+    current = ""
+    values: dict[str, str] = {}
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        top = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):\s*$", line)
+        if top:
+            if section == "named_services" and values.get("service") == identity:
+                return values
+            section = top.group(1)
+            current = ""
+            values = {}
+            continue
+        item = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if item and section == "named_services":
+            if values.get("service") == identity:
+                return values
+            current = item.group(1)
+            values = {"name": current}
+            continue
+        field = re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$", line)
+        if field and section == "named_services" and current:
+            values[field.group(1)] = str(clean_scalar(field.group(2)))
+    return values if values.get("service") == identity else {}
+
+
 def prometheus_has_service(path: pathlib.Path, service: str) -> bool:
     return path.exists() and re.search(rf"^\s+service:\s*{re.escape(service)}\s*$", path.read_text(), re.MULTILINE) is not None
 
@@ -281,10 +310,14 @@ def route_base_url(manifest: dict[str, object], host: str) -> str:
 
 
 def fetch_url(url: str, *, limit: int = 65536) -> tuple[int, str, str]:
-    with urllib.request.urlopen(url, timeout=10) as response:
-        body = response.read(limit).decode("utf-8", "replace")
-        content_type = response.headers.get("Content-Type", "")
-        return response.status, content_type, body
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            body = response.read(limit).decode("utf-8", "replace")
+            content_type = response.headers.get("Content-Type", "")
+            return response.status, content_type, body
+    except urllib.error.HTTPError as exc:
+        body = exc.read(limit).decode("utf-8", "replace")
+        return exc.code, exc.headers.get("Content-Type", ""), body
 
 
 class Validator:
@@ -434,7 +467,12 @@ class Validator:
 
         docs_path = str(manifest.get("docs_path") or "")
         openapi_path = str(manifest.get("openapi_path") or "")
+        docs_auth_required = manifest.get("docs_auth_required", False)
         api_framework = str(manifest.get("api_framework") or "")
+        if not isinstance(docs_auth_required, bool):
+            self.fail("service docs", "docs_auth_required must be true or false")
+        if docs_auth_required and not (docs_path and openapi_path):
+            self.fail("service docs", "docs_auth_required requires docs_path and openapi_path")
         if docs_path or openapi_path:
             service_route_hostname = str(manifest.get("route_hostname") or "")
             if port is None:
@@ -559,6 +597,31 @@ class Validator:
             else:
                 self.fail("tailnet", f"Tailscale Serve dry-run failed: {apply_check.stdout.strip()}")
 
+        route_tailscale_service = str(manifest.get("route_tailscale_service") or "")
+        if route_tailscale_service:
+            tailnet_path = self.base_dir / "hosts" / self.host / "tailscale-serve.yaml"
+            service_entry = named_tailscale_service(tailnet_path, route_tailscale_service)
+            if not route_tailscale_service.startswith("svc:"):
+                self.fail("tailnet service", "route_tailscale_service must use svc:<name>")
+            elif not service_entry:
+                self.fail("tailnet service", f"Missing named Tailscale Service {route_tailscale_service}")
+            elif service_entry.get("enabled") != "True":
+                self.fail("tailnet service", f"Named Tailscale Service {route_tailscale_service} is disabled")
+            elif service_entry.get("tcp_port") != "443" or service_entry.get("target") != "tcp://127.0.0.1:443":
+                self.fail("tailnet service", "Named Tailscale Services must raw-forward tcp:443 to tcp://127.0.0.1:443")
+            elif not re.fullmatch(r"100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])(?:\.\d{1,3}){2}", service_entry.get("tailvip", "")):
+                self.fail("tailnet service", f"Named Tailscale Service has invalid TailVIP {service_entry.get('tailvip', '')}")
+            else:
+                self.pass_("tailnet service", f"Named service {route_tailscale_service} raw-forwards Caddy TLS at {service_entry['tailvip']}")
+            apply_check = run(
+                [str(self.base_dir / "scripts/apply-tailscale-serve"), "--host", self.host, "--base-dir", str(self.base_dir), "--dry-run"],
+                cwd=self.base_dir,
+            )
+            if apply_check.returncode == 0 and route_tailscale_service in apply_check.stdout:
+                self.pass_("tailnet service", "Named Tailscale Service dry-run passes")
+            else:
+                self.fail("tailnet service", f"Named Tailscale Service dry-run failed: {apply_check.stdout.strip()}")
+
         route_hostname = str(manifest.get("route_hostname") or "")
         route_hosts = manifest.get("route_hosts")
         route_applies = not isinstance(route_hosts, list) or self.host in [str(value) for value in route_hosts]
@@ -630,9 +693,15 @@ class Validator:
                     ],
                     cwd=self.base_dir,
                 )
-                tailnet_addr = host_tailnet_addr(caddy_services_file)
-                if cloudflare_check.returncode == 0 and route_hostname in cloudflare_check.stdout and tailnet_addr in cloudflare_check.stdout:
-                    self.pass_("route", "Cloudflare DNS dry-run contains route hostname and host Tailnet address")
+                expected_public_addr = host_tailnet_addr(caddy_services_file)
+                if route_tailscale_service:
+                    expected_public_addr = named_tailscale_service(
+                        self.base_dir / "hosts" / self.host / "tailscale-serve.yaml",
+                        route_tailscale_service,
+                    ).get("tailvip", "")
+                if cloudflare_check.returncode == 0 and route_hostname in cloudflare_check.stdout and expected_public_addr in cloudflare_check.stdout:
+                    label = "service TailVIP" if route_tailscale_service else "host Tailnet address"
+                    self.pass_("route", f"Cloudflare DNS dry-run contains route hostname and {label}")
                 else:
                     self.fail("route", f"Cloudflare DNS dry-run failed or omitted route: {cloudflare_check.stdout.strip()}")
         elif route_hostname:
@@ -714,11 +783,16 @@ class Validator:
         service_base_url = base_url or route_base_url(manifest, self.host)
         docs_path = str(manifest.get("docs_path") or "")
         openapi_path = str(manifest.get("openapi_path") or "")
+        docs_auth_required = manifest.get("docs_auth_required") is True
         if docs_path and service_base_url:
             docs_url = append_url_path(service_base_url, docs_path)
             try:
                 status, content_type, _body = fetch_url(docs_url)
-                if status < 400 and "text/html" in content_type.lower():
+                if docs_auth_required:
+                    if status != 401:
+                        raise urllib.error.URLError(f"expected HTTP 401, got {status}")
+                    self.pass_("live proof", f"Docs page requires authentication: {docs_url}")
+                elif status < 400 and "text/html" in content_type.lower():
                     self.pass_("live proof", f"Docs page responds with HTML: {docs_url}")
                 else:
                     raise urllib.error.URLError(f"HTTP {status} content-type {content_type!r}")
@@ -731,19 +805,24 @@ class Validator:
             openapi_url = append_url_path(service_base_url, openapi_path)
             try:
                 status, content_type, body = fetch_url(openapi_url)
-                payload = json.loads(body)
-                if status >= 400:
-                    raise urllib.error.URLError(f"HTTP {status}")
-                if "json" not in content_type.lower():
-                    raise ValueError(f"OpenAPI content-type is {content_type!r}")
-                if not isinstance(payload, dict):
-                    raise ValueError("OpenAPI payload is not a JSON object")
-                if not payload.get("openapi") or not isinstance(payload.get("paths"), dict):
-                    raise ValueError("OpenAPI payload must contain openapi and paths")
-                info = payload.get("info")
-                if not isinstance(info, dict) or not info.get("title"):
-                    raise ValueError("OpenAPI payload must contain info.title")
-                self.pass_("live proof", f"OpenAPI schema responds: {openapi_url}")
+                if docs_auth_required:
+                    if status != 401:
+                        raise urllib.error.URLError(f"expected HTTP 401, got {status}")
+                    self.pass_("live proof", f"OpenAPI schema requires authentication: {openapi_url}")
+                else:
+                    if status >= 400:
+                        raise urllib.error.URLError(f"HTTP {status}")
+                    payload = json.loads(body)
+                    if "json" not in content_type.lower():
+                        raise ValueError(f"OpenAPI content-type is {content_type!r}")
+                    if not isinstance(payload, dict):
+                        raise ValueError("OpenAPI payload is not a JSON object")
+                    if not payload.get("openapi") or not isinstance(payload.get("paths"), dict):
+                        raise ValueError("OpenAPI payload must contain openapi and paths")
+                    info = payload.get("info")
+                    if not isinstance(info, dict) or not info.get("title"):
+                        raise ValueError("OpenAPI payload must contain info.title")
+                    self.pass_("live proof", f"OpenAPI schema responds: {openapi_url}")
             except Exception as exc:
                 (self.fail if self.strict else self.warn)("live proof", f"OpenAPI schema failed: {exc}")
         elif openapi_path:

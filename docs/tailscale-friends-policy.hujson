@@ -1,0 +1,27 @@
+// Joe remains the owner of group membership. Add or remove friend logins here;
+// the plus-address below is the isolated rollout acceptance-test identity.
+{
+  "groups": {
+    "group:friends": [
+      "joefeocco+tailscale-friend@gmail.com",
+    ],
+  },
+
+  // Tailscale Services require every serving device to use a tag identity.
+  "tagOwners": {
+    "tag:homelab-service-host": ["autogroup:admin"],
+  },
+
+  "grants": [
+    {
+      "src": ["joefeocco@gmail.com", "tag:homelab-service-host"],
+      "dst": ["*"],
+      "ip": ["*"],
+    },
+    {
+      "src": ["group:friends"],
+      "dst": ["svc:authentik", "svc:pirate-radio"],
+      "ip": ["tcp:443"],
+    },
+  ],
+}

@@ -24,6 +24,8 @@ assert_contains "${REPO_DIR}/services/caddy/Dockerfile" "org.opencontainers.imag
 assert_contains "${REPO_DIR}/services/caddy/docker-compose.yml" "${expected_caddy_ref}"
 assert_contains "${REPO_DIR}/services/caddy/ops.yaml" "image: ${expected_caddy_ref}"
 assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" "scripts/caddy-image-env"
+assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" "          - authentik"
+assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" "authentik|bedtime|caddy"
 assert_contains "${REPO_DIR}/.github/workflows/caddy-image.yml" "scripts/caddy-image-env"
 
 python3 - \

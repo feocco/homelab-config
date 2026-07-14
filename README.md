@@ -258,6 +258,13 @@ default all-interface bind. The NAS uses `192.168.1.191`. Mac mini services
 should bind containers to `127.0.0.1` and expose selected ports through
 Tailscale Serve using `hosts/macmini/tailscale-serve.yaml`.
 
+Friend-facing HTTPS services use the `named_services` section instead of a
+node-wide app port. Each entry records its `svc:<name>`, raw TCP 443 target, and
+TailVIP. The matching service `ops.yaml` declares
+`route_tailscale_service`; Cloudflare DNS then uses the TailVIP while UniFi DNS
+continues using the LAN bind address. See
+`docs/adr/0001-unified-homelab-identity.md` for the identity and trust model.
+
 NAS-to-Mac service calls should use the Mac mini Tailnet name when they cross
 hosts. Mac containers that need another Mac-hosted service should use
 `host.docker.internal` so OrbStack can route back to the host-local published

@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+fixture="$(mktemp -d)"
+trap 'rm -rf "${fixture}"' EXIT
+mkdir -p "${fixture}/repo/scripts/lib" "${fixture}/repo/hosts/macmini" "${fixture}/repo/services/demo" "${fixture}/bin"
+cp "${REPO_DIR}/scripts/apply-tailscale-serve" "${fixture}/repo/scripts/apply-tailscale-serve"
+cp "${REPO_DIR}/scripts/sync-cloudflare-dns" "${fixture}/repo/scripts/sync-cloudflare-dns"
+cp "${REPO_DIR}/scripts/lib/homelab_catalog.py" "${fixture}/repo/scripts/lib/homelab_catalog.py"
+
+cat >"${fixture}/repo/hosts/macmini/services.yaml" <<'EOF'
+host:
+  name: macmini
+  bind_addr: 192.168.1.43
+  tailnet_addr: 100.81.237.11
+services:
+  demo:
+    path: services/demo
+    enabled: true
+EOF
+cat >"${fixture}/repo/hosts/macmini/tailscale-serve.yaml" <<'EOF'
+services:
+  legacy:
+    enabled: true
+    http_port: 8099
+    target: http://127.0.0.1:8099
+named_services:
+  demo:
+    enabled: true
+    service: svc:demo
+    tcp_port: 443
+    target: tcp://127.0.0.1:443
+    tailvip: 100.100.100.100
+EOF
+cat >"${fixture}/repo/services/demo/ops.yaml" <<'EOF'
+service: demo
+kind: app
+source_repo: feocco/demo
+route_hostname: demo.home.feocco.com
+route_target_port: 8099
+route_https: true
+route_dns: unifi
+route_tailscale_service: svc:demo
+EOF
+
+cat >"${fixture}/bin/tailscale" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"${fixture}/tailscale.log"
+EOF
+chmod +x "${fixture}/bin/tailscale" "${fixture}/repo/scripts/apply-tailscale-serve"
+
+dry_run="$(PATH="${fixture}/bin:$PATH" "${fixture}/repo/scripts/apply-tailscale-serve" --host macmini --base-dir "${fixture}/repo" --dry-run)"
+if [[ "${dry_run}" != *"Would expose legacy on Tailnet HTTP port 8099"* ]]; then
+  echo "Legacy Tailscale Serve dry-run compatibility was lost" >&2
+  exit 1
+fi
+if [[ "${dry_run}" != *"Would advertise svc:demo at 100.100.100.100:443 -> tcp://127.0.0.1:443 (raw TCP)"* ]]; then
+  echo "Named Tailscale Service dry-run is incomplete" >&2
+  echo "${dry_run}" >&2
+  exit 1
+fi
+
+PATH="${fixture}/bin:$PATH" "${fixture}/repo/scripts/apply-tailscale-serve" --host macmini --base-dir "${fixture}/repo" >/dev/null
+assert_contains "${fixture}/tailscale.log" 'serve --bg --http=8099 http://127.0.0.1:8099'
+assert_contains "${fixture}/tailscale.log" 'serve --service=svc:demo --bg --tcp=443 tcp://127.0.0.1:443'
+
+cloudflare="$("${fixture}/repo/scripts/sync-cloudflare-dns" --host macmini --base-dir "${fixture}/repo" --dry-run)"
+if [[ "${cloudflare}" != *"Would upsert Cloudflare A demo.home.feocco.com -> 100.100.100.100 (DNS only)"* ]]; then
+  echo "Cloudflare DNS did not use the named service TailVIP" >&2
+  echo "${cloudflare}" >&2
+  exit 1
+fi
+
+PYTHONPATH="${fixture}/repo/scripts/lib" python3 - "${fixture}/repo" <<'PY'
+import pathlib
+import sys
+from homelab_catalog import route_entries
+
+entry = route_entries(pathlib.Path(sys.argv[1]), "macmini")[0]
+if entry["tailscale_service"] != "svc:demo":
+    raise SystemExit("Catalog route entry omitted route_tailscale_service")
+PY
