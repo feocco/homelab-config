@@ -157,12 +157,18 @@ service_secrets.write_text(service_secrets.read_text().rstrip() + """
 """)
 
 tailscale = base / "hosts/macmini/tailscale-serve.yaml"
-tailscale.write_text(tailscale.read_text().rstrip() + """
+tailscale_text = tailscale.read_text()
+legacy_entry = """
   validator-demo:
     enabled: true
     http_port: 19080
     target: http://127.0.0.1:19080
-""")
+"""
+if "\nnamed_services:\n" in tailscale_text:
+    tailscale_text = tailscale_text.replace("\nnamed_services:\n", legacy_entry + "\nnamed_services:\n", 1)
+else:
+    tailscale_text = tailscale_text.rstrip() + legacy_entry
+tailscale.write_text(tailscale_text)
 
 prometheus = base / "services/homelab-monitor/prometheus/prometheus.yml"
 prometheus.write_text(prometheus.read_text().replace(
@@ -383,12 +389,18 @@ for host in ("macmini", "nasfeo"):
 """)
 
 tailscale = base / "hosts/macmini/tailscale-serve.yaml"
-tailscale.write_text(tailscale.read_text().rstrip() + """
+tailscale_text = tailscale.read_text()
+legacy_entry = """
   validator-multihost:
     enabled: true
     http_port: 19082
     target: http://127.0.0.1:19082
-""")
+"""
+if "\nnamed_services:\n" in tailscale_text:
+    tailscale_text = tailscale_text.replace("\nnamed_services:\n", legacy_entry + "\nnamed_services:\n", 1)
+else:
+    tailscale_text = tailscale_text.rstrip() + legacy_entry
+tailscale.write_text(tailscale_text)
 PY
 }
 

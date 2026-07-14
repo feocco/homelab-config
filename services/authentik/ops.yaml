@@ -21,6 +21,7 @@ route_hostname: auth.home.feocco.com
 route_target_port: 9000
 route_https: true
 route_dns: unifi
+route_tailscale_service: svc:authentik
 dashboard_visible: false
 secrets:
   - POSTGRES_PASSWORD
