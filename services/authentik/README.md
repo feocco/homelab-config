@@ -44,5 +44,7 @@ with:
 
 Pirate Radio's OIDC provider uses its own invalidation flow with Authentik's
 built-in User Logout stage. Its account menu first revokes the application
-session, then visits the provider end-session endpoint; this prevents an active
-Authentik SSO session from immediately signing the browser back in.
+session, then visits the provider end-session endpoint without requesting a
+post-logout redirect. This prevents an active Authentik SSO session from
+immediately signing the browser back in without retaining an ID token in the
+application session solely to satisfy redirect validation.
