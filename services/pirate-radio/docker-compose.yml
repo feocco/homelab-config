@@ -1,6 +1,6 @@
 services:
   pirate-radio:
-    image: ghcr.io/feocco/pirate-radio:sha-1a4e202
+    image: ghcr.io/feocco/pirate-radio:latest
     platform: ${SERVICE_PLATFORM:-linux/amd64}
     container_name: pirate-radio
     restart: unless-stopped
