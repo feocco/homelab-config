@@ -13,6 +13,8 @@ truth lives, and which gaps are intentional.
 - [Source Of Truth](docs/source-of-truth.md) maps current truth by engineering domain.
 - [Services](services/index.md) is generated from the existing service catalog
   with one wrapper page per running service.
+- [Authentication And Identity](docs/authentication.md) explains the shared
+  Authentik, OIDC, application-authorization, and Tailscale trust model.
 - [Service API Conventions](docs/service-api-conventions.md) explains `/docs`,
   `/openapi.json`, and current framework divergence.
 - [Service Docs Migration](docs/service-docs-migration.md) gives agents the

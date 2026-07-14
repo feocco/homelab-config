@@ -41,6 +41,7 @@ nav:
   - Domains:
       - Services: docs/generated/service-index.md
       - Networking: services/caddy/README.md
+      - Authentication And Identity: docs/authentication.md
       - Observability: services/homelab-monitor/README.md
       - Gaps And Roadmap: docs/gaps-roadmap.md
   - Operations:

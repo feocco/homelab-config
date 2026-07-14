@@ -1,6 +1,6 @@
 ---
 name: homelab-https-route
-description: Use when adding, migrating, validating, or troubleshooting HTTPS routes, Caddy, UniFi DNS, Cloudflare DNS, DNS-01 certificates, or split-horizon access for Joe Feocco's homelab services.
+description: Use when adding, migrating, validating, or troubleshooting HTTPS routes, Caddy, UniFi DNS, Cloudflare DNS, DNS-01 certificates, Tailscale Services, or split-horizon access for Joe Feocco's homelab services.
 ---
 
 # Homelab HTTPS Route
@@ -14,6 +14,9 @@ Do not hand-edit generated Caddy output.
 
 - Default private route: use `service.home.feocco.com` for Mac mini
   user-facing HTTP services that should be reachable on LAN and Tailnet.
+- Friend-private route: use a distinct named Tailscale Service and TailVIP to
+  carry raw TCP 443 to Caddy. This is the only accepted friend-sharing pattern;
+  do not grant the Mac mini node or expose a direct application port.
 - Public internet without Tailscale: use the Mealie-style split-horizon pattern
   for a specific service. Public DNS stays on Cloudflare Tunnel/Access;
   UniFi DNS sends trusted LAN clients to Caddy.
@@ -30,6 +33,28 @@ route_hostname: service.home.feocco.com
 route_target_port: 8100
 route_https: true
 route_dns: unifi
+```
+
+Friend-private route:
+
+```yaml
+route_hostname: service.home.feocco.com
+route_target_port: 8100
+route_https: true
+route_dns: unifi
+route_tailscale_service: svc:service
+```
+
+Add the matching host entry with its approved TailVIP:
+
+```yaml
+named_services:
+  service:
+    enabled: true
+    service: svc:service
+    tcp_port: 443
+    target: tcp://127.0.0.1:443
+    tailvip: 100.x.y.z
 ```
 
 Split-horizon public route:
@@ -63,12 +88,16 @@ hostname that UniFi resolves to the Mac mini bind address.
 ./scripts/sync-unifi-dns --host macmini --apply
 ```
 
-4. For default private routes, check or apply public DNS-only Tailnet records:
+4. For private routes, check or apply public DNS-only Tailnet records:
 
 ```bash
 ./scripts/sync-cloudflare-dns --host macmini --check
 ./scripts/sync-cloudflare-dns --host macmini --apply
 ```
+
+Default private routes use the host Tailnet address. Friend-private routes use
+the named service's recorded TailVIP. UniFi DNS continues using the Mac mini
+LAN address in both cases.
 
 For `route_public_dns: cloudflare-tunnel`, do not let repo tooling overwrite
 the existing Cloudflare Tunnel/Access record.
@@ -97,8 +126,17 @@ For split-horizon routes also prove public DNS still uses Cloudflare:
 dig @1.1.1.1 <hostname>
 ```
 
+For friend-private routes, prove the public resolver returns the TailVIP, the
+LAN resolver returns the Mac mini LAN address, raw TLS reaches the intended
+Caddy virtual host, and a friend identity cannot connect to an unrelated Caddy
+service. Run `./scripts/apply-tailscale-serve --dry-run` before applying the
+service advertisement.
+
 ## Rollback
 
 Rollback source truth with Git: revert the route commit or redeploy the prior
 known-good `main` SHA. Do not delete service volumes, runtime data, or Caddy
 state while debugging a route rollback.
+
+For a friend-private route, revoke the friend grant or service advertisement
+before restoring an older application image that lacks authentication.

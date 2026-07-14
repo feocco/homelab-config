@@ -1,0 +1,11 @@
+services:
+  __SERVICE_NAME__:
+    image: ghcr.io/feocco/__SERVICE_NAME__:latest
+    container_name: __SERVICE_NAME__
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "${SERVICE_PORT:-8080}:${SERVICE_PORT:-8080}"

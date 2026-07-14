@@ -36,6 +36,25 @@ proxy and DNS config.
 Gap: Caddy output and DNS provider state are generated/runtime state, not source
 of truth. Use validation and sync commands to detect drift.
 
+## Authentication And Identity
+
+Identity intent is split deliberately between the shared provider and each
+application.
+
+- `docs/authentication.md` is the high-level architecture and adoption entrypoint.
+- `docs/adr/0001-unified-homelab-identity.md` records the accepted trust and
+  authorization decisions.
+- `services/authentik/blueprints/` owns Authentik brands, flows, sources,
+  groups, providers, and applications that can be represented as blueprints.
+- `scripts/configure-authentik-settings` converges the small tenant-level
+  settings that Authentik cannot blueprint.
+- Each application repo owns its OIDC implementation, local sessions, and row
+  authorization. Secret values remain outside git.
+
+Gap: Authentik's database contains runtime users, group membership, and account
+state. That live data is not git configuration and must be protected with
+database backups and operational validation.
+
 ## Infrastructure
 
 Infrastructure is split between host manifests and service definitions.

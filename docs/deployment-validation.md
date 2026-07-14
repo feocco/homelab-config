@@ -202,6 +202,16 @@ Runtime config:
   among services enabled on the same host.
 - `scripts/homelab-deploy --host <host> <service> --dry-run` must pass.
 
+Reachability class:
+
+- Owner-private routes use the normal `*.home.feocco.com` pattern and the host
+  Tailnet address for Joe's off-LAN access.
+- Friend-private routes use `route_tailscale_service` and a distinct named
+  Tailscale Service. This is the only accepted friend-sharing pattern.
+- Intentionally public routes use the Cloudflare Tunnel/Access split-horizon
+  pattern. They are a separate exposure decision, not an alternative way to
+  share a private service with friends.
+
 Tailnet:
 
 - `tailnet: true` requires an entry in `hosts/<host>/tailscale-serve.yaml` with
@@ -252,6 +262,21 @@ Split-horizon proof:
   Cloudflare path, not the private LAN address.
 - Public Access: forcing the public Cloudflare IP with `curl --resolve` returns
   the Cloudflare Access login or redirect for protected services.
+
+Friend-service proof:
+
+- The LAN resolver returns the Mac mini LAN address, while `dig @1.1.1.1
+  <hostname> A` returns the service's recorded TailVIP.
+- Raw TCP 443 forwarding reaches the intended Caddy virtual host with its
+  normal certificate and application authentication; the service does not
+  expose a direct application port to friends.
+- A designated friend identity can reach the named Authentik and application
+  services on TCP 443 but cannot establish a connection to at least one
+  unrelated Caddy service.
+- The application still proves unauthenticated, member, and administrator
+  behavior independently of the Tailscale grant.
+- Any replaced legacy direct-port mapping is absent from
+  `hosts/<host>/tailscale-serve.yaml` before friend access is approved.
 
 Monitoring/SRE:
 

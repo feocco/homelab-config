@@ -29,6 +29,14 @@
   matching `hosts/<host>/tailscale-serve.yaml` `named_services` entry with its
   actual TailVIP. Keep raw TCP 443 pointed at Caddy; never reintroduce a direct
   app-port friend path that bypasses TLS SNI or application authentication.
+- Homelab identity architecture lives in `docs/authentication.md` and
+  `docs/adr/0001-unified-homelab-identity.md`; Authentik operations live in
+  `services/authentik/README.md`. Use the repo-local
+  `homelab-authentik-app-integration` skill when adding OIDC to an application.
+- Authentik blueprints are durable provider configuration. If a setting cannot
+  be blueprint-managed, add a checked-in apply/check script like
+  `scripts/configure-authentik-settings`; do not leave unexplained UI-only
+  identity changes.
 - When a service should be reachable from the public internet without
   Tailscale, use the Mealie-style split-horizon pattern only for that service:
   keep the Cloudflare Tunnel/Access public DNS path intact with
