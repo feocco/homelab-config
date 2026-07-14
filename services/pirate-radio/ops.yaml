@@ -3,7 +3,7 @@ kind: multi-container
 host: macmini
 source_repo: feocco/pirate-wires-reader
 images:
-  - ghcr.io/feocco/pirate-radio:latest
+  - ghcr.io/feocco/pirate-radio:sha-19f1351
   - postgres:17-alpine
 public_image: true
 containers:
