@@ -1,0 +1,40 @@
+#!/bin/bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+BLUEPRINT="${REPO_DIR}/services/authentik/blueprints/30-pirate-radio.yaml"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "${TMP_DIR}"' EXIT
+
+for expected in \
+  "slug: pirate-radio-invalidation" \
+  "authentik_stages_user_logout.userlogoutstage" \
+  "invalidation_flow: !KeyOf pirate-radio-invalidation-flow"; do
+  grep -Fq "${expected}" "${BLUEPRINT}" || {
+    echo "Missing Authentik logout configuration: ${expected}" >&2
+    exit 1
+  }
+done
+
+grep -Fq '"${DEPLOY_BASE_DIR}/scripts/configure-authentik-settings" --apply' \
+  "${REPO_DIR}/scripts/homelab-deploy" || {
+  echo "Authentik deploys must apply the tenant settings contract." >&2
+  exit 1
+}
+
+mkdir -p "${TMP_DIR}/bin"
+cat >"${TMP_DIR}/bin/docker" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >"${FAKE_DOCKER_ARGS}"
+EOF
+chmod +x "${TMP_DIR}/bin/docker"
+
+FAKE_DOCKER_ARGS="${TMP_DIR}/check.args" PATH="${TMP_DIR}/bin:${PATH}" \
+  "${REPO_DIR}/scripts/configure-authentik-settings" --check
+grep -Fq "assert t.default_user_change_username" "${TMP_DIR}/check.args"
+
+FAKE_DOCKER_ARGS="${TMP_DIR}/apply.args" PATH="${TMP_DIR}/bin:${PATH}" \
+  "${REPO_DIR}/scripts/configure-authentik-settings" --apply
+grep -Fq "t.default_user_change_username=True" "${TMP_DIR}/apply.args"
+
+echo "Authentik configuration checks passed."

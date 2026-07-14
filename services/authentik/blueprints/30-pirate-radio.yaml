@@ -5,6 +5,22 @@ context:
   client_id: !Env PIRATE_RADIO_OIDC_CLIENT_ID
   client_secret: !Env PIRATE_RADIO_OIDC_CLIENT_SECRET
 entries:
+  - id: pirate-radio-invalidation-flow
+    model: authentik_flows.flow
+    identifiers:
+      slug: pirate-radio-invalidation
+    attrs:
+      name: Pirate Radio logout
+      title: You've logged out of Pirate Radio.
+      designation: invalidation
+      authentication: none
+      denied_action: message_continue
+      layout: stacked
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf pirate-radio-invalidation-flow
+      stage: !Find [authentik_stages_user_logout.userlogoutstage, [name, default-invalidation-logout]]
+      order: 0
   - id: groups-scope
     model: authentik_providers_oauth2.scopemapping
     identifiers:
@@ -20,7 +36,7 @@ entries:
       name: Pirate Radio
     attrs:
       authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
-      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      invalidation_flow: !KeyOf pirate-radio-invalidation-flow
       client_type: confidential
       client_id: !Context client_id
       client_secret: !Context client_secret

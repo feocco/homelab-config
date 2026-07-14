@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+
+MODE="${1:---check}"
+CONTAINER="${AUTHENTIK_SERVER_CONTAINER:-authentik-server}"
+
+case "${MODE}" in
+  --check)
+    COMMAND="from authentik.tenants.models import Tenant; t=Tenant.objects.get(schema_name='public'); assert t.default_user_change_username, 'Authentik username editing is disabled'; print('Authentik username editing: enabled')"
+    ;;
+  --apply)
+    COMMAND="from authentik.tenants.models import Tenant; t=Tenant.objects.get(schema_name='public'); t.default_user_change_username=True; t.save(update_fields=['default_user_change_username']); print('Authentik username editing: enabled')"
+    ;;
+  *)
+    echo "Usage: configure-authentik-settings [--check|--apply]" >&2
+    exit 2
+    ;;
+esac
+
+docker exec "${CONTAINER}" ak shell -c "${COMMAND}"
