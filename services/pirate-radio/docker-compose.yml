@@ -12,6 +12,8 @@ services:
       PIRATE_RADIO_OIDC_CLIENT_SECRET: ${PIRATE_RADIO_OIDC_CLIENT_SECRET}
     ports:
       - "${HOST_BIND_ADDR:-127.0.0.1}:${SERVICE_PORT:-8103}:${SERVICE_PORT:-8103}"
+    extra_hosts:
+      - "auth.home.feocco.com:host-gateway"
     volumes:
       - ./data:/data
     depends_on:

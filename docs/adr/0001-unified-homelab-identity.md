@@ -37,6 +37,10 @@ raw TCP 443 from each service to Caddy, preserving TLS SNI and the existing
 `home.feocco.com` virtual-host pattern. Friends receive no node-wide Mac mini
 grant and cannot reach other Caddy hostnames.
 
+Pirate Radio resolves `auth.home.feocco.com` to Docker's `host-gateway` on the
+Mac mini. OIDC discovery still uses the canonical HTTPS issuer through Caddy,
+while service startup no longer depends on LAN DNS cache state inside Docker.
+
 ## Boundaries
 
 - Authentik, Google, and Tailscale are reusable platform components.
