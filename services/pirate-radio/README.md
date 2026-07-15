@@ -42,6 +42,12 @@ The public route uses Authentik issuer
 same Caddy virtual host through `svc:pirate-radio`; no direct Tailscale Serve
 port is retained.
 
+Production application sessions are fixed and non-rolling for 90 days
+(`PIRATE_RADIO_SESSION_HOURS=2160`). Existing sessions retain the expiry set at
+login, so users must complete a fresh login to receive the longer lifetime.
+Authentik identity and group snapshots refresh on login; revoke Tailnet access
+and application sessions when offboarding a user before the 90-day expiry.
+
 `PWR_HEADLESS=true` is required for the containerized Playwright extraction
 path. `PWR_PROFILE_DIR=/data/playwright-profile` keeps the logged-in browser
 profile in the persistent runtime volume; that directory contains Pirate Wires
