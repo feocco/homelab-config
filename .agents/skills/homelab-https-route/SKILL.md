@@ -150,13 +150,17 @@ service advertisement.
 
 Treat a hostname rename as an identity and routing migration:
 
-1. Update `route_hostname`, `live_base_url`, the application's configured
-   public URL, and every Authentik launch/callback URL.
-2. Add the old hostname to `services/caddy/retired-routes.yaml` with a 308
-   redirect to the new origin when compatibility is desired.
-3. Generate Caddy, dry-run both DNS providers, then run credentialed DNS check
+1. Add the new Authentik callback while retaining the old callback during the
+   cutover. Update the application launch URL with the active route.
+2. Update `route_hostname`, `live_base_url`, and the application's configured
+   public URL.
+3. Add the old hostname to `services/caddy/retired-routes.yaml` with a 308
+   redirect to the new origin when compatibility is desired. For off-LAN
+   redirects, retain its Cloudflare DNS-only record on the same TailVIP; the
+   sync tool upserts desired records and does not delete the old record.
+4. Generate Caddy, dry-run both DNS providers, then run credentialed DNS check
    and apply through `dispatch-route-dns`.
-4. Deploy Authentik/Caddy and the application in a coordinated canary, validate
+5. Deploy Authentik/Caddy and the application in a coordinated canary, validate
    the new callback and protected media, then return durable production to
    `main`.
 
