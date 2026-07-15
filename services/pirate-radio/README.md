@@ -26,6 +26,7 @@ Non-secret values live in `.env.config`. Required secrets are managed through
 GitHub Actions secrets and rendered into the ignored runtime `.env`:
 
 - `OPENAI_API_KEY`
+- `X_API_BEARER_TOKEN` for official X Article lookup
 - `HA_URL`
 - `HA_LONG_LIVED_TOKEN`
 - `HOMELAB_FUNCTIONS_TOKEN`
