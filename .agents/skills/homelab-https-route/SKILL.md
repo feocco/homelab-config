@@ -88,6 +88,20 @@ hostname that UniFi resolves to the Mac mini bind address.
 ./scripts/sync-unifi-dns --host macmini --apply
 ```
 
+For credentialed provider operations, use the repository workflow instead of
+asking Joe to enter individual records in a provider UI:
+
+```bash
+./scripts/dispatch-route-dns --mode check --watch
+./scripts/dispatch-route-dns --mode apply --watch
+```
+
+The UniFi path requires a one-time `UNIFI_API_KEY` GitHub Actions secret. With
+one accessible console, the script discovers it and uses the official cloud
+connector. Set the optional `UNIFI_CONSOLE_ID` repository variable only when
+the key can access multiple consoles. Keep `UNIFI_BASE_URL` and pinned local
+TLS as the fallback, not the default agent path.
+
 4. For private routes, check or apply public DNS-only Tailnet records:
 
 ```bash
@@ -131,6 +145,24 @@ LAN resolver returns the Mac mini LAN address, raw TLS reaches the intended
 Caddy virtual host, and a friend identity cannot connect to an unrelated Caddy
 service. Run `./scripts/apply-tailscale-serve --dry-run` before applying the
 service advertisement.
+
+## Rename A Hostname
+
+Treat a hostname rename as an identity and routing migration:
+
+1. Update `route_hostname`, `live_base_url`, the application's configured
+   public URL, and every Authentik launch/callback URL.
+2. Add the old hostname to `services/caddy/retired-routes.yaml` with a 308
+   redirect to the new origin when compatibility is desired.
+3. Generate Caddy, dry-run both DNS providers, then run credentialed DNS check
+   and apply through `dispatch-route-dns`.
+4. Deploy Authentik/Caddy and the application in a coordinated canary, validate
+   the new callback and protected media, then return durable production to
+   `main`.
+
+Host-only application cookies do not move to the new hostname, so expect one
+normal sign-in after the cutover. A Tailscale Service identity and TailVIP can
+stay unchanged when only its DNS hostname changes.
 
 ## Rollback
 

@@ -13,8 +13,12 @@ import ssl
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
+
+
+CLOUD_API_BASE = "https://api.ui.com"
 
 
 def clean_scalar(value: str) -> Any:
@@ -175,13 +179,37 @@ def request_json(method: str, url: str, payload: dict[str, Any] | None = None) -
     return json.loads(body) if body else {}
 
 
+def discover_console_id() -> str:
+    configured = os.environ.get("UNIFI_CONSOLE_ID", "")
+    if configured:
+        return configured
+    fixture = os.environ.get("UNIFI_HOSTS_FIXTURE", "")
+    if fixture:
+        payload = json.loads(pathlib.Path(fixture).read_text())
+    else:
+        payload = request_json("GET", f"{CLOUD_API_BASE}/v1/hosts?pageSize=100")
+    hosts = payload.get("data") or payload.get("hosts") or payload if isinstance(payload, dict) else payload
+    if isinstance(hosts, dict):
+        hosts = hosts.get("data") or hosts.get("hosts") or []
+    hosts = list(hosts or [])
+    if not hosts:
+        raise SystemExit("Could not discover a UniFi console; set UNIFI_CONSOLE_ID or UNIFI_BASE_URL")
+    if len(hosts) > 1:
+        raise SystemExit("Multiple UniFi consoles are available; set UNIFI_CONSOLE_ID")
+    console_id = str(hosts[0].get("id") or hosts[0].get("hostId") or "")
+    if not console_id:
+        raise SystemExit("Discovered UniFi console is missing an id; set UNIFI_CONSOLE_ID")
+    return console_id
+
+
 def base_url() -> str:
     value = os.environ.get("UNIFI_BASE_URL", "").rstrip("/")
-    if not value:
-        raise SystemExit("UNIFI_BASE_URL is required unless --dry-run is used")
-    if value.endswith("/proxy/network/integration/v1"):
-        return value
-    return value + "/proxy/network/integration/v1"
+    if value:
+        if value.endswith("/proxy/network/integration/v1"):
+            return value
+        return value + "/proxy/network/integration/v1"
+    console_id = urllib.parse.quote(discover_console_id(), safe="")
+    return f"{CLOUD_API_BASE}/v1/connector/consoles/{console_id}/proxy/network/integration/v1"
 
 
 def site_id(api_base: str) -> str:

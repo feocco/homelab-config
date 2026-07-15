@@ -1,0 +1,93 @@
+name: Route DNS
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: Host whose route manifests define desired DNS
+        required: true
+        type: choice
+        default: macmini
+        options:
+          - macmini
+      provider:
+        description: DNS provider to check or apply
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - unifi
+          - cloudflare
+      mode:
+        description: Check desired state or apply and verify it
+        required: true
+        type: choice
+        default: check
+        options:
+          - check
+          - apply
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: ${{ inputs.mode }} ${{ inputs.provider }} DNS for ${{ inputs.host }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check or apply route DNS
+        env:
+          HOST_INPUT: ${{ inputs.host }}
+          MODE_INPUT: ${{ inputs.mode }}
+          PROVIDER_INPUT: ${{ inputs.provider }}
+          UNIFI_API_KEY: ${{ secrets.UNIFI_API_KEY }}
+          UNIFI_CONSOLE_ID: ${{ vars.UNIFI_CONSOLE_ID }}
+          CADDY__CLOUDFLARE_API_TOKEN: ${{ secrets.CADDY__CLOUDFLARE_API_TOKEN }}
+        run: |
+          sync_provider() {
+            local provider="$1"
+            local script
+            case "${provider}" in
+              unifi)
+                if [ -z "${UNIFI_API_KEY}" ]; then
+                  echo "UNIFI_API_KEY repository secret is required." >&2
+                  exit 2
+                fi
+                script="./scripts/sync-unifi-dns"
+                ;;
+              cloudflare)
+                if [ -z "${CADDY__CLOUDFLARE_API_TOKEN}" ]; then
+                  echo "CADDY__CLOUDFLARE_API_TOKEN repository secret is required." >&2
+                  exit 2
+                fi
+                script="./scripts/sync-cloudflare-dns"
+                ;;
+              *)
+                echo "Unsupported provider: ${provider}" >&2
+                exit 2
+                ;;
+            esac
+
+            if [ "${MODE_INPUT}" = "apply" ]; then
+              "${script}" --host "${HOST_INPUT}" --apply
+            fi
+            "${script}" --host "${HOST_INPUT}" --check
+          }
+
+          case "${PROVIDER_INPUT}" in
+            all)
+              sync_provider unifi
+              sync_provider cloudflare
+              ;;
+            unifi|cloudflare)
+              sync_provider "${PROVIDER_INPUT}"
+              ;;
+            *)
+              echo "Unsupported provider: ${PROVIDER_INPUT}" >&2
+              exit 2
+              ;;
+          esac

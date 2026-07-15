@@ -25,6 +25,9 @@
   files. Use `./scripts/generate-caddy-config`, `./scripts/sync-unifi-dns`,
   and `./scripts/sync-cloudflare-dns`; do not hand-edit or commit
   `services/caddy/Caddyfile`.
+- Use `./scripts/dispatch-route-dns --mode check|apply --watch` for credentialed
+  UniFi and Cloudflare DNS operations. Do not ask the user to enter individual
+  route records in either provider when the workflow is available.
 - Friend-facing HTTPS routes use `route_tailscale_service: svc:<name>` and a
   matching `hosts/<host>/tailscale-serve.yaml` `named_services` entry with its
   actual TailVIP. Keep raw TCP 443 pointed at Caddy; never reintroduce a direct

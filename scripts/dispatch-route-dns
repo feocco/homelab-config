@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HOST="macmini"
+MODE="check"
+PROVIDER="all"
+REF="main"
+PRINT="false"
+WATCH="false"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  dispatch-route-dns [--host macmini] [--provider all|unifi|cloudflare]
+                     [--mode check|apply] [--ref REF] [--print] [--watch]
+
+Examples:
+  dispatch-route-dns --mode check --watch
+  dispatch-route-dns --provider unifi --mode apply --watch
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host)
+      HOST="${2:?--host requires a value}"
+      shift 2
+      ;;
+    --mode)
+      MODE="${2:?--mode requires a value}"
+      shift 2
+      ;;
+    --provider)
+      PROVIDER="${2:?--provider requires a value}"
+      shift 2
+      ;;
+    --ref)
+      REF="${2:?--ref requires a value}"
+      shift 2
+      ;;
+    --print)
+      PRINT="true"
+      shift
+      ;;
+    --watch)
+      WATCH="true"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+[[ "${HOST}" == "macmini" ]] || { echo "Unsupported host: ${HOST}" >&2; exit 2; }
+[[ "${MODE}" == "check" || "${MODE}" == "apply" ]] || { echo "Unsupported mode: ${MODE}" >&2; exit 2; }
+[[ "${PROVIDER}" == "all" || "${PROVIDER}" == "unifi" || "${PROVIDER}" == "cloudflare" ]] || {
+  echo "Unsupported provider: ${PROVIDER}" >&2
+  exit 2
+}
+
+cmd=(
+  gh workflow run route-dns.yml
+  --repo feocco/homelab-config
+  --ref "${REF}"
+  -f "host=${HOST}"
+  -f "provider=${PROVIDER}"
+  -f "mode=${MODE}"
+)
+
+printf_command() {
+  printf '%q ' "${cmd[@]}"
+  printf '\n'
+}
+
+if [[ "${PRINT}" == "true" ]]; then
+  printf_command
+  exit 0
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "gh is required to trigger the Route DNS workflow." >&2
+  exit 2
+fi
+
+"${cmd[@]}"
+
+if [[ "${WATCH}" == "true" ]]; then
+  sleep 2
+  run_id="$(gh run list \
+    --repo feocco/homelab-config \
+    --workflow route-dns.yml \
+    --branch "${REF}" \
+    --limit 1 \
+    --json databaseId \
+    --jq '.[0].databaseId')"
+  if [[ -z "${run_id}" || "${run_id}" == "null" ]]; then
+    echo "Could not find the Route DNS workflow run to watch." >&2
+    exit 1
+  fi
+  gh run watch "${run_id}" --repo feocco/homelab-config --exit-status
+fi

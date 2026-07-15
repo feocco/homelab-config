@@ -94,6 +94,30 @@ UNIFI_DNS_RECORDS_FIXTURE="${dns_fixture}" \
   "${REPO_DIR}/scripts/sync-unifi-dns" --host macmini --check >/dev/null
 rm -f "${dns_fixture}"
 
+unifi_hosts_fixture="$(mktemp)"
+cat > "${unifi_hosts_fixture}" <<'JSON'
+{"data":[{"id":"console-test"}]}
+JSON
+unifi_cloud_base="$(
+  UNIFI_API_KEY=test-api-key \
+  UNIFI_HOSTS_FIXTURE="${unifi_hosts_fixture}" \
+  python3 - "${REPO_DIR}/scripts/sync-unifi-dns" <<'PY'
+import pathlib
+import runpy
+import sys
+
+path = pathlib.Path(sys.argv[1])
+module = runpy.run_path(str(path))
+print(module["base_url"]())
+PY
+)"
+if [[ "${unifi_cloud_base}" != "https://api.ui.com/v1/connector/consoles/console-test/proxy/network/integration/v1" ]]; then
+  echo "UniFi DNS should discover the official cloud connector base URL" >&2
+  echo "${unifi_cloud_base}" >&2
+  exit 1
+fi
+rm -f "${unifi_hosts_fixture}"
+
 cloudflare_dry_run="$("${REPO_DIR}/scripts/sync-cloudflare-dns" --host macmini --dry-run)"
 if [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A home.feocco.com -> 100.81.237.11 (DNS only)"* ]]; then
   echo "Cloudflare DNS dry-run should show Homepage A record upsert" >&2
@@ -115,21 +139,21 @@ cloudflare_fixture="$(mktemp)"
 PYTHONPATH="${REPO_DIR}/scripts/lib" python3 - "${REPO_DIR}" "${cloudflare_fixture}" <<'PY'
 import json
 import pathlib
+import runpy
 import sys
-
-from homelab_catalog import route_entries
 
 base = pathlib.Path(sys.argv[1])
 fixture = pathlib.Path(sys.argv[2])
+sync = runpy.run_path(str(base / "scripts" / "sync-cloudflare-dns"))
 records = [
     {
-        "id": f"record-{entry['service']}",
+        "id": f"record-{record['service']}",
         "type": "A",
-        "name": entry["hostname"],
-        "content": "100.81.237.11",
+        "name": record["name"],
+        "content": record["value"],
         "proxied": False,
     }
-    for entry in route_entries(base, "macmini")
+    for record in sync["desired_records"](base, "macmini")
 ]
 fixture.write_text(json.dumps({"result": records}, indent=2))
 PY
@@ -138,6 +162,18 @@ CLOUDFLARE_ZONE_ID=test-zone \
 CLOUDFLARE_DNS_RECORDS_FIXTURE="${cloudflare_fixture}" \
   "${REPO_DIR}/scripts/sync-cloudflare-dns" --host macmini --check >/dev/null
 rm -f "${cloudflare_fixture}"
+
+route_dns_dispatch="$("${REPO_DIR}/scripts/dispatch-route-dns" --provider unifi --mode apply --print)"
+if [[ "${route_dns_dispatch}" != *"gh workflow run route-dns.yml"* ]] || \
+   [[ "${route_dns_dispatch}" != *"provider=unifi"* ]] || \
+   [[ "${route_dns_dispatch}" != *"mode=apply"* ]]; then
+  echo "Route DNS dispatcher should target the credentialed workflow" >&2
+  echo "${route_dns_dispatch}" >&2
+  exit 1
+fi
+test -f "${REPO_DIR}/.github/workflows/route-dns.yml"
+assert_contains "${REPO_DIR}/.github/workflows/route-dns.yml" 'UNIFI_API_KEY: ${{ secrets.UNIFI_API_KEY }}'
+assert_contains "${REPO_DIR}/.github/workflows/route-dns.yml" 'CADDY__CLOUDFLARE_API_TOKEN: ${{ secrets.CADDY__CLOUDFLARE_API_TOKEN }}'
 
 deploy_dry_run="$("${REPO_DIR}/scripts/homelab-deploy" --host macmini caddy --dry-run --deploy-base-dir "${REPO_DIR}")"
 if [[ "${deploy_dry_run}" != *"Would generate Caddy config"* ]]; then

@@ -230,10 +230,13 @@ Route:
 
 - `route_hostname` must be a public DNS name, not `.home.arpa`, so Caddy can
   use public ACME certificates.
-- `route_dns: unifi` routes LAN clients by local DNS. The `sync-unifi-dns`
-  script uses `UNIFI_BASE_URL`, `UNIFI_API_KEY`, optional `UNIFI_SITE_ID`, and
-  either optional `UNIFI_CERT_SHA256`/`UNIFI_TLS_SERVER_NAME` for pinned TLS or
-  optional `UNIFI_SKIP_TLS_VERIFY` for temporary bootstrap.
+- `route_dns: unifi` routes LAN clients by local DNS. The preferred
+  `sync-unifi-dns` path uses `UNIFI_API_KEY` to discover the console and call
+  the Network API through the official UniFi cloud connector. Set optional
+  `UNIFI_CONSOLE_ID` when the key can access multiple consoles. Local fallback
+  uses `UNIFI_BASE_URL`, optional `UNIFI_SITE_ID`, and either optional
+  `UNIFI_CERT_SHA256`/`UNIFI_TLS_SERVER_NAME` for pinned TLS or optional
+  `UNIFI_SKIP_TLS_VERIFY` for temporary bootstrap.
 - `scripts/sync-cloudflare-dns` routes off-LAN Tailnet clients by public
   DNS-only A records. Routes with `route_tailscale_service` use that service's
   TailVIP; other routes use `host.tailnet_addr`. It uses `CLOUDFLARE_API_TOKEN` or
@@ -251,6 +254,10 @@ Route:
 - Caddy gets certificates with Cloudflare DNS-01. `CLOUDFLARE_API_TOKEN` is a
   Caddy service secret and should be scoped to DNS edit/zone read for
   `feocco.com`.
+- Credentialed provider checks and mutations run through
+  `scripts/dispatch-route-dns`, which dispatches `.github/workflows/route-dns.yml`.
+  Review local provider dry-runs first, use `--mode check`, then use
+  `--mode apply`; the workflow verifies state again after every apply.
 
 Split-horizon proof:
 

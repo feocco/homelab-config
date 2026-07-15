@@ -96,14 +96,29 @@ for routed services. These records point off-LAN Tailnet clients to
 ./scripts/sync-cloudflare-dns --host macmini --apply
 ```
 
+The normal credentialed path runs both tools in GitHub Actions:
+
+```bash
+./scripts/dispatch-route-dns --mode check --watch
+./scripts/dispatch-route-dns --mode apply --watch
+```
+
+The apply workflow immediately checks the resulting provider state. Do not
+hand-create individual DNS records while this workflow is available.
+
 Required UniFi environment for `--check` and `--apply`:
 
-- `UNIFI_BASE_URL`
 - `UNIFI_API_KEY`
-- optional `UNIFI_SITE_ID`
-- optional `UNIFI_SKIP_TLS_VERIFY=true` for controllers with untrusted local TLS
-- optional `UNIFI_CERT_SHA256` and `UNIFI_TLS_SERVER_NAME` to pin the UniFi
-  controller certificate instead of disabling TLS verification
+- optional `UNIFI_CONSOLE_ID` when the API key can access more than one console
+
+With no `UNIFI_BASE_URL`, the script discovers the console through the official
+UniFi cloud API and proxies Network API calls through `api.ui.com`. The Route
+DNS workflow stores `UNIFI_API_KEY` as a GitHub Actions secret and optionally
+reads `UNIFI_CONSOLE_ID` from a repository variable.
+
+For local-controller fallback, set `UNIFI_BASE_URL`, optional `UNIFI_SITE_ID`,
+and either `UNIFI_CERT_SHA256`/`UNIFI_TLS_SERVER_NAME` for pinned TLS or
+temporary `UNIFI_SKIP_TLS_VERIFY=true` during bootstrap.
 
 Required Cloudflare environment for `--check` and `--apply`:
 
