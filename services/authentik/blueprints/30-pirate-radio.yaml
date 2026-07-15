@@ -46,6 +46,9 @@ entries:
       issuer_mode: per_provider
       redirect_uris:
         - matching_mode: strict
+          url: https://reader.home.feocco.com/auth/callback
+          redirect_uri_type: authorization
+        - matching_mode: strict
           url: https://pirate-radio.home.feocco.com/auth/callback
           redirect_uri_type: authorization
       property_mappings:
@@ -61,7 +64,7 @@ entries:
     attrs:
       name: Pirate Radio
       provider: !KeyOf pirate-radio-provider
-      meta_launch_url: https://pirate-radio.home.feocco.com
+      meta_launch_url: https://reader.home.feocco.com
   - model: authentik_policies.policybinding
     identifiers:
       target: !KeyOf pirate-radio-application

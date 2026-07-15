@@ -258,6 +258,10 @@ Route:
   `scripts/dispatch-route-dns`, which dispatches `.github/workflows/route-dns.yml`.
   Review local provider dry-runs first, use `--mode check`, then use
   `--mode apply`; the workflow verifies state again after every apply.
+- Retired friend-private hostnames that must redirect off-LAN declare
+  `tailscale_service: svc:<service>` in `services/caddy/retired-routes.yaml`.
+  UniFi keeps the retired name on the LAN address and Cloudflare keeps it on
+  the named service TailVIP while Caddy serves the 308 redirect.
 
 Split-horizon proof:
 

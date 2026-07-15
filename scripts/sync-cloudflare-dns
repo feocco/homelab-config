@@ -94,6 +94,29 @@ def parse_ops(path: pathlib.Path) -> dict[str, Any]:
     return data
 
 
+def parse_retired_routes(path: pathlib.Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    routes: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        match = re.match(r"^  - hostname:\s*(.+)\s*$", line)
+        if match:
+            current = {"hostname": str(clean_scalar(match.group(1)))}
+            routes.append(current)
+            continue
+        if current is None:
+            continue
+        match = re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.+)\s*$", line)
+        if match:
+            key, value = match.groups()
+            current[key] = str(clean_scalar(value))
+    return [route for route in routes if route.get("hostname") and route.get("to")]
+
+
 def parse_named_tailscale_services(path: pathlib.Path) -> dict[str, str]:
     services: dict[str, str] = {}
     section = ""
@@ -143,6 +166,7 @@ def desired_records(base_dir: pathlib.Path, host_name: str) -> list[dict[str, st
         raise SystemExit(f"hosts/{host_name}/services.yaml is missing host.tailnet_addr")
     named_services = parse_named_tailscale_services(base_dir / "hosts" / host_name / "tailscale-serve.yaml")
     records: list[dict[str, str]] = []
+    active_hostnames: set[str] = set()
     for service, entry in sorted(services.items()):
         if entry.get("enabled") is False:
             continue
@@ -150,6 +174,7 @@ def desired_records(base_dir: pathlib.Path, host_name: str) -> list[dict[str, st
         hostname = str(manifest.get("route_hostname") or "")
         if not hostname or manifest.get("route_https") is not True:
             continue
+        active_hostnames.add(hostname)
         if str(manifest.get("route_public_dns") or "cloudflare-dns-only") == "cloudflare-tunnel":
             continue
         tailscale_service = str(manifest.get("route_tailscale_service") or "")
@@ -160,6 +185,22 @@ def desired_records(base_dir: pathlib.Path, host_name: str) -> list[dict[str, st
         else:
             value = tailnet_addr
         records.append({"service": service, "type": "A", "name": hostname, "value": value})
+    if services.get("caddy", {}).get("enabled") is not False:
+        for route in parse_retired_routes(base_dir / "services" / "caddy" / "retired-routes.yaml"):
+            hostname = route["hostname"]
+            tailscale_service = route.get("tailscale_service", "")
+            if hostname in active_hostnames or not tailscale_service:
+                continue
+            if tailscale_service not in named_services:
+                raise SystemExit(f"Retired route {hostname} links unknown or disabled Tailscale Service {tailscale_service}")
+            records.append(
+                {
+                    "service": "caddy-retired-route",
+                    "type": "A",
+                    "name": hostname,
+                    "value": named_services[tailscale_service],
+                }
+            )
     return records
 
 

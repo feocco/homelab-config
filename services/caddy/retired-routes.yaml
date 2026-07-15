@@ -3,3 +3,6 @@ redirects:
     to: https://home.feocco.com
   - hostname: mealie.home.feocco.com
     to: https://mealie.feocco.com
+  - hostname: pirate-radio.home.feocco.com
+    to: https://reader.home.feocco.com
+    tailscale_service: svc:pirate-radio

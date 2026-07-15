@@ -10,7 +10,7 @@ TTS, and serves the generated audio library on the Tailnet.
 - Host: `macmini`
 - Local bind: `127.0.0.1:8103`
 - Container bind: `0.0.0.0:8103`
-- LAN HTTPS URL: `https://pirate-radio.home.feocco.com/`
+- LAN HTTPS URL: `https://reader.home.feocco.com/`
 - Health: `/health`
 - Library/state/Postgres volume: `services/pirate-radio/data`
 

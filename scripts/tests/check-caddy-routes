@@ -14,6 +14,10 @@ assert_contains "${caddy_tmp}/Caddyfile" 'docs.home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:8112'
 assert_contains "${caddy_tmp}/Caddyfile" 'streaming-sessions.home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:8110'
+assert_contains "${caddy_tmp}/Caddyfile" 'reader.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:8103'
+assert_contains "${caddy_tmp}/Caddyfile" 'pirate-radio.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'redir https://reader.home.feocco.com{uri} 308'
 assert_contains "${caddy_tmp}/Caddyfile" 'mealie.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:9925'
 assert_contains "${caddy_tmp}/Caddyfile" 'mealie.home.feocco.com {'
@@ -51,6 +55,12 @@ if [[ "${dns_dry_run}" != *"Would upsert CNAME mealie.feocco.com -> mealie.home.
 fi
 if [[ "${dns_dry_run}" != *"Would upsert A mealie.home.feocco.com -> 192.168.1.43"* ]]; then
   echo "UniFi DNS dry-run should show retired Mealie hostname A record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+if [[ "${dns_dry_run}" != *"Would upsert A reader.home.feocco.com -> 192.168.1.43"* ]] || \
+   [[ "${dns_dry_run}" != *"Would upsert A pirate-radio.home.feocco.com -> 192.168.1.43"* ]]; then
+  echo "UniFi DNS dry-run should include the active Reader and retired Pirate Radio hostnames" >&2
   echo "${dns_dry_run}" >&2
   exit 1
 fi
@@ -131,6 +141,12 @@ if [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A docs.home.feocco.co
 fi
 if [[ "${cloudflare_dry_run}" == *"mealie.feocco.com"* ]]; then
   echo "Cloudflare DNS dry-run should skip tunnel-managed Mealie public DNS" >&2
+  echo "${cloudflare_dry_run}" >&2
+  exit 1
+fi
+if [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A reader.home.feocco.com -> 100.120.139.67 (DNS only)"* ]] || \
+   [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A pirate-radio.home.feocco.com -> 100.120.139.67 (DNS only)"* ]]; then
+  echo "Cloudflare DNS dry-run should keep active and retired Pirate Radio hostnames on the service TailVIP" >&2
   echo "${cloudflare_dry_run}" >&2
   exit 1
 fi

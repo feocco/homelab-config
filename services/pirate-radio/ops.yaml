@@ -16,11 +16,11 @@ docs_path: /docs
 openapi_path: /openapi.json
 docs_auth_required: true
 api_framework: node-http-server
-live_base_url: https://pirate-radio.home.feocco.com
+live_base_url: https://reader.home.feocco.com
 tailnet: false
 monitoring: true
 sre: true
-route_hostname: pirate-radio.home.feocco.com
+route_hostname: reader.home.feocco.com
 route_target_port: 8103
 route_https: true
 route_dns: unifi
