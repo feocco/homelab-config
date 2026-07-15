@@ -168,6 +168,11 @@ Host-only application cookies do not move to the new hostname, so expect one
 normal sign-in after the cutover. A Tailscale Service identity and TailVIP can
 stay unchanged when only its DNS hostname changes.
 
+A client may retain a negative DNS lookup made before the new record existed.
+When that happens, verify UniFi and public DNS directly before diagnosing the
+provider sync, allow the client cache to expire, and still require strict live
+validation from the target host before completing the rollout.
+
 ## Rollback
 
 Rollback source truth with Git: revert the route commit or redeploy the prior
