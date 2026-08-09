@@ -77,7 +77,7 @@ registration token response:
 
 ```bash
 ssh feocco@nasfeo 'set -eu
-image=ghcr.io/myoung34/docker-github-actions-runner:2.334.0
+image=ghcr.io/myoung34/docker-github-actions-runner:2.336.0
 app_token=$(docker run --rm \
   --env-file /volume1/docker/homelab-secrets/github-runner.env \
   --entrypoint bash \

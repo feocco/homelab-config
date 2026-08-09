@@ -1,6 +1,6 @@
 services:
   github-runner-homelab:
-    image: ghcr.io/myoung34/docker-github-actions-runner:2.334.0
+    image: ghcr.io/myoung34/docker-github-actions-runner:2.336.0
     container_name: github-runner-homelab
     restart: unless-stopped
     env_file:
