@@ -11,6 +11,8 @@ SERVICE=""
 DRY_RUN="false"
 FORCE_RECREATE="false"
 ALLOW_DIRTY="false"
+ALLOW_FOREIGN_HOST="false"
+SKIP_CONFIG_VALIDATE="false"
 CANARY="false"
 
 source "${SCRIPT_DIR}/lib-service-secrets"
@@ -23,6 +25,13 @@ Usage:
   homelab-deploy [--host HOST] --changed [--dry-run] [--base-dir DIR] [--deploy-base-dir DIR]
   homelab-deploy [--host HOST] <service> [--dry-run] [--force-recreate] [--canary] [--allow-dirty] [--deploy-base-dir DIR]
   homelab-deploy [--host HOST] --service <service> [--dry-run] [--force-recreate] [--canary] [--allow-dirty] [--deploy-base-dir DIR]
+
+Guard flags (each skips exactly one guard):
+  --allow-dirty          deploy from a dirty worktree (emergency runtime edit)
+  --canary               deploy from a non-main branch as a temporary canary
+  --allow-foreign-host   deploy to macmini from a machine that is not the
+                         production host (never production DNS/HTTPS proof)
+  --skip-config-validate skip pre-deploy config validation (emergency only)
 EOF
 }
 
@@ -59,6 +68,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --allow-dirty)
       ALLOW_DIRTY="true"
+      shift
+      ;;
+    --allow-foreign-host)
+      ALLOW_FOREIGN_HOST="true"
+      shift
+      ;;
+    --skip-config-validate)
+      SKIP_CONFIG_VALIDATE="true"
       shift
       ;;
     --canary)
@@ -178,7 +195,7 @@ local_has_ip() {
 }
 
 require_host_identity() {
-  if [[ "${HOST}" != "macmini" || "${ALLOW_DIRTY}" == "true" ]]; then
+  if [[ "${HOST}" != "macmini" || "${ALLOW_FOREIGN_HOST}" == "true" ]]; then
     return 0
   fi
 
@@ -192,8 +209,8 @@ require_host_identity() {
 Refusing macmini deploy from user '${actual_user}'.
 
 hosts/macmini/services.yaml requires deploy_user: ${expected_user}. Run this
-deploy on the Maclab production host, or use --allow-dirty only for an explicit
-emergency runtime edit.
+deploy on the Maclab production host, or use --allow-foreign-host only for an
+explicit off-host emergency (never as production DNS or HTTPS proof).
 EOF
     exit 3
   fi
@@ -202,8 +219,9 @@ EOF
     cat >&2 <<EOF
 Refusing macmini deploy because this machine does not have bind_addr ${expected_ip}.
 
-Run this deploy on the Maclab production host. Local canary deploys must not be
-used as production DNS or HTTPS proof.
+Run this deploy on the Maclab production host, or use --allow-foreign-host for
+an explicit off-host emergency. Local canary deploys must not be used as
+production DNS or HTTPS proof.
 EOF
     exit 3
   fi
@@ -229,15 +247,46 @@ EOF
   if [[ "${GIT_BRANCH}" != "main" ]]; then
     echo "Warning: deploying from non-main branch '${GIT_BRANCH}'." >&2
     echo "Branch deploys are temporary canaries until merged and redeployed from main." >&2
-    if [[ "${CANARY}" != "true" && "${ALLOW_DIRTY}" != "true" ]]; then
+    if [[ "${CANARY}" != "true" ]]; then
       cat >&2 <<EOF
 Refusing non-main deploy without --canary.
 
 Use --canary for a temporary branch deploy, or merge the change to main before
-deploying durable production config.
+deploying durable production config. --allow-dirty only skips the dirty
+worktree gate; it does not stand in for --canary.
 EOF
       exit 3
     fi
+  fi
+}
+
+run_config_validation() {
+  local service="$1"
+
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    return 0
+  fi
+
+  if [[ "${SKIP_CONFIG_VALIDATE}" == "true" ]]; then
+    echo "Skipping pre-deploy config validation (--skip-config-validate)." >&2
+    return 0
+  fi
+
+  local validator="${BASE_DIR}/scripts/validate-service-rollout"
+  if [[ ! -x "${validator}" ]] || ! command -v python3 >/dev/null 2>&1; then
+    echo "Warning: ${validator} or python3 unavailable; deploying without config proof." >&2
+    return 0
+  fi
+
+  echo "Validating ${service} config on ${HOST} before deploy"
+  if ! "${validator}" --service "${service}" --host "${HOST}" --check config --mode strict --base-dir "${BASE_DIR}"; then
+    cat >&2 <<EOF
+Config validation failed for ${service} on ${HOST}; refusing to deploy.
+
+Fix the manifest or runtime wiring, or rerun with --skip-config-validate only
+for an explicit emergency runtime edit.
+EOF
+    exit 3
   fi
 }
 
@@ -314,6 +363,29 @@ changed_files() {
   git -C "${BASE_DIR}" show --name-only --format= "${after}"
 }
 
+manifest_redeploy_patterns() {
+  local ops_file="$1"
+  [[ -f "${ops_file}" ]] || return 0
+  awk '
+    /^redeploy_on:[[:space:]]*$/ { in_list=1; next }
+    in_list && /^  - / { line=$0; sub(/^  - /, "", line); print line; next }
+    in_list { in_list=0 }
+  ' "${ops_file}"
+}
+
+matches_redeploy_patterns() {
+  local files="$1"
+  local ops_file="$2"
+  local pattern
+  while IFS= read -r pattern; do
+    [[ -n "${pattern}" ]] || continue
+    if echo "${files}" | grep -Eq "${pattern}"; then
+      return 0
+    fi
+  done < <(manifest_redeploy_patterns "${ops_file}")
+  return 1
+}
+
 changed_services() {
   local files service path host_config
   files="$(changed_files)"
@@ -324,10 +396,7 @@ changed_services() {
       echo "${files}" | grep -qx "service-secrets.yaml" ||
       echo "${files}" | grep -qx "${host_config}" ||
       echo "${files}" | grep -q "^${path}/" ||
-      { [[ "${service}" == "caddy" ]] && echo "${files}" | grep -Eq "^(scripts/generate-caddy-config|scripts/lib/homelab_catalog.py|services/[^/]+/ops.yaml)$"; } ||
-      { [[ "${service}" == "homepage" ]] && echo "${files}" | grep -Eq "^scripts/(generate-homepage-config|generate-service-catalog|lib/homelab_catalog.py)$"; } ||
-      { [[ "${service}" == "homelab-functions" ]] && echo "${files}" | grep -Eq "^scripts/(generate-smoke-signal-config|generate-service-catalog|lib/homelab_catalog.py)$|^services/[^/]+/ops.yaml$|^hosts/[^/]+/services.yaml$"; } ||
-      { [[ "${service}" == "homelab-docs" ]] && echo "${files}" | grep -Eq "^(mkdocs.yml|docs/|services/[^/]+/README.md|services/[^/]+/ops.yaml|hosts/[^/]+/services.yaml|scripts/(build-docs-site|generate-docs-service-index|generate-service-catalog|lib/homelab_catalog.py))"; }; then
+      matches_redeploy_patterns "${files}" "${BASE_DIR}/${path}/ops.yaml"; then
       echo "${service}"
     fi
   done < <(service_entries)
@@ -413,10 +482,47 @@ prepare_service() {
     --output "${service_dir}/config"
 }
 
+joe_owned_compose_services() {
+  local compose_file="$1"
+
+  awk '
+    /^[^[:space:]#][^:]*:[[:space:]]*$/ {
+      if ($1 == "services:") {
+        in_services=1
+        current=""
+        next
+      }
+      if (in_services) {
+        in_services=0
+        current=""
+      }
+    }
+    !in_services {
+      next
+    }
+    /^  [^[:space:]#][^:]*:[[:space:]]*$/ {
+      current=$1
+      sub(/:$/, "", current)
+      next
+    }
+    current != "" && /^    image:[[:space:]]*/ {
+      image=$0
+      sub(/^[[:space:]]*image:[[:space:]]*/, "", image)
+      sub(/[[:space:]]+#.*$/, "", image)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", image)
+      gsub(/^["\047]|["\047]$/, "", image)
+      if (image ~ /^ghcr[.]io\/feocco\//) {
+        print current
+      }
+    }
+  ' "${compose_file}"
+}
+
 deploy_service() {
   local service="$1"
   local path
   local service_dir
+  local pull_services
 
   path="$(service_path "${service}")"
   if [[ -z "${path}" ]]; then
@@ -430,6 +536,7 @@ deploy_service() {
     exit 2
   fi
 
+  run_config_validation "${service}"
   echo "Deploying ${service} on ${HOST} from ${service_dir}"
   prepare_service "${service}" "${service_dir}"
   if [[ "${DRY_RUN}" == "true" ]]; then
@@ -440,8 +547,16 @@ deploy_service() {
     cd "${service_dir}"
     if [[ "${service}" == "caddy" ]]; then
       echo "Skipping image pull for caddy; deploy workflow builds the local Caddy image before deploy."
-    elif ! compose pull; then
-      echo "Image pull failed for ${service}; continuing with cached image if available." >&2
+    else
+      pull_services="$(joe_owned_compose_services "${service_dir}/docker-compose.yml")"
+      if [[ -n "${pull_services}" ]]; then
+        echo "Pulling Joe-owned runtime images for ${service}: ${pull_services//$'\n'/ }"
+        if ! compose pull ${pull_services}; then
+          echo "Image pull failed for Joe-owned images in ${service}; continuing with cached image if available." >&2
+        fi
+      else
+        echo "Skipping explicit image pull for ${service}; no ghcr.io/feocco/* runtime images declared."
+      fi
     fi
     if [[ "${FORCE_RECREATE}" == "true" ]]; then
       compose up -d --force-recreate --remove-orphans

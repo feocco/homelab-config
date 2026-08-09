@@ -9,5 +9,8 @@ port_env: CADDY_HTTP_PORT
 tailnet: false
 monitoring: false
 sre: false
+dashboard_name: Caddy
+redeploy_on:
+  - ^(scripts/generate-caddy-config|scripts/lib/homelab_catalog.py|services/[^/]+/ops.yaml)$
 secrets:
   - CLOUDFLARE_API_TOKEN

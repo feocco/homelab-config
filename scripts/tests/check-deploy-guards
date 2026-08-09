@@ -146,6 +146,12 @@ assert_contains "${branch_out}" 'without --canary'
 PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
   "${guard_repo}/scripts/homelab-deploy" --host macmini demo --canary --deploy-base-dir "${guard_runtime}" >/dev/null
 assert_json_field "${guard_runtime}/.homelab-deploy-state/macmini/demo.json" canary true
+touch "${guard_repo}/dirty.txt"
+dirty_branch_out="${guard_tmp}/dirty-branch.out"
+assert_fails "${dirty_branch_out}" env PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${guard_runtime}"
+assert_contains "${dirty_branch_out}" 'without --canary'
+rm -f "${guard_repo}/dirty.txt"
 (
   cd "${guard_repo}"
   git checkout main >/dev/null
@@ -153,7 +159,123 @@ assert_json_field "${guard_runtime}/.homelab-deploy-state/macmini/demo.json" can
 PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
   "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}" >/dev/null
 assert_json_field "${guard_runtime}/.homelab-deploy-state/macmini/demo.json" git_branch main
+
+cat > "${guard_repo}/scripts/validate-service-rollout" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "${guard_tmp}/validate.log"
+exit "\${VALIDATE_EXIT:-0}"
+EOF
+chmod +x "${guard_repo}/scripts/validate-service-rollout"
+(
+  cd "${guard_repo}"
+  git add scripts/validate-service-rollout
+  git commit -m "stub validator" >/dev/null
+)
+validate_fail_out="${guard_tmp}/validate-fail.out"
+assert_fails "${validate_fail_out}" env PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" VALIDATE_EXIT=1 \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}"
+assert_contains "${validate_fail_out}" 'Config validation failed'
+assert_contains "${guard_tmp}/validate.log" '--check config'
+rm -f "${guard_tmp}/validate.log"
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" VALIDATE_EXIT=1 \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --skip-config-validate --deploy-base-dir "${guard_runtime}" >/dev/null
+if [ -f "${guard_tmp}/validate.log" ]; then
+  echo "--skip-config-validate must not invoke the validator." >&2
+  exit 1
+fi
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}" >/dev/null
+assert_contains "${guard_tmp}/validate.log" '--mode strict'
 rm -rf "${guard_tmp}"
+
+pull_tmp="$(mktemp -d)"
+pull_repo="${pull_tmp}/repo"
+pull_runtime="${pull_tmp}/runtime"
+pull_fakebin="${pull_tmp}/bin"
+pull_compose="${pull_runtime}/services/demo/docker-compose.yml"
+mkdir -p \
+  "${pull_repo}/scripts" \
+  "${pull_repo}/hosts/macmini" \
+  "${pull_runtime}/services/demo" \
+  "${pull_fakebin}"
+cp "${REPO_DIR}/scripts/homelab-deploy" "${pull_repo}/scripts/homelab-deploy"
+cp "${REPO_DIR}/scripts/lib-service-secrets" "${pull_repo}/scripts/lib-service-secrets"
+chmod +x "${pull_repo}/scripts/homelab-deploy"
+cat > "${pull_repo}/hosts/macmini/services.yaml" <<EOF
+host:
+  name: macmini
+  deploy_base_dir: ${pull_runtime}
+
+services:
+  demo:
+    path: services/demo
+    enabled: true
+EOF
+cat > "${pull_fakebin}/docker-compose" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${COMPOSE_LOG}"
+EOF
+cat > "${pull_fakebin}/docker" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "ps" ]; then
+  echo "CONTAINER ID   IMAGE   NAMES"
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "${pull_fakebin}/docker-compose" "${pull_fakebin}/docker"
+(
+  cd "${pull_repo}"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Tooling Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+
+cat > "${pull_compose}" <<'EOF'
+services:
+  demo:
+    image: ghcr.io/feocco/demo:latest
+EOF
+PATH="${pull_fakebin}:$PATH" COMPOSE_LOG="${pull_tmp}/compose.log" HOMELAB_CONFIG_DIR="${pull_repo}" \
+  "${pull_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${pull_runtime}" >/dev/null
+assert_contains "${pull_tmp}/compose.log" 'pull demo'
+assert_contains "${pull_tmp}/compose.log" 'up -d --remove-orphans'
+rm -f "${pull_tmp}/compose.log"
+
+cat > "${pull_compose}" <<'EOF'
+services:
+  demo:
+    image: nginx:1.29-alpine
+EOF
+PATH="${pull_fakebin}:$PATH" COMPOSE_LOG="${pull_tmp}/compose.log" HOMELAB_CONFIG_DIR="${pull_repo}" \
+  "${pull_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${pull_runtime}" >/dev/null
+if grep -q '^pull' "${pull_tmp}/compose.log"; then
+  echo "Third-party images should not be explicitly pulled during deploy." >&2
+  cat "${pull_tmp}/compose.log" >&2
+  exit 1
+fi
+assert_contains "${pull_tmp}/compose.log" 'up -d --remove-orphans'
+rm -f "${pull_tmp}/compose.log"
+
+cat > "${pull_compose}" <<'EOF'
+services:
+  demo:
+    image: ghcr.io/feocco/demo:latest
+  sidecar:
+    image: nginx:1.29-alpine
+EOF
+PATH="${pull_fakebin}:$PATH" COMPOSE_LOG="${pull_tmp}/compose.log" HOMELAB_CONFIG_DIR="${pull_repo}" \
+  "${pull_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${pull_runtime}" >/dev/null
+assert_contains "${pull_tmp}/compose.log" 'pull demo'
+if grep -q 'sidecar' "${pull_tmp}/compose.log"; then
+  echo "Mixed deploy should pull only the Joe-owned image service." >&2
+  cat "${pull_tmp}/compose.log" >&2
+  exit 1
+fi
+rm -rf "${pull_tmp}"
 
 identity_tmp="$(mktemp -d)"
 identity_repo="${identity_tmp}/repo"
@@ -206,6 +328,12 @@ identity_out="${identity_tmp}/identity.out"
 assert_fails "${identity_out}" env PATH="${identity_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${identity_repo}" \
   "${identity_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${identity_runtime}"
 assert_contains "${identity_out}" 'does not have bind_addr 203.0.113.254'
+allow_dirty_identity_out="${identity_tmp}/allow-dirty-identity.out"
+assert_fails "${allow_dirty_identity_out}" env PATH="${identity_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${identity_repo}" \
+  "${identity_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${identity_runtime}"
+assert_contains "${allow_dirty_identity_out}" 'does not have bind_addr 203.0.113.254'
+PATH="${identity_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${identity_repo}" \
+  "${identity_repo}/scripts/homelab-deploy" --host macmini demo --allow-foreign-host --deploy-base-dir "${identity_runtime}" >/dev/null
 rm -rf "${identity_tmp}"
 
 caddy_tmp="$(mktemp -d)"

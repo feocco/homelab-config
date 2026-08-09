@@ -10,9 +10,14 @@ import pathlib
 import re
 import socket
 import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.request
+
+SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR / "lib"))
+from homelab_catalog import parse_simple_yaml  # noqa: E402
 
 
 REQUIRED_FIELDS = {
@@ -37,35 +42,6 @@ def clean_scalar(value: str):
     if re.fullmatch(r"-?[0-9]+", value):
         return int(value)
     return value
-
-
-def parse_simple_yaml(path: pathlib.Path) -> dict[str, object]:
-    data: dict[str, object] = {}
-    current_list: str | None = None
-    for raw in path.read_text().splitlines():
-        line = raw.rstrip()
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        if line.startswith("  - "):
-            if current_list is None:
-                raise ValueError(f"List item without list key in {path}: {line}")
-            value = clean_scalar(line[4:])
-            assert isinstance(data[current_list], list)
-            data[current_list].append(value)
-            continue
-        if line.startswith(" "):
-            raise ValueError(f"Unsupported nested manifest line in {path}: {line}")
-        match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):(?:\s*(.*))?$", line)
-        if not match:
-            raise ValueError(f"Unsupported manifest line in {path}: {line}")
-        key, value = match.groups()
-        if value == "":
-            data[key] = []
-            current_list = key
-        else:
-            data[key] = clean_scalar(value or "")
-            current_list = None
-    return data
 
 
 def parse_env(path: pathlib.Path) -> dict[str, str]:
@@ -170,6 +146,55 @@ def manifest_hosts(manifest: dict[str, object]) -> list[str]:
 
 def manifest_images(manifest: dict[str, object]) -> list[str]:
     return as_list(manifest, "image", "images")
+
+
+DOCKER_HUB_REGISTRIES = {"docker.io", "index.docker.io", "registry-1.docker.io"}
+
+
+def image_registry(image: str) -> str:
+    image_name = image.split("@", 1)[0]
+    first_component = image_name.split("/", 1)[0]
+    if "/" not in image_name:
+        return "docker.io"
+    if "." in first_component or ":" in first_component or first_component == "localhost":
+        return first_component.lower()
+    return "docker.io"
+
+
+def is_docker_hub_image(image: str) -> bool:
+    return image_registry(image) in DOCKER_HUB_REGISTRIES
+
+
+def normalize_registry_auth_key(key: str) -> str:
+    normalized = key.strip().lower().rstrip("/")
+    for prefix in ("https://", "http://"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix) :]
+            break
+    if normalized == "index.docker.io/v1":
+        return "index.docker.io"
+    return normalized
+
+
+def docker_hub_auth_available(env: dict[str, str]) -> bool:
+    config_json = pathlib.Path(env.get("DOCKER_CONFIG") or pathlib.Path.home() / ".docker") / "config.json"
+    if not config_json.exists():
+        return False
+    try:
+        config = json.loads(config_json.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    auths = config.get("auths")
+    if isinstance(auths, dict):
+        for registry in auths:
+            if normalize_registry_auth_key(str(registry)) in DOCKER_HUB_REGISTRIES:
+                return True
+    cred_helpers = config.get("credHelpers")
+    if isinstance(cred_helpers, dict):
+        for registry in cred_helpers:
+            if normalize_registry_auth_key(str(registry)) in DOCKER_HUB_REGISTRIES:
+                return True
+    return False
 
 
 def manifest_containers(manifest: dict[str, object]) -> list[str]:
@@ -551,10 +576,16 @@ class Validator:
         if manifest.get("public_image") is True:
             for image in images:
                 inspect_image = image.split("@", 1)[0]
-                with tempfile.TemporaryDirectory() as tmp:
-                    env = os.environ.copy()
-                    env["DOCKER_CONFIG"] = tmp
-                    try:
+                env = os.environ.copy()
+                docker_hub_image = is_docker_hub_image(inspect_image)
+                try:
+                    if docker_hub_image:
+                        if not docker_hub_auth_available(env):
+                            self.warn(
+                                "app image",
+                                f"Skipping Docker Hub public image check without configured auth to avoid anonymous rate limits: {image}",
+                            )
+                            continue
                         image_check = subprocess.run(
                             ["docker", "manifest", "inspect", inspect_image],
                             cwd=self.base_dir,
@@ -565,11 +596,26 @@ class Validator:
                             timeout=45,
                             check=False,
                         )
-                    except subprocess.TimeoutExpired:
-                        self.warn("app image", f"Public image check timed out for {image}")
-                        continue
+                        success_message = f"Docker Hub image is inspectable with configured auth: {image}"
+                    else:
+                        with tempfile.TemporaryDirectory() as tmp:
+                            env["DOCKER_CONFIG"] = tmp
+                            image_check = subprocess.run(
+                                ["docker", "manifest", "inspect", inspect_image],
+                                cwd=self.base_dir,
+                                env=env,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                text=True,
+                                timeout=45,
+                                check=False,
+                            )
+                        success_message = f"Public image is anonymously inspectable: {image}"
+                except subprocess.TimeoutExpired:
+                    self.warn("app image", f"Public image check timed out for {image}")
+                    continue
                 if image_check.returncode == 0:
-                    self.pass_("app image", f"Public image is anonymously inspectable: {image}")
+                    self.pass_("app image", success_message)
                 elif "toomanyrequests" in image_check.stdout.lower() or "rate limit" in image_check.stdout.lower():
                     self.warn("app image", f"Public image check rate-limited for {image}: {image_check.stdout.strip()}")
                 elif self.strict:

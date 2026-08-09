@@ -1,0 +1,24 @@
+---
+description: Route and dashboard config is generated from ops.yaml route_*/dashboard_* fields; never hand-edit generated Caddy or Homepage output
+globs: services/*/ops.yaml,services/caddy/**,services/homepage/config/**
+alwaysApply: false
+---
+
+# Generated runtime config flows one way: ops.yaml -> generators
+
+- `services/<service>/ops.yaml` flat `route_*` fields are the only source of
+  truth for HTTPS routes. `scripts/generate-caddy-config` renders
+  `services/caddy/Caddyfile` at deploy time; the Caddyfile is never committed,
+  never hand-edited, and never read back to infer routes.
+- `dashboard_*` fields are the only source of Homepage card metadata.
+  `scripts/generate-homepage-config` renders `services/homepage/config/` at
+  deploy time; do not commit files under that directory.
+- The service catalog (`scripts/generate-service-catalog`) derives URLs from
+  `route_*` and `live_base_url` fields only, not from generated output.
+- `ops.yaml` must stay flat key/value or single-level lists;
+  `parse_simple_yaml` raises on nested keys.
+- After changing `route_*` fields: run `./scripts/generate-caddy-config`,
+  `./scripts/sync-unifi-dns --dry-run`, `./scripts/sync-cloudflare-dns
+  --dry-run`, then
+  `LC_ALL=C ./scripts/validate-service-rollout --service <service> --host
+  <host> --check config --mode strict`.

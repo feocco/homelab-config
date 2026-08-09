@@ -22,4 +22,6 @@ dashboard_name: Homepage
 dashboard_group: Daily Ops
 dashboard_description: Generated homelab front door
 dashboard_icon: homepage.png
+redeploy_on:
+  - ^scripts/(generate-homepage-config|generate-service-catalog|lib/homelab_catalog.py)$
 secrets:

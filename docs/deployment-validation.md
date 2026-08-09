@@ -67,7 +67,9 @@ Optional fields enable additional units:
 - `images:` and `containers:` replace `image` and `container` for
   multi-container services.
 - `http_port` and `port_env` declare user-facing host ports when present.
-- `public_image: true` checks anonymous GHCR manifest access.
+- `public_image: true` checks public registry manifest access. Docker Hub checks
+  use configured auth when present and otherwise skip to avoid anonymous rate
+  limits.
 - `health_path: /health` declares an HTTP health path when one exists.
 - `docs_path: /docs` declares the human-facing service docs page for Homepage
   service cards.
@@ -127,11 +129,14 @@ Secret mismatch:
 - Run `LC_ALL=C ./scripts/generate-service-secret-workflow-env`, then
   `LC_ALL=C ./scripts/check-service-secrets`.
 
-GHCR image failure:
+Public image failure:
 
 - Confirm the app repo workflow published the image tag in `ops.yaml`.
-- For `public_image: true`, anonymous `docker manifest inspect <image>` must
-  work without local registry credentials.
+- For `public_image: true`, GHCR and other non-Docker-Hub registries are checked
+  anonymously with `docker manifest inspect <image>`.
+- Docker Hub images are checked only when Docker Hub auth is present in the
+  local Docker config. Without auth, validation warns and skips the manifest
+  check to avoid consuming anonymous pull quota.
 - For private images, leave `public_image` unset or false and verify host
   registry auth separately.
 
@@ -176,11 +181,15 @@ Live proof failure:
 
 App image:
 
-- `public_image: true` runs anonymous `docker manifest inspect <image>` to
-  prove the declared public pull expectation. Docker Hub rate limits are
-  reported as warnings because they do not prove the image is private or
-  missing. Registry timeouts are also warnings because they prove the registry
-  probe was inconclusive, not that the service image contract is wrong.
+- `public_image: true` runs `docker manifest inspect <image>` to prove the
+  declared public pull expectation.
+- GHCR and other non-Docker-Hub public registries are inspected with an empty
+  Docker config so the check proves anonymous access.
+- Docker Hub images are inspected with the current Docker config only when it
+  contains Docker Hub auth. Without auth, the validator warns and skips the
+  check instead of burning anonymous Docker Hub quota.
+- Docker Hub rate limits and registry timeouts are warnings. They do not prove
+  the image is private or missing.
 - Private images can opt out of that public check; package auth remains a
   deployment concern for the target host.
 

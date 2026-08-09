@@ -21,6 +21,10 @@
   parallel catalog file. Use `./scripts/generate-service-catalog --format json`
   to inspect the catalog. Homepage runtime config is generated during deploy;
   do not commit generated files under `services/homepage/config/`.
+- Services whose runtime config is generated (Caddy, Homepage,
+  homelab-functions, homelab-docs) declare their extra deploy triggers as a
+  flat `redeploy_on:` regex list in their own `ops.yaml`; do not hardcode new
+  trigger paths in `scripts/homelab-deploy`.
 - Caddy routes are generated from flat `route_*` fields in service `ops.yaml`
   files. Use `./scripts/generate-caddy-config`, `./scripts/sync-unifi-dns`,
   and `./scripts/sync-cloudflare-dns`; do not hand-edit or commit
@@ -67,7 +71,9 @@
 - Classify deployment work before editing runtime config:
   - App code changed only: commit/push the app repo, publish the image, then
     run `./scripts/redeploy-image --host <host> <service>` from this repo. Do
-    not edit this repo unless the runtime shape changed.
+    not edit this repo unless the runtime shape changed. Deploys explicitly
+    pull only `ghcr.io/feocco/*` Compose services; third-party images are
+    manual or image-reference updates.
   - Runtime config changed: make the matching homelab-config change for env,
     secrets, ports, volumes, host placement, image references, commands,
     monitoring, dashboards, links, or SRE metadata.
@@ -75,10 +81,16 @@
     durable change.
 - Inspect `git status --short --branch` before deployment work.
 - Validate deployment changes with `LC_ALL=C ./scripts/test-deploy-tooling`.
-- Every enabled service should have `services/<service>/ops.yaml`. Validate the
-  declared rollout outcome with
+- Every enabled service must have `services/<service>/ops.yaml`;
+  `test-deploy-tooling` fails otherwise. Validate the declared rollout outcome
+  with
   `LC_ALL=C ./scripts/validate-service-rollout --service <service> --host <host> --check config`.
   Use `--check live` after deployment for manifests that declare live proof.
+- Real (non-dry-run) deploys run strict config validation automatically before
+  `compose up`; `--skip-config-validate` is an emergency-only escape. Each
+  guard flag skips exactly one guard: `--allow-dirty` (dirty worktree),
+  `--canary` (non-main branch), `--allow-foreign-host` (not the macmini
+  production host).
 - When secrets or `.env.config` files change, run:
   `LC_ALL=C ./scripts/generate-service-secret-workflow-env`,
   `LC_ALL=C ./scripts/check-service-secrets`, and
@@ -122,13 +134,14 @@
   long-running app to start and no language dependency manifests. Standard
   commands live in `README.md` (deploy) and the `## Agent Workflows` section
   above (validate/secrets).
-- Always run the deploy tooling with `LC_ALL=C`. The generated secret block in
-  `.github/workflows/deploy.yml` is sorted under C collation (underscore sorts
-  after letters). Under the VM default `en_US.UTF-8`, `sort` reorders keys, so
-  `./scripts/test-deploy-tooling`, `./scripts/check-service-secrets`, and
+- Secret-sort scripts export `LC_ALL=C` themselves via `lib-service-secrets`.
+  The generated secret block in `.github/workflows/deploy.yml` is sorted under
+  C collation (underscore sorts after letters). Under `en_US.UTF-8`, bare
+  `sort` would reorder keys and make `./scripts/check-service-secrets` /
   `./scripts/generate-service-secret-workflow-env` falsely report the block as
-  stale (and the generator would rewrite it incorrectly). Prefix all three with
-  `LC_ALL=C`, e.g. `LC_ALL=C ./scripts/test-deploy-tooling`.
+  stale. Prefixing with `LC_ALL=C` is still fine and harmless.
+- Prefer `LC_ALL=C ./scripts/test-deploy-tooling` in docs and agent workflows
+  for consistency with older guidance.
 - The `tailscale` CLI binary must be on `PATH` for the test suite to pass:
   `./scripts/test-deploy-tooling` runs `apply-tailscale-serve --dry-run`, which
   checks `command -v tailscale` before its dry-run branch. The startup update

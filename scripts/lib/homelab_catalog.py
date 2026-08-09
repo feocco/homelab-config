@@ -26,6 +26,7 @@ def clean_scalar(value: str) -> Any:
 
 
 def parse_simple_yaml(path: pathlib.Path) -> dict[str, Any]:
+    """Parse flat ops/manifest YAML. Nested keys are illegal and raise."""
     data: dict[str, Any] = {}
     current_list: str | None = None
     if not path.exists():
@@ -40,10 +41,10 @@ def parse_simple_yaml(path: pathlib.Path) -> dict[str, Any]:
             data[current_list].append(clean_scalar(line[4:]))
             continue
         if line.startswith(" "):
-            continue
+            raise ValueError(f"Unsupported nested manifest line in {path}: {line}")
         match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):(?:\s*(.*))?$", line)
         if not match:
-            continue
+            raise ValueError(f"Unsupported manifest line in {path}: {line}")
         key, value = match.groups()
         if value == "":
             data[key] = []
@@ -230,19 +231,6 @@ def parse_sre(path: pathlib.Path) -> dict[str, dict[str, Any]]:
     return services
 
 
-def parse_caddy_routes(path: pathlib.Path) -> dict[int, str]:
-    routes: dict[int, str] = {}
-    if not path.exists():
-        return routes
-    text = path.read_text()
-    for match in re.finditer(r"http://([^ {\n]+)\s*\{(?P<body>.*?)\n\}", text, re.DOTALL):
-        host = match.group(1)
-        proxy = re.search(r"reverse_proxy\s+host\.docker\.internal:(\d+)", match.group("body"))
-        if proxy:
-            routes[int(proxy.group(1))] = f"http://{host}/"
-    return routes
-
-
 def service_manifests(base_dir: pathlib.Path) -> dict[str, dict[str, Any]]:
     manifests: dict[str, dict[str, Any]] = {}
     for path in sorted((base_dir / "services").glob("*/ops.yaml")):
@@ -257,35 +245,14 @@ def host_names(base_dir: pathlib.Path) -> list[str]:
 
 
 def display_name(service: str) -> str:
-    fixed = {
-        "caddy": "Caddy",
-        "dog-bowl-monitor": "Dog Bowl Monitor",
-        "grafana": "Grafana",
-        "hass-janitor": "hass-janitor",
-        "hello-nas": "Hello NAS",
-        "homelab-functions": "homelab-functions",
-        "homelab-log-watcher": "homelab-log-watcher",
-        "homelab-monitor": "Homelab Monitor",
-        "homelab-smoke-signal": "Smoke Signal",
-        "homelab-sre-agent": "homelab-sre-agent",
-        "homepage": "Homepage",
-        "instacart-history-service": "Instacart History",
-        "laundry-monitor": "Laundry Monitor",
-        "mealie": "Mealie",
-        "mealie-planner": "Mealie Planner",
-        "openai-cost": "OpenAI Cost / Usage",
-        "pi-hole": "Pi-hole",
-        "plant-monitor": "Plant Monitor",
-        "portainer": "Portainer",
-    }
-    return fixed.get(service, service.replace("-", " ").title())
+    """Fallback only. Preferred display names live in ops.yaml dashboard_name."""
+    return service.replace("-", " ").title()
 
 
 def build_catalog(base_dir: pathlib.Path) -> dict[str, Any]:
     manifests = service_manifests(base_dir)
     monitored = parse_prometheus_services(base_dir / "services/homelab-monitor/prometheus/prometheus.yml")
     sre = parse_sre(base_dir / "services/homelab-sre-agent/services.yaml")
-    caddy_routes = parse_caddy_routes(base_dir / "services/caddy/Caddyfile")
     rows: list[dict[str, Any]] = []
 
     for host in host_names(base_dir):
@@ -300,7 +267,7 @@ def build_catalog(base_dir: pathlib.Path) -> dict[str, Any]:
             containers = as_list(manifest, "container", "containers") or compose["containers"]
             source_repo = str(manifest.get("source_repo") or sre.get(service, {}).get("source_repo") or "")
             http_port = manifest.get("http_port")
-            homepage_url = homepage_url_for(service, host, manifest, caddy_routes)
+            homepage_url = homepage_url_for(service, host, manifest)
             monitoring = host_scoped_enabled(manifest, "monitoring", host) or service in monitored
             sre_enabled = host_scoped_enabled(manifest, "sre", host) or bool(sre.get(service, {}).get("sre_enabled"))
             dashboard_url = manifest_value(manifest, "dashboard_url")
@@ -308,14 +275,14 @@ def build_catalog(base_dir: pathlib.Path) -> dict[str, Any]:
             rows.append(
                 {
                     "service": service,
-                    "name": display_name(service),
+                    "name": manifest_value(manifest, "dashboard_name") or display_name(service),
                     "dashboard_name": manifest_value(manifest, "dashboard_name") or display_name(service),
                     "dashboard_group": manifest_value(manifest, "dashboard_group"),
                     "dashboard_description": manifest_value(manifest, "dashboard_description"),
                     "dashboard_icon": manifest_value(manifest, "dashboard_icon"),
                     "dashboard_url": dashboard_url,
                     "docs_path": docs_path,
-                    "docs_url": service_docs_url(service, host, manifest, caddy_routes),
+                    "docs_url": service_docs_url(service, host, manifest),
                     "openapi_path": manifest_value(manifest, "openapi_path"),
                     "api_framework": manifest_value(manifest, "api_framework"),
                     "dashboard_visible": dashboard_visible(manifest),
@@ -351,7 +318,9 @@ def build_catalog(base_dir: pathlib.Path) -> dict[str, Any]:
     }
 
 
-def homepage_url_for(service: str, host: str, manifest: dict[str, Any], caddy_routes: dict[int, str]) -> str:
+def homepage_url_for(service: str, host: str, manifest: dict[str, Any]) -> str:
+    # URLs derive only from declared intent (route_* / live_base_url), never
+    # from the generated Caddyfile: generated output must not feed the catalog.
     route_hostname = manifest_value(manifest, "route_hostname")
     route_hosts = manifest.get("route_hosts")
     route_applies = not isinstance(route_hosts, list) or host in [str(value) for value in route_hosts]
@@ -360,9 +329,6 @@ def homepage_url_for(service: str, host: str, manifest: dict[str, Any], caddy_ro
         return f"{scheme}://{route_hostname.rstrip('/')}/"
     if service == "homepage":
         return "http://home.arpa/"
-    port = manifest.get("http_port")
-    if isinstance(port, int) and port in caddy_routes:
-        return caddy_routes[port]
     live = host_scoped_value(manifest, "live_base_url", host)
     if live:
         return live.rstrip("/") + "/"
@@ -388,11 +354,11 @@ def health_url_for(row: dict[str, Any]) -> str:
     return append_url_path(base_url, health_path)
 
 
-def service_docs_url(service: str, host: str, manifest: dict[str, Any], caddy_routes: dict[int, str]) -> str:
+def service_docs_url(service: str, host: str, manifest: dict[str, Any]) -> str:
     docs_path = manifest_value(manifest, "docs_path")
     if not docs_path:
         return ""
-    homepage_url = homepage_url_for(service, host, manifest, caddy_routes)
+    homepage_url = homepage_url_for(service, host, manifest)
     if homepage_url:
         return append_url_path(homepage_url, docs_path)
     live = host_scoped_value(manifest, "live_base_url", host)

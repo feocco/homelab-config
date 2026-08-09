@@ -4,6 +4,31 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_DIR}/scripts/tests/lib-test-helpers"
 
+require_ops_manifests_for_enabled_services() {
+  PYTHONPATH="${REPO_DIR}/scripts/lib" python3 - "${REPO_DIR}" <<'PY'
+import pathlib
+import sys
+
+from homelab_catalog import parse_host_services
+
+base = pathlib.Path(sys.argv[1])
+missing = []
+for host_dir in sorted((base / "hosts").iterdir()):
+    services_file = host_dir / "services.yaml"
+    if not services_file.exists():
+        continue
+    for service, entry in parse_host_services(services_file).items():
+        if not entry.get("enabled", True):
+            continue
+        path = str(entry.get("path") or f"services/{service}")
+        if not (base / path / "ops.yaml").exists():
+            missing.append(f"{host_dir.name}/{service} ({path})")
+if missing:
+    print("Enabled host services missing ops.yaml: " + ", ".join(missing))
+    sys.exit(1)
+PY
+}
+
 validate_discovered_manifests() {
   local found="false"
   local manifest service host hosts_file enabled_file
@@ -404,13 +429,65 @@ tailscale.write_text(tailscale_text)
 PY
 }
 
+add_public_image_fixture() {
+  local fixture="$1"
+  local service="$2"
+  local image="$3"
+
+  python3 - "${fixture}" "${service}" "${image}" <<'PY'
+import pathlib
+import sys
+
+base = pathlib.Path(sys.argv[1])
+service = sys.argv[2]
+image = sys.argv[3]
+service_dir = base / f"services/{service}"
+service_dir.mkdir(parents=True, exist_ok=True)
+
+(service_dir / "ops.yaml").write_text(f"""service: {service}
+kind: worker
+host: macmini
+source_repo: feocco/{service}
+image: {image}
+public_image: true
+container: {service}
+monitoring: false
+sre: false
+secrets:
+""")
+
+(service_dir / ".env.config").write_text("LOG_LEVEL=INFO\n")
+(service_dir / ".env.example").write_text("LOG_LEVEL=INFO\n")
+(service_dir / "docker-compose.yml").write_text(f"""services:
+  {service}:
+    image: {image}
+    container_name: {service}
+    restart: unless-stopped
+    env_file:
+      - .env
+""")
+
+host_services = base / "hosts/macmini/services.yaml"
+host_services.write_text(host_services.read_text().rstrip() + f"""
+
+  {service}:
+    path: services/{service}
+    enabled: true
+""")
+PY
+}
+
 copy_fixture() {
   local destination="$1"
   mkdir -p "${destination}"
+  # Excluding runtime .env keeps real credentials out of fixtures; otherwise
+  # the fixture monitor-health check queries the real Grafana for synthetic
+  # fixture services and the suite only passes from clean checkouts.
   tar \
     --exclude='.git' \
     --exclude='.homelab-deploy-state' \
     --exclude='services/*/data/*' \
+    --exclude='services/*/.env' \
     -cf - . | tar -xf - -C "${destination}"
 }
 
@@ -420,6 +497,7 @@ assert_contains "${missing_out}" 'Missing service rollout manifest'
 assert_contains "${missing_out}" 'services/missing-demo/ops.yaml'
 rm -f "${missing_out}"
 
+require_ops_manifests_for_enabled_services
 validate_discovered_manifests
 
 validator_tmp="$(mktemp -d)"
@@ -615,6 +693,87 @@ for fixture_case in \
     exit 1
   fi
 done
+
+public_no_auth_fixture="${validator_tmp}/public-dockerhub-no-auth"
+cp -R "${validator_fixture}" "${public_no_auth_fixture}"
+add_public_image_fixture "${public_no_auth_fixture}" "validator-public-dockerhub" "nginx:1.29-alpine"
+mkdir -p "${validator_tmp}/public-no-auth-bin" "${validator_tmp}/public-no-auth-config"
+cat > "${validator_tmp}/public-no-auth-bin/docker" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "manifest" ] && [ "$2" = "inspect" ]; then
+  echo "Docker Hub manifest inspect should be skipped without auth." >&2
+  exit 88
+fi
+exit 0
+EOF
+chmod +x "${validator_tmp}/public-no-auth-bin/docker"
+PATH="${validator_tmp}/public-no-auth-bin:$PATH" \
+  DOCKER_CONFIG="${validator_tmp}/public-no-auth-config" \
+  "${public_no_auth_fixture}/scripts/validate-service-rollout" \
+    --base-dir "${public_no_auth_fixture}" \
+    --service validator-public-dockerhub \
+    --host macmini \
+    --check config \
+    --mode strict >"${validator_tmp}/public-dockerhub-no-auth.out" 2>&1
+assert_contains "${validator_tmp}/public-dockerhub-no-auth.out" 'Skipping Docker Hub public image check without configured auth'
+
+public_auth_fixture="${validator_tmp}/public-dockerhub-auth"
+cp -R "${validator_fixture}" "${public_auth_fixture}"
+add_public_image_fixture "${public_auth_fixture}" "validator-public-dockerhub" "nginx:1.29-alpine"
+mkdir -p "${validator_tmp}/public-auth-bin" "${validator_tmp}/public-auth-config"
+cat > "${validator_tmp}/public-auth-config/config.json" <<'EOF'
+{"auths":{"https://index.docker.io/v1/":{"auth":"dGVzdDp0ZXN0"}}}
+EOF
+cat > "${validator_tmp}/public-auth-bin/docker" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "manifest" ] && [ "$2" = "inspect" ]; then
+  printf '%s|%s\n' "${DOCKER_CONFIG:-}" "$*" >> "${MANIFEST_LOG}"
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "${validator_tmp}/public-auth-bin/docker"
+PATH="${validator_tmp}/public-auth-bin:$PATH" \
+  DOCKER_CONFIG="${validator_tmp}/public-auth-config" \
+  MANIFEST_LOG="${validator_tmp}/public-auth-manifest.log" \
+  "${public_auth_fixture}/scripts/validate-service-rollout" \
+    --base-dir "${public_auth_fixture}" \
+    --service validator-public-dockerhub \
+    --host macmini \
+    --check config \
+    --mode strict >"${validator_tmp}/public-dockerhub-auth.out" 2>&1
+assert_contains "${validator_tmp}/public-auth-manifest.log" 'manifest inspect nginx:1.29-alpine'
+assert_contains "${validator_tmp}/public-dockerhub-auth.out" 'Docker Hub image is inspectable with configured auth'
+
+public_ghcr_fixture="${validator_tmp}/public-ghcr"
+cp -R "${validator_fixture}" "${public_ghcr_fixture}"
+add_public_image_fixture "${public_ghcr_fixture}" "validator-public-ghcr" "ghcr.io/feocco/demo:latest"
+mkdir -p "${validator_tmp}/public-ghcr-bin"
+cat > "${validator_tmp}/public-ghcr-bin/docker" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "manifest" ] && [ "$2" = "inspect" ]; then
+  printf '%s|%s\n' "${DOCKER_CONFIG:-}" "$*" >> "${MANIFEST_LOG}"
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "${validator_tmp}/public-ghcr-bin/docker"
+PATH="${validator_tmp}/public-ghcr-bin:$PATH" \
+  DOCKER_CONFIG="${validator_tmp}/public-auth-config" \
+  MANIFEST_LOG="${validator_tmp}/public-ghcr-manifest.log" \
+  "${public_ghcr_fixture}/scripts/validate-service-rollout" \
+    --base-dir "${public_ghcr_fixture}" \
+    --service validator-public-ghcr \
+    --host macmini \
+    --check config \
+    --mode strict >"${validator_tmp}/public-ghcr.out" 2>&1
+assert_contains "${validator_tmp}/public-ghcr-manifest.log" 'manifest inspect ghcr.io/feocco/demo:latest'
+if grep -q "${validator_tmp}/public-auth-config" "${validator_tmp}/public-ghcr-manifest.log"; then
+  echo "GHCR public image checks should remain anonymous." >&2
+  cat "${validator_tmp}/public-ghcr-manifest.log" >&2
+  exit 1
+fi
+assert_contains "${validator_tmp}/public-ghcr.out" 'Public image is anonymously inspectable'
 
 cp -R "${validator_fixture}" "${validator_tmp}/invalid-manifest"
 python3 - "${validator_tmp}/invalid-manifest/services/validator-demo/ops.yaml" <<'PY'

@@ -51,11 +51,13 @@ redeploy:
 
 That wrapper dispatches the existing `deploy.yml` workflow from
 `homelab-config/main` with `force_recreate=true`, so the target host pulls the
-latest image and recreates the service container. Use `--print` to preview the
-workflow command and `--watch` to follow the run.
+latest Joe-owned `ghcr.io/feocco/*` image and recreates the service container.
+Use `--print` to preview the workflow command and `--watch` to follow the run.
 
 Plain container restarts are not the durable image-update path because they do
-not guarantee a fresh image pull.
+not guarantee a fresh image pull. Third-party images such as Docker Hub services
+are not force-pulled on every deploy; update them intentionally by changing the
+image reference or running a manual maintenance update.
 
 ## Canary And Emergency Deploys
 
@@ -74,6 +76,12 @@ Use `--allow-dirty` only for an emergency runtime edit:
 ./scripts/homelab-deploy --host macmini plant-monitor --allow-dirty
 ```
 
+`--allow-dirty` skips only the dirty-worktree gate. A non-`main` branch still
+needs `--canary`, deploying to macmini from another machine still needs
+`--allow-foreign-host`, and pre-deploy config validation still runs unless you
+pass `--skip-config-validate`. Each escape hatch names exactly the guard it
+skips, so an emergency edit only bypasses what you consciously chose to bypass.
+
 After an emergency deploy, immediately write down what changed, commit the
 durable config, and redeploy from `main`.
 
@@ -81,9 +89,14 @@ durable config, and redeploy from `main`.
 
 `scripts/homelab-deploy` now:
 
-- Blocks non-dry-run deploys from dirty worktrees.
+- Blocks non-dry-run deploys from dirty worktrees (`--allow-dirty` overrides
+  only this gate).
 - Requires `--canary` for non-`main` deploys.
-- Allows `--allow-dirty` as an explicit emergency override.
+- Requires the macmini production host identity (`--allow-foreign-host`
+  overrides only this gate).
+- Runs `validate-service-rollout --check config --mode strict` before every
+  real deploy (`--skip-config-validate` overrides only this gate).
+- Explicitly pulls only Compose services whose image is `ghcr.io/feocco/*`.
 - Runs Compose with `--remove-orphans`.
 - Writes runtime provenance to `.homelab-deploy-state/<host>/<service>.json`.
 
