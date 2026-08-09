@@ -73,7 +73,7 @@ links:
     group: Sources of Truth
     href: https://github.com/feocco/homelab-config/blob/main/service-secrets.yaml
     description: Required service secret names
-    icon: lock.png
+    icon: mdi-key-variant
   - name: SRE Metadata
     group: Sources of Truth
     href: https://github.com/feocco/homelab-config/blob/main/services/homelab-sre-agent/services.yaml
@@ -108,9 +108,4 @@ links:
     group: Cloud & External
     href: https://replit.com/~
     description: Cloud IDE and app hosting
-    icon: replit.png
-  - name: Prusa Connect
-    group: Cloud & External
-    href: https://connect.prusa3d.com/
-    description: 3D printer dashboard
-    icon: prusa.png
+    icon: si-replit

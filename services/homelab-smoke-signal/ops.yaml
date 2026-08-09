@@ -14,7 +14,7 @@ sre: false
 dashboard_name: Smoke Signal
 dashboard_group: Infrastructure
 dashboard_description: NAS-side Mac mini outage alarm
-dashboard_icon: alert-triangle.png
+dashboard_icon: mdi-smoke-detector-variant
 secrets:
   - HOMELAB_FUNCTIONS_TOKEN
   - HA_URL

@@ -33,6 +33,15 @@ Use `route_exempt_reason` for backend health endpoints that should not become
 LAN HTTPS route candidates. Manual links such as `ssh://`, `vnc://`, UniFi,
 cloud consoles, and GitHub docs should not get `siteMonitor`.
 
+## Icons
+
+`dashboard_icon` and manual-link `icon` values are passed straight to Homepage,
+which resolves them in this order: an `http(s)` URL, `mdi-<name>` (Material
+Design Icons), `si-<name>` (Simple Icons), `sh-<name>` (selfh.st), or otherwise
+a filename looked up in the `homarr-labs/dashboard-icons` set. A plausible-looking
+filename that is not in that set renders as a broken image with no build-time
+error, so prefer `mdi-` for homegrown services that have no real brand mark.
+
 ## Validation
 
 Run the narrow checks first:
@@ -40,6 +49,13 @@ Run the narrow checks first:
 ```bash
 LC_ALL=C ./scripts/tests/check-homepage-catalog
 LC_ALL=C ./scripts/validate-service-rollout --service homepage --host macmini --check config --mode strict
+```
+
+After changing any icon, resolve them against the upstream CDNs. This needs
+network, so it is deliberately not part of `test-deploy-tooling`:
+
+```bash
+./scripts/check-dashboard-icons
 ```
 
 For deployed changes, force-recreate `homepage` if generated config changes

@@ -24,7 +24,7 @@ route_dns: unifi
 dashboard_name: Streaming Sessions
 dashboard_group: Runtime Services
 dashboard_description: Private Codex session search
-dashboard_icon: search.png
+dashboard_icon: mdi-television-play
 secrets:
   - DATABASE_URL
   - STREAMING_SESSIONS_API_TOKEN

@@ -28,7 +28,7 @@ route_tailscale_service: svc:pirate-radio
 dashboard_name: Pirate Radio
 dashboard_group: Runtime Services
 dashboard_description: Pirate Wires audio reader
-dashboard_icon: radio.png
+dashboard_icon: mdi-radio-tower
 secrets:
   - OPENAI_API_KEY
   - POSTGRES_PASSWORD

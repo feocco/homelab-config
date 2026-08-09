@@ -18,7 +18,7 @@ route_dns: unifi
 dashboard_name: Homelab Docs
 dashboard_group: Sources of Truth
 dashboard_description: Searchable documentation website
-dashboard_icon: book-open.png
+dashboard_icon: mdi-book-open-page-variant
 redeploy_on:
   - ^(mkdocs.yml|docs/|services/[^/]+/README.md|services/[^/]+/ops.yaml|hosts/[^/]+/services.yaml|scripts/(build-docs-site|generate-docs-service-index|generate-service-catalog|lib/homelab_catalog.py))
 secrets:

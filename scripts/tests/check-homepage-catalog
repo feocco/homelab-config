@@ -140,7 +140,8 @@ assert_contains "${homepage_tmp}/services.yaml" 'https://docs.home.feocco.com/'
 assert_contains "${homepage_tmp}/services.yaml" 'Service Catalog'
 assert_contains "${homepage_tmp}/services.yaml" 'https://github.com/feocco/homelab-config#which-command-should-i-use'
 assert_contains "${homepage_tmp}/services.yaml" 'AWS Console'
-assert_contains "${homepage_tmp}/services.yaml" 'Prusa Connect'
+assert_contains "${homepage_tmp}/services.yaml" 'Replit'
+assert_contains "${homepage_tmp}/services.yaml" 'icon: si-replit'
 python3 - "${homepage_tmp}/services.yaml" <<'PY'
 import pathlib
 import sys
