@@ -1,7 +1,7 @@
 service: pirate-radio
 kind: multi-container
 host: macmini
-source_repo: feocco/pirate-wires-reader
+source_repo: feocco/pirate-radio
 images:
   - ghcr.io/feocco/pirate-radio:latest
   - postgres:17-alpine
@@ -27,7 +27,7 @@ route_dns: unifi
 route_tailscale_service: svc:pirate-radio
 dashboard_name: Pirate Radio
 dashboard_group: Runtime Services
-dashboard_description: Pirate Wires audio reader
+dashboard_description: Private multi-source audio reader
 dashboard_icon: mdi-radio-tower
 secrets:
   - OPENAI_API_KEY

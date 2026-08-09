@@ -71,8 +71,10 @@ if mealie["homepage_url"] != "https://mealie.feocco.com/":
 pirate_radio = services[("pirate-radio", "macmini")]
 if pirate_radio["dashboard_group"] != "Runtime Services":
     raise SystemExit("pirate-radio should appear in Runtime Services")
-if pirate_radio["dashboard_description"] != "Pirate Wires audio reader":
+if pirate_radio["dashboard_description"] != "Private multi-source audio reader":
     raise SystemExit("pirate-radio dashboard metadata should come from ops.yaml")
+if pirate_radio["source_repo"] != "feocco/pirate-radio":
+    raise SystemExit("pirate-radio source_repo should use the renamed repository")
 if pirate_radio["homepage_url"] != "https://reader.home.feocco.com/":
     raise SystemExit("pirate-radio should link to the LAN HTTPS route")
 if pirate_radio["docs_url"] != "https://reader.home.feocco.com/docs":

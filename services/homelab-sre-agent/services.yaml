@@ -337,9 +337,9 @@ services:
       - ghcr.io/feocco/pirate-radio:*
       - postgres:17-alpine
     source:
-      repo: feocco/pirate-wires-reader
-      path_hint: /Users/feocco/code/pirate-wires-reader
-    issue_repo: feocco/pirate-wires-reader
+      repo: feocco/pirate-radio
+      path_hint: /Users/feocco/code/pirate-radio
+    issue_repo: feocco/pirate-radio
     deploy:
       path: services/pirate-radio
     runbook_url: https://github.com/feocco/homelab-config/tree/main/services/pirate-radio
