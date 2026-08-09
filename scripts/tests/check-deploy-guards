@@ -440,3 +440,6 @@ if grep -q 'docker logout ghcr.io' "${REPO_DIR}/.github/workflows/deploy.yml"; t
   echo "Deploy workflow must keep GHCR credentials available for compose pull." >&2
   exit 1
 fi
+
+assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" 'hosts/macmini/tailscale-serve.yaml scripts/apply-tailscale-serve'
+assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" 'Skipping Tailscale Serve config for service-only deployment.'

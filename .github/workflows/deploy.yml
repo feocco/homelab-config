@@ -412,5 +412,20 @@ jobs:
           ./scripts/homelab-deploy --host macmini --all "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
 
       - name: Apply Tailscale Serve config
+        env:
+          AFTER_SHA: ${{ github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          SERVICE_INPUT: ${{ inputs.service }}
         run: |
+          if [ "${EVENT_NAME}" = "push" ] &&
+            git diff --quiet "${BEFORE_SHA}" "${AFTER_SHA}" -- \
+              hosts/macmini/tailscale-serve.yaml scripts/apply-tailscale-serve; then
+            echo "Skipping unchanged Tailscale Serve config."
+            exit 0
+          fi
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ "${SERVICE_INPUT}" != "all" ]; then
+            echo "Skipping Tailscale Serve config for service-only deployment."
+            exit 0
+          fi
           ./scripts/apply-tailscale-serve --host macmini --base-dir "${{ github.workspace }}"
