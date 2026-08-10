@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_DIR="${HOMELAB_CONFIG_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+HOST="macmini"
+DRY_RUN="false"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  apply-tailscale-serve [--host HOST] [--base-dir DIR] [--dry-run]
+
+Applies legacy node HTTP mappings and named Tailscale Services from
+hosts/<host>/tailscale-serve.yaml. Named services preserve TLS SNI by forwarding
+raw TCP 443 to local Caddy.
+
+services:
+  legacy-service:
+    enabled: true
+    http_port: 8099
+    target: http://127.0.0.1:8099
+
+named_services:
+  example:
+    enabled: true
+    service: svc:example
+    tcp_port: 443
+    target: tcp://127.0.0.1:443
+    tailvip: 100.100.100.100
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host) HOST="${2:?--host requires a value}"; shift 2 ;;
+    --base-dir) BASE_DIR="${2:?--base-dir requires a value}"; shift 2 ;;
+    --dry-run) DRY_RUN="true"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+CONFIG_FILE="${BASE_DIR}/hosts/${HOST}/tailscale-serve.yaml"
+if [[ ! -f "${CONFIG_FILE}" ]]; then
+  echo "No Tailscale Serve config for ${HOST}."
+  exit 0
+fi
+if ! command -v tailscale >/dev/null 2>&1; then
+  echo "tailscale CLI is required to apply ${CONFIG_FILE}" >&2
+  exit 2
+fi
+
+entries() {
+  python3 - "${CONFIG_FILE}" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+section = ""
+current = ""
+values = {}
+
+def emit():
+    if not current:
+        return
+    if section == "services":
+        print("|".join(["legacy", current, values.get("enabled", "false"), values.get("http_port", ""), values.get("target", ""), "", ""]))
+    elif section == "named_services":
+        print("|".join(["named", current, values.get("enabled", "false"), values.get("tcp_port", ""), values.get("target", ""), values.get("service", ""), values.get("tailvip", "")]))
+
+for raw in path.read_text().splitlines():
+    line = raw.rstrip()
+    top = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):\s*$", line)
+    if top:
+        emit()
+        section = top.group(1)
+        current = ""
+        values = {}
+        continue
+    item = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+    if item and section in {"services", "named_services"}:
+        emit()
+        current = item.group(1)
+        values = {}
+        continue
+    field = re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$", line)
+    if field and current:
+        values[field.group(1)] = field.group(2).strip('"').strip("'")
+emit()
+PY
+}
+
+disable_legacy() {
+  local http_port="$1" output status
+  set +e
+  output="$(tailscale serve --http="${http_port}" off 2>&1)"
+  status=$?
+  set -e
+  if [[ "${status}" -eq 0 ]]; then
+    [[ -z "${output}" ]] || printf '%s\n' "${output}"
+    return 0
+  fi
+  if [[ "${output}" == *"handler does not exist"* ]]; then
+    echo "Tailnet HTTP port ${http_port} was already disabled."
+    return 0
+  fi
+  printf '%s\n' "${output}" >&2
+  return "${status}"
+}
+
+validate_tailvip() {
+  python3 - "$1" <<'PY'
+import ipaddress
+import sys
+value = ipaddress.ip_address(sys.argv[1])
+if value.version != 4 or value not in ipaddress.ip_network("100.64.0.0/10"):
+    raise SystemExit(1)
+PY
+}
+
+while IFS='|' read -r kind name enabled port target service tailvip; do
+  [[ -n "${name}" ]] || continue
+  case "${enabled}" in true|false) ;; *) echo "Invalid enabled value for ${name}: ${enabled}" >&2; exit 2 ;; esac
+  if [[ "${kind}" == "legacy" ]]; then
+    [[ -n "${port}" ]] || { echo "Missing http_port for ${name} in ${CONFIG_FILE}" >&2; exit 2; }
+    if [[ "${enabled}" == "true" ]]; then
+      [[ -n "${target}" ]] || { echo "Missing target for enabled service ${name}" >&2; exit 2; }
+      if [[ "${DRY_RUN}" == "true" ]]; then
+        echo "Would expose ${name} on Tailnet HTTP port ${port} -> ${target}"
+      else
+        tailscale serve --bg --http="${port}" "${target}"
+      fi
+    elif [[ "${DRY_RUN}" == "true" ]]; then
+      echo "Would disable Tailnet HTTP port ${port} for ${name}"
+    else
+      disable_legacy "${port}"
+    fi
+    continue
+  fi
+
+  [[ "${service}" == svc:* ]] || { echo "Named service ${name} must declare service: svc:<name>" >&2; exit 2; }
+  [[ "${port}" == "443" ]] || { echo "Named service ${name} must forward tcp_port: 443" >&2; exit 2; }
+  [[ "${target}" == tcp://* ]] || { echo "Named service ${name} must use a raw tcp:// target" >&2; exit 2; }
+  validate_tailvip "${tailvip}" || { echo "Named service ${name} has invalid TailVIP ${tailvip}" >&2; exit 2; }
+  if [[ "${enabled}" == "true" ]]; then
+    if [[ "${DRY_RUN}" == "true" ]]; then
+      echo "Would advertise ${service} at ${tailvip}:443 -> ${target} (raw TCP)"
+    else
+      tailscale serve --service="${service}" --bg --tcp="${port}" "${target}"
+    fi
+  elif [[ "${DRY_RUN}" == "true" ]]; then
+    echo "Would clear named Tailscale Service ${service} (${tailvip})"
+  else
+    tailscale serve clear "${service}"
+  fi
+done < <(entries)

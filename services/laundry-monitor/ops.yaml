@@ -1,0 +1,30 @@
+service: laundry-monitor
+kind: app
+host: macmini
+source_repo: feocco/laundry-monitor
+image: ghcr.io/feocco/laundry-monitor:latest
+public_image: true
+container: laundry-monitor
+http_port: 8102
+health_path: /health
+status_path: /v1/status
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: python-http-server
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8102
+tailnet: true
+monitoring: true
+sre: true
+route_hostname: laundry-monitor.home.feocco.com
+route_target_port: 8102
+route_https: true
+route_dns: unifi
+dashboard_name: Laundry Monitor
+dashboard_group: Runtime Services
+dashboard_description: Washer and dryer notification service
+dashboard_icon: home-assistant.png
+secrets:
+  - HA_URL
+  - HA_LONG_LIVED_TOKEN
+  - HA_NOTIFY_JOE_SERVICE
+  - HA_NOTIFY_JESS_SERVICE

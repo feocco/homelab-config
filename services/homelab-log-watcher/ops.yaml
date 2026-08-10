@@ -1,0 +1,35 @@
+service: homelab-log-watcher
+kind: app
+hosts:
+  - macmini
+  - nasfeo
+source_repo: feocco/homelab-log-watcher
+image: ghcr.io/feocco/homelab-log-watcher:latest
+public_image: true
+container: homelab-log-watcher
+http_port: 8093
+port_env: SERVICE_PORT
+health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: python-http-server
+live_base_url_macmini: http://maclabs-mac-mini.taildf3445.ts.net:8093
+tailnet_hosts:
+  - macmini
+monitoring_hosts:
+  - macmini
+sre: true
+route_hostname: homelab-log-watcher.home.feocco.com
+route_target_port: 8093
+route_https: true
+route_dns: unifi
+route_hosts:
+  - macmini
+dashboard_name: homelab-log-watcher
+dashboard_group: Runtime Services
+dashboard_description: Docker log watcher
+dashboard_icon: docker.png
+secrets:
+  - HOMELAB_FUNCTIONS_TOKEN
+  - LOG_WATCHER_INCIDENT_WEBHOOK_TOKEN
+  - LOG_WATCHER_ACTION_TOKEN

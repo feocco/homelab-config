@@ -1,0 +1,92 @@
+host:
+  name: macmini
+  deploy_base_dir: ${HOME}/homelab-config-runtime
+  bind_addr: 192.168.1.43
+  deploy_user: maclab
+  tailnet_addr: 100.81.237.11
+  tailnet_name: maclabs-mac-mini.taildf3445.ts.net
+
+services:
+  hello-nas:
+    path: services/hello-nas
+    enabled: true
+
+  plant-monitor:
+    path: services/plant-monitor
+    enabled: true
+
+  homepage:
+    path: services/homepage
+    enabled: true
+
+  homelab-docs:
+    path: services/homelab-docs
+    enabled: true
+
+  caddy:
+    path: services/caddy
+    enabled: true
+
+  authentik:
+    path: services/authentik
+    enabled: true
+
+  homelab-functions:
+    path: services/homelab-functions
+    enabled: true
+
+  hass-janitor:
+    path: services/hass-janitor
+    enabled: true
+
+  homelab-log-watcher:
+    path: services/homelab-log-watcher
+    enabled: true
+
+  homelab-sre-agent:
+    path: services/homelab-sre-agent
+    enabled: true
+
+  homelab-monitor:
+    path: services/homelab-monitor
+    enabled: true
+
+  bedtime:
+    path: services/bedtime
+    enabled: true
+
+  mealie:
+    path: services/mealie
+    enabled: true
+
+  mealie-planner:
+    path: services/mealie-planner
+    enabled: true
+
+  instacart-history-service:
+    path: services/instacart-history-service
+    enabled: true
+
+  dog-bowl-monitor:
+    path: services/dog-bowl-monitor
+    enabled: false
+
+  laundry-monitor:
+    path: services/laundry-monitor
+    enabled: true
+
+  pirate-radio:
+    path: services/pirate-radio
+    enabled: true
+
+  streaming-sessions-kafka:
+    path: services/streaming-sessions-kafka
+    enabled: true
+
+  streaming-sessions-postgres:
+    path: services/streaming-sessions-postgres
+    enabled: true
+
+  streaming-sessions:
+    path: services/streaming-sessions
+    enabled: true

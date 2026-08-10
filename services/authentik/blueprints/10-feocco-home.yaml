@@ -1,0 +1,209 @@
+version: 1
+metadata:
+  name: Feocco Home identity base
+entries:
+  - id: pirate-radio-users
+    model: authentik_core.group
+    identifiers:
+      name: pirate-radio-users
+    attrs:
+      is_superuser: false
+  - id: pirate-radio-admins
+    model: authentik_core.group
+    identifiers:
+      name: pirate-radio-admins
+    attrs:
+      is_superuser: false
+
+  - id: local-enrollment-flow
+    model: authentik_flows.flow
+    identifiers:
+      slug: feocco-home-enrollment
+    attrs:
+      name: Feocco Home enrollment
+      title: Create your Feocco Home account
+      designation: enrollment
+      authentication: require_unauthenticated
+  - id: enrollment-username
+    model: authentik_stages_prompt.prompt
+    identifiers:
+      name: feocco-home-enrollment-username
+    attrs:
+      field_key: username
+      label: Username
+      type: username
+      required: true
+      placeholder: Short username
+      placeholder_expression: false
+      order: 10
+  - id: enrollment-name
+    model: authentik_stages_prompt.prompt
+    identifiers:
+      name: feocco-home-enrollment-name
+    attrs:
+      field_key: name
+      label: Name
+      type: text
+      required: true
+      placeholder: Name
+      placeholder_expression: false
+      order: 20
+  - id: enrollment-email
+    model: authentik_stages_prompt.prompt
+    identifiers:
+      name: feocco-home-enrollment-email
+    attrs:
+      field_key: email
+      label: Email
+      type: email
+      required: true
+      placeholder: Email
+      placeholder_expression: false
+      order: 30
+  - id: enrollment-password
+    model: authentik_stages_prompt.prompt
+    identifiers:
+      name: feocco-home-enrollment-password
+    attrs:
+      field_key: password
+      label: Password
+      type: password
+      required: true
+      placeholder: Password
+      placeholder_expression: false
+      order: 40
+  - id: enrollment-password-repeat
+    model: authentik_stages_prompt.prompt
+    identifiers:
+      name: feocco-home-enrollment-password-repeat
+    attrs:
+      field_key: password_repeat
+      label: Password (repeat)
+      type: password
+      required: true
+      placeholder: Password (repeat)
+      placeholder_expression: false
+      order: 50
+  - id: enrollment-prompts
+    model: authentik_stages_prompt.promptstage
+    identifiers:
+      name: feocco-home-enrollment-prompts
+    attrs:
+      fields:
+        - !KeyOf enrollment-username
+        - !KeyOf enrollment-name
+        - !KeyOf enrollment-email
+        - !KeyOf enrollment-password
+        - !KeyOf enrollment-password-repeat
+  - id: enrollment-write
+    model: authentik_stages_user_write.userwritestage
+    identifiers:
+      name: feocco-home-enrollment-write
+    attrs:
+      create_users_as_inactive: true
+      create_users_group: !KeyOf pirate-radio-users
+      user_creation_mode: always_create
+  - id: enrollment-email-verification
+    model: authentik_stages_email.emailstage
+    identifiers:
+      name: feocco-home-enrollment-email-verification
+    attrs:
+      use_global_settings: true
+      template: email/account_confirmation.html
+      activate_user_on_success: true
+      token_expiry: hours=24
+  - id: enrollment-login
+    model: authentik_stages_user_login.userloginstage
+    identifiers:
+      name: feocco-home-enrollment-login
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf local-enrollment-flow, stage: !KeyOf enrollment-prompts, order: 10}
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf local-enrollment-flow, stage: !KeyOf enrollment-write, order: 20}
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf local-enrollment-flow, stage: !KeyOf enrollment-email-verification, order: 30}
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf local-enrollment-flow, stage: !KeyOf enrollment-login, order: 100}
+
+  - id: recovery-flow
+    model: authentik_flows.flow
+    identifiers:
+      slug: feocco-home-recovery
+    attrs:
+      name: Feocco Home email recovery
+      title: Reset your password
+      designation: recovery
+      authentication: require_unauthenticated
+  - id: recovery-identification
+    model: authentik_stages_identification.identificationstage
+    identifiers:
+      name: feocco-home-recovery-identification
+    attrs:
+      user_fields: [email, username]
+  - id: recovery-email
+    model: authentik_stages_email.emailstage
+    identifiers:
+      name: feocco-home-recovery-email
+    attrs:
+      use_global_settings: true
+      template: email/password_reset.html
+      token_expiry: minutes=30
+      activate_user_on_success: true
+  - id: recovery-password
+    model: authentik_stages_prompt.prompt
+    identifiers:
+      name: feocco-home-recovery-password
+    attrs: {field_key: password, label: Password, type: password, required: true, placeholder: Password, placeholder_expression: false, order: 10}
+  - id: recovery-password-repeat
+    model: authentik_stages_prompt.prompt
+    identifiers:
+      name: feocco-home-recovery-password-repeat
+    attrs: {field_key: password_repeat, label: Password (repeat), type: password, required: true, placeholder: Password (repeat), placeholder_expression: false, order: 20}
+  - id: recovery-prompts
+    model: authentik_stages_prompt.promptstage
+    identifiers:
+      name: feocco-home-recovery-prompts
+    attrs:
+      fields: [!KeyOf recovery-password, !KeyOf recovery-password-repeat]
+  - id: recovery-write
+    model: authentik_stages_user_write.userwritestage
+    identifiers:
+      name: feocco-home-recovery-write
+    attrs: {user_creation_mode: never_create}
+  - id: recovery-login
+    model: authentik_stages_user_login.userloginstage
+    identifiers:
+      name: feocco-home-recovery-login
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf recovery-flow, stage: !KeyOf recovery-identification, order: 10}
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf recovery-flow, stage: !KeyOf recovery-email, order: 20}
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf recovery-flow, stage: !KeyOf recovery-prompts, order: 30}
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf recovery-flow, stage: !KeyOf recovery-write, order: 40}
+  - model: authentik_flows.flowstagebinding
+    identifiers: {target: !KeyOf recovery-flow, stage: !KeyOf recovery-login, order: 100}
+
+  - model: authentik_stages_identification.identificationstage
+    identifiers:
+      name: default-authentication-identification
+    attrs:
+      user_fields: [email, username]
+      enrollment_flow: !KeyOf local-enrollment-flow
+      recovery_flow: !KeyOf recovery-flow
+  - id: home-application
+    model: authentik_core.application
+    identifiers:
+      slug: feocco-home
+    attrs:
+      name: Feocco Home
+      meta_launch_url: https://home.feocco.com
+  - model: authentik_brands.brand
+    identifiers:
+      domain: authentik-default
+      default: true
+    attrs:
+      branding_title: Feocco Home
+      default_application: !KeyOf home-application
+      flow_recovery: !KeyOf recovery-flow

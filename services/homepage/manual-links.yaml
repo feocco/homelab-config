@@ -1,0 +1,111 @@
+links:
+  - name: Home Assistant
+    group: Daily Ops
+    href: http://homeassistant.local:8123/
+    description: Primary home automation UI
+    icon: home-assistant.png
+  - name: Synology DSM
+    group: Infrastructure
+    href: http://nasfeo:5000/
+    description: NAS management console
+    icon: synology.png
+  - name: Pi-hole
+    group: Infrastructure
+    href: http://nasfeo:8181/admin/
+    description: DNS and ad blocking
+    icon: pi-hole.png
+  - name: UniFi Devices
+    group: Infrastructure
+    href: https://unifi.ui.com/
+    description: UniFi network clients
+    icon: unifi.png
+  - name: NAS SSH
+    group: Remote Access
+    href: ssh://feocco@nasfeo
+    description: Open an SSH session to the Synology NAS
+    icon: terminal.png
+  - name: NAS DSM
+    group: Remote Access
+    href: https://nasfeo:5001/
+    description: Open Synology DSM in the browser
+    icon: synology.png
+  - name: Mac mini SSH
+    group: Remote Access
+    href: ssh://maclab@192.168.1.43
+    description: Open an SSH session to the homelab Mac mini
+    icon: terminal.png
+  - name: Mac mini Screen Sharing
+    group: Remote Access
+    href: vnc://maclab@192.168.1.43
+    description: Open macOS Screen Sharing for the homelab Mac mini
+    icon: apple.png
+  - name: Homelab Deploy
+    group: Infrastructure
+    href: https://github.com/feocco/homelab-config/actions
+    description: GitHub Actions deploy workflow
+    icon: github.png
+  - name: homelab-config
+    group: Infrastructure
+    href: https://github.com/feocco/homelab-config
+    description: Runtime source of truth
+    icon: github.png
+  - name: Source-of-Truth Map
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config/blob/main/docs/source-of-truth.md
+    description: Domain inventory and current gaps
+    icon: github.png
+  - name: Service Catalog
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config#which-command-should-i-use
+    description: Generated service inventory entrypoint
+    icon: docker.png
+  - name: Deployment Truth
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config/blob/main/docs/deployment-source-of-truth.md
+    description: Durable deploy and runtime evidence model
+    icon: github.png
+  - name: Networking Routes
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config/blob/main/services/caddy/README.md
+    description: Caddy, DNS, and route declaration model
+    icon: caddy.png
+  - name: Secrets Workflow
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config/blob/main/service-secrets.yaml
+    description: Required service secret names
+    icon: mdi-key-variant
+  - name: SRE Metadata
+    group: Sources of Truth
+    href: https://github.com/feocco/homelab-config/blob/main/services/homelab-sre-agent/services.yaml
+    description: Service runbooks and incident ownership
+    icon: grafana.png
+  - name: OpenAI Cost / Usage
+    group: Monitoring & Cost
+    href: https://grafana.home.feocco.com/d/openai-cost-usage/openai-cost-usage
+    description: API cost and usage dashboard
+    icon: openai.png
+  - name: Prometheus Targets
+    group: Monitoring & Cost
+    href: https://grafana.home.feocco.com/explore
+    description: Prometheus query entrypoint
+    icon: prometheus.png
+  - name: AWS Console
+    group: Cloud & External
+    href: https://console.aws.amazon.com/
+    description: AWS account and billing
+    icon: aws.png
+  - name: GCP Console
+    group: Cloud & External
+    href: https://console.cloud.google.com/
+    description: Google Cloud resources
+    icon: google-cloud.png
+  - name: Google AI Studio
+    group: Cloud & External
+    href: https://aistudio.google.com/
+    description: Gemini API and prototyping
+    icon: google.png
+  - name: Replit
+    group: Cloud & External
+    href: https://replit.com/~
+    description: Cloud IDE and app hosting
+    icon: si-replit

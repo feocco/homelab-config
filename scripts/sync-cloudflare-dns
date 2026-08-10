@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+"""Sync homelab route hostnames into Cloudflare public DNS A records."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import re
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any
+
+
+API_BASE = "https://api.cloudflare.com/client/v4"
+
+
+def clean_scalar(value: str) -> Any:
+    value = value.strip().strip('"').strip("'")
+    if value.lower() == "true":
+        return True
+    if value.lower() == "false":
+        return False
+    if re.fullmatch(r"-?[0-9]+", value):
+        return int(value)
+    return value
+
+
+def parse_host_file(path: pathlib.Path) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
+    host: dict[str, str] = {}
+    services: dict[str, dict[str, Any]] = {}
+    in_host = False
+    in_services = False
+    current = ""
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if line == "host:":
+            in_host = True
+            continue
+        if line == "services:":
+            in_host = False
+            in_services = True
+            continue
+        if in_host:
+            match = re.match(r"^  ([A-Za-z_][A-Za-z0-9_]*):\s*(.+)\s*$", line)
+            if match:
+                host[match.group(1)] = str(clean_scalar(match.group(2)))
+            continue
+        if not in_services:
+            continue
+        match = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if match:
+            current = match.group(1)
+            services[current] = {"enabled": True, "path": f"services/{current}"}
+            continue
+        if not current:
+            continue
+        match = re.match(r"^    path:\s*(.+)\s*$", line)
+        if match:
+            services[current]["path"] = clean_scalar(match.group(1))
+            continue
+        match = re.match(r"^    enabled:\s*(.+)\s*$", line)
+        if match:
+            services[current]["enabled"] = clean_scalar(match.group(1)) is not False
+    return host, services
+
+
+def parse_ops(path: pathlib.Path) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    current_list: str | None = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line.startswith("  - "):
+            if current_list is not None:
+                data[current_list].append(clean_scalar(line[4:]))
+            continue
+        if line.startswith(" "):
+            continue
+        match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):(?:\s*(.*))?$", line)
+        if not match:
+            continue
+        key, value = match.groups()
+        if value == "":
+            data[key] = []
+            current_list = key
+        else:
+            data[key] = clean_scalar(value or "")
+            current_list = None
+    return data
+
+
+def parse_retired_routes(path: pathlib.Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    routes: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        match = re.match(r"^  - hostname:\s*(.+)\s*$", line)
+        if match:
+            current = {"hostname": str(clean_scalar(match.group(1)))}
+            routes.append(current)
+            continue
+        if current is None:
+            continue
+        match = re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.+)\s*$", line)
+        if match:
+            key, value = match.groups()
+            current[key] = str(clean_scalar(value))
+    return [route for route in routes if route.get("hostname") and route.get("to")]
+
+
+def parse_named_tailscale_services(path: pathlib.Path) -> dict[str, str]:
+    services: dict[str, str] = {}
+    section = ""
+    current = ""
+    identity = ""
+    tailvip = ""
+    enabled = False
+
+    def emit() -> None:
+        if current and enabled and identity and tailvip:
+            services[identity] = tailvip
+
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        top = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):\s*$", line)
+        if top:
+            emit()
+            section = top.group(1)
+            current = identity = tailvip = ""
+            enabled = False
+            continue
+        item = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if item and section == "named_services":
+            emit()
+            current = item.group(1)
+            identity = tailvip = ""
+            enabled = False
+            continue
+        if section != "named_services" or not current:
+            continue
+        field = re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$", line)
+        if not field:
+            continue
+        key, value = field.groups()
+        value = str(clean_scalar(value))
+        if key == "service": identity = value
+        elif key == "tailvip": tailvip = value
+        elif key == "enabled": enabled = value == "True"
+    emit()
+    return services
+
+
+def desired_records(base_dir: pathlib.Path, host_name: str) -> list[dict[str, str]]:
+    host, services = parse_host_file(base_dir / "hosts" / host_name / "services.yaml")
+    tailnet_addr = host.get("tailnet_addr", "")
+    if not tailnet_addr:
+        raise SystemExit(f"hosts/{host_name}/services.yaml is missing host.tailnet_addr")
+    named_services = parse_named_tailscale_services(base_dir / "hosts" / host_name / "tailscale-serve.yaml")
+    records: list[dict[str, str]] = []
+    active_hostnames: set[str] = set()
+    for service, entry in sorted(services.items()):
+        if entry.get("enabled") is False:
+            continue
+        manifest = parse_ops(base_dir / str(entry["path"]) / "ops.yaml")
+        hostname = str(manifest.get("route_hostname") or "")
+        if not hostname or manifest.get("route_https") is not True:
+            continue
+        active_hostnames.add(hostname)
+        if str(manifest.get("route_public_dns") or "cloudflare-dns-only") == "cloudflare-tunnel":
+            continue
+        tailscale_service = str(manifest.get("route_tailscale_service") or "")
+        if tailscale_service:
+            if tailscale_service not in named_services:
+                raise SystemExit(f"{service} links unknown or disabled Tailscale Service {tailscale_service}")
+            value = named_services[tailscale_service]
+        else:
+            value = tailnet_addr
+        records.append({"service": service, "type": "A", "name": hostname, "value": value})
+    if services.get("caddy", {}).get("enabled") is not False:
+        for route in parse_retired_routes(base_dir / "services" / "caddy" / "retired-routes.yaml"):
+            hostname = route["hostname"]
+            tailscale_service = route.get("tailscale_service", "")
+            if hostname in active_hostnames or not tailscale_service:
+                continue
+            if tailscale_service not in named_services:
+                raise SystemExit(f"Retired route {hostname} links unknown or disabled Tailscale Service {tailscale_service}")
+            records.append(
+                {
+                    "service": "caddy-retired-route",
+                    "type": "A",
+                    "name": hostname,
+                    "value": named_services[tailscale_service],
+                }
+            )
+    return records
+
+
+def api_token() -> str:
+    token = os.environ.get("CLOUDFLARE_API_TOKEN") or os.environ.get("CADDY__CLOUDFLARE_API_TOKEN") or ""
+    if not token:
+        raise SystemExit("CLOUDFLARE_API_TOKEN or CADDY__CLOUDFLARE_API_TOKEN is required unless --dry-run is used")
+    return token
+
+
+def request_json(method: str, url: str, payload: dict[str, Any] | None = None) -> Any:
+    data = None if payload is None else json.dumps(payload).encode()
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method=method,
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {api_token()}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            body = response.read().decode()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise SystemExit(f"Cloudflare API {method} {url} failed: HTTP {exc.code}: {detail}") from exc
+    payload_json = json.loads(body) if body else {}
+    if isinstance(payload_json, dict) and payload_json.get("success") is False:
+        raise SystemExit(f"Cloudflare API {method} {url} failed: {payload_json}")
+    return payload_json
+
+
+def zone_id() -> str:
+    configured = os.environ.get("CLOUDFLARE_ZONE_ID", "")
+    if configured:
+        return configured
+    zone_name = os.environ.get("CLOUDFLARE_ZONE_NAME", "feocco.com")
+    query = urllib.parse.urlencode({"name": zone_name})
+    payload = request_json("GET", f"{API_BASE}/zones?{query}")
+    zones = payload.get("result") or []
+    if not zones:
+        raise SystemExit(f"Could not find Cloudflare zone {zone_name}; set CLOUDFLARE_ZONE_ID")
+    return str(zones[0]["id"])
+
+
+def normalize_records(payload: Any) -> list[dict[str, Any]]:
+    items = payload.get("result") if isinstance(payload, dict) else payload
+    records: list[dict[str, Any]] = []
+    for item in items or []:
+        record_type = str(item.get("type") or "").upper()
+        name = str(item.get("name") or "")
+        value = str(item.get("content") or item.get("value") or "")
+        if record_type and name:
+            records.append(
+                {
+                    "id": str(item.get("id") or ""),
+                    "type": record_type,
+                    "name": name.rstrip("."),
+                    "value": value,
+                    "proxied": bool(item.get("proxied")),
+                }
+            )
+    return records
+
+
+def current_records(zone: str, records: list[dict[str, str]]) -> list[dict[str, Any]]:
+    fixture = os.environ.get("CLOUDFLARE_DNS_RECORDS_FIXTURE")
+    if fixture:
+        return normalize_records(json.loads(pathlib.Path(fixture).read_text()))
+    current: list[dict[str, Any]] = []
+    for record in records:
+        query = urllib.parse.urlencode({"type": record["type"], "name": record["name"]})
+        payload = request_json("GET", f"{API_BASE}/zones/{zone}/dns_records?{query}")
+        current.extend(normalize_records(payload))
+    return current
+
+
+def upsert_record(zone: str, record: dict[str, str], existing: dict[str, Any] | None) -> None:
+    payload = {
+        "type": record["type"],
+        "name": record["name"],
+        "content": record["value"],
+        "ttl": 300,
+        "proxied": False,
+    }
+    if existing and existing.get("id"):
+        request_json("PUT", f"{API_BASE}/zones/{zone}/dns_records/{existing['id']}", payload)
+    else:
+        request_json("POST", f"{API_BASE}/zones/{zone}/dns_records", payload)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[1]))
+    parser.add_argument("--host", default="macmini")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--check", action="store_true")
+    mode.add_argument("--apply", action="store_true")
+    args = parser.parse_args(argv)
+
+    records = desired_records(pathlib.Path(args.base_dir), args.host)
+    if args.dry_run or not (args.check or args.apply):
+        for record in records:
+            print(f"Would upsert Cloudflare A {record['name']} -> {record['value']} (DNS only)")
+        return 0
+
+    zone = zone_id()
+    existing_records = current_records(zone, records)
+    existing_by_name = {
+        (record["type"], record["name"]): record
+        for record in existing_records
+        if record.get("type") and record.get("name")
+    }
+
+    mismatches: list[str] = []
+    for record in records:
+        existing = existing_by_name.get((record["type"], record["name"]))
+        if not existing:
+            mismatches.append(f"missing {record['type']} {record['name']} -> {record['value']}")
+            continue
+        if existing.get("value") != record["value"]:
+            mismatches.append(
+                f"wrong value {record['type']} {record['name']}: {existing.get('value')} != {record['value']}"
+            )
+        if existing.get("proxied") is not False:
+            mismatches.append(f"proxied must be false for {record['type']} {record['name']}")
+
+    if args.check:
+        if mismatches:
+            print("Cloudflare DNS records do not match route manifests:", file=sys.stderr)
+            for mismatch in mismatches:
+                print(f"- {mismatch}", file=sys.stderr)
+            return 1
+        print("Cloudflare DNS records match route manifests.")
+        return 0
+
+    for record in records:
+        upsert_record(zone, record, existing_by_name.get((record["type"], record["name"])))
+        print(f"Upserted Cloudflare A {record['name']} -> {record['value']} (DNS only)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DOCS_SRC="${REPO_DIR}/.local/mkdocs-src"
+MKDOCS_CONFIG="${REPO_DIR}/.local/mkdocs.yml"
+
+"${REPO_DIR}/scripts/generate-docs-service-index" --output "${REPO_DIR}/docs/generated/service-index.md"
+rm -rf "${DOCS_SRC}"
+mkdir -p "${DOCS_SRC}/docs" "${DOCS_SRC}/services"
+cp -R "${REPO_DIR}/docs/." "${DOCS_SRC}/docs/"
+python3 - "${REPO_DIR}/docs/index.md" "${DOCS_SRC}/index.md" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1])
+target = pathlib.Path(sys.argv[2])
+text = source.read_text()
+for old, new in {
+    "(overview.md)": "(docs/overview.md)",
+    "(source-of-truth.md)": "(docs/source-of-truth.md)",
+    "(generated/service-index.md)": "(services/index.md)",
+    "(docs/generated/service-index.md)": "(services/index.md)",
+    "(service-api-conventions.md)": "(docs/service-api-conventions.md)",
+    "(docs-site.md)": "(docs/docs-site.md)",
+    "(how-to-navigate.md)": "(docs/how-to-navigate.md)",
+}.items():
+    text = text.replace(old, new)
+target.write_text(text)
+PY
+rm -f "${DOCS_SRC}/docs/index.md"
+rm -rf "${DOCS_SRC}/docs/generated"
+mkdir -p "${DOCS_SRC}/services"
+cp "${REPO_DIR}/docs/generated/service-index.md" "${DOCS_SRC}/services/index.md"
+for service_page in "${REPO_DIR}"/docs/generated/services/*.md; do
+  service_name="$(basename "${service_page}" .md)"
+  mkdir -p "${DOCS_SRC}/services/${service_name}"
+  cp "${service_page}" "${DOCS_SRC}/services/${service_name}/index.md"
+done
+mkdir -p "${DOCS_SRC}/domain-docs"
+for service_dir in caddy homelab-monitor; do
+  cp "${REPO_DIR}/services/${service_dir}/README.md" "${DOCS_SRC}/domain-docs/${service_dir}.md"
+done
+python3 - "${REPO_DIR}/mkdocs.yml" "${MKDOCS_CONFIG}" "${REPO_DIR}/docs/generated/services-nav.yaml" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1])
+target = pathlib.Path(sys.argv[2])
+nav = pathlib.Path(sys.argv[3]).read_text().rstrip()
+lines = []
+for line in source.read_text().splitlines():
+    if line == "docs_dir: .local/mkdocs-src":
+        lines.append("docs_dir: mkdocs-src")
+        continue
+    if line == "site_dir: .site":
+        lines.append("site_dir: ../.site")
+        continue
+    if line == "      - Networking: services/caddy/README.md":
+        lines.append("      - Networking: domain-docs/caddy.md")
+        continue
+    if line == "      - Observability: services/homelab-monitor/README.md":
+        lines.append("      - Observability: domain-docs/homelab-monitor.md")
+        continue
+    if line == "      - Services: docs/generated/service-index.md":
+        lines.extend(nav.splitlines())
+        continue
+    lines.append(line)
+target.write_text("\n".join(lines).rstrip() + "\n")
+PY
+python3 -m mkdocs build --strict --config-file "${MKDOCS_CONFIG}" "$@"

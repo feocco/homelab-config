@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+caddy_tmp="$(mktemp -d)"
+"${REPO_DIR}/scripts/generate-caddy-config" --output "${caddy_tmp}/Caddyfile"
+assert_contains "${caddy_tmp}/Caddyfile" 'home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:7576'
+assert_contains "${caddy_tmp}/Caddyfile" 'grafana.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:3000'
+assert_contains "${caddy_tmp}/Caddyfile" 'docs.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:8112'
+assert_contains "${caddy_tmp}/Caddyfile" 'streaming-sessions.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:8110'
+assert_contains "${caddy_tmp}/Caddyfile" 'reader.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:8103'
+assert_contains "${caddy_tmp}/Caddyfile" 'pirate-radio.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'redir https://reader.home.feocco.com{uri} 308'
+assert_contains "${caddy_tmp}/Caddyfile" 'mealie.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:9925'
+assert_contains "${caddy_tmp}/Caddyfile" 'mealie.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'redir https://mealie.feocco.com{uri} 308'
+assert_contains "${caddy_tmp}/Caddyfile" 'tls {'
+assert_contains "${caddy_tmp}/Caddyfile" 'dns cloudflare {env.CLOUDFLARE_API_TOKEN}'
+assert_contains "${caddy_tmp}/Caddyfile" 'http://home.arpa {'
+assert_contains "${caddy_tmp}/Caddyfile" 'redir https://home.feocco.com{uri} 308'
+rm -rf "${caddy_tmp}"
+
+dns_dry_run="$(
+  UNIFI_BASE_URL=https://unifi.example.invalid \
+  UNIFI_API_KEY=test-api-key \
+  "${REPO_DIR}/scripts/sync-unifi-dns" --host macmini --dry-run
+)"
+if [[ "${dns_dry_run}" != *"Would upsert A home.feocco.com -> 192.168.1.43"* ]]; then
+  echo "UniFi DNS dry-run should show Homepage A record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+if [[ "${dns_dry_run}" != *"Would upsert A docs.home.feocco.com -> 192.168.1.43"* ]]; then
+  echo "UniFi DNS dry-run should show Homelab Docs A record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+if [[ "${dns_dry_run}" != *"Would upsert A streaming-sessions.home.feocco.com -> 192.168.1.43"* ]]; then
+  echo "UniFi DNS dry-run should show Streaming Sessions A record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+if [[ "${dns_dry_run}" != *"Would upsert CNAME mealie.feocco.com -> mealie.home.feocco.com"* ]]; then
+  echo "UniFi DNS dry-run should show canonical Mealie CNAME record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+if [[ "${dns_dry_run}" != *"Would upsert A mealie.home.feocco.com -> 192.168.1.43"* ]]; then
+  echo "UniFi DNS dry-run should show retired Mealie hostname A record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+if [[ "${dns_dry_run}" != *"Would upsert A reader.home.feocco.com -> 192.168.1.43"* ]] || \
+   [[ "${dns_dry_run}" != *"Would upsert A pirate-radio.home.feocco.com -> 192.168.1.43"* ]]; then
+  echo "UniFi DNS dry-run should include the active Reader and retired Pirate Radio hostnames" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+
+dns_fixture="$(mktemp)"
+PYTHONPATH="${REPO_DIR}/scripts/lib" python3 - "${REPO_DIR}" "${dns_fixture}" <<'PY'
+import json
+import pathlib
+import sys
+
+from homelab_catalog import caddy_retired_redirects, route_entries
+
+base = pathlib.Path(sys.argv[1])
+fixture = pathlib.Path(sys.argv[2])
+records = [
+    {
+        "id": f"record-{entry['service']}",
+        "type": "CNAME" if entry["hostname"] == "mealie.feocco.com" else "A",
+        "name": entry["hostname"],
+        "value": "mealie.home.feocco.com" if entry["hostname"] == "mealie.feocco.com" else "192.168.1.43",
+    }
+    for entry in route_entries(base, "macmini")
+    if entry["dns"] == "unifi"
+]
+active_names = {record["name"] for record in records}
+records.extend(
+    {
+        "id": f"record-retired-{entry['hostname']}",
+        "type": "A",
+        "name": entry["hostname"],
+        "value": "192.168.1.43",
+    }
+    for entry in caddy_retired_redirects(base)
+    if entry["hostname"] not in active_names
+)
+fixture.write_text(json.dumps({"records": records}, indent=2))
+PY
+UNIFI_BASE_URL=https://unifi.example.invalid \
+UNIFI_API_KEY=test-api-key \
+UNIFI_DNS_RECORDS_FIXTURE="${dns_fixture}" \
+  "${REPO_DIR}/scripts/sync-unifi-dns" --host macmini --check >/dev/null
+rm -f "${dns_fixture}"
+
+unifi_hosts_fixture="$(mktemp)"
+cat > "${unifi_hosts_fixture}" <<'JSON'
+{"data":[{"id":"console-test"}]}
+JSON
+unifi_cloud_base="$(
+  UNIFI_API_KEY=test-api-key \
+  UNIFI_HOSTS_FIXTURE="${unifi_hosts_fixture}" \
+  python3 - "${REPO_DIR}/scripts/sync-unifi-dns" <<'PY'
+import pathlib
+import runpy
+import sys
+
+path = pathlib.Path(sys.argv[1])
+module = runpy.run_path(str(path))
+print(module["base_url"]())
+PY
+)"
+if [[ "${unifi_cloud_base}" != "https://api.ui.com/v1/connector/consoles/console-test/proxy/network/integration/v1" ]]; then
+  echo "UniFi DNS should discover the official cloud connector base URL" >&2
+  echo "${unifi_cloud_base}" >&2
+  exit 1
+fi
+rm -f "${unifi_hosts_fixture}"
+
+cloudflare_dry_run="$("${REPO_DIR}/scripts/sync-cloudflare-dns" --host macmini --dry-run)"
+if [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A home.feocco.com -> 100.81.237.11 (DNS only)"* ]]; then
+  echo "Cloudflare DNS dry-run should show Homepage A record upsert" >&2
+  echo "${cloudflare_dry_run}" >&2
+  exit 1
+fi
+if [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A docs.home.feocco.com -> 100.81.237.11 (DNS only)"* ]]; then
+  echo "Cloudflare DNS dry-run should show Homelab Docs A record upsert" >&2
+  echo "${cloudflare_dry_run}" >&2
+  exit 1
+fi
+if [[ "${cloudflare_dry_run}" == *"mealie.feocco.com"* ]]; then
+  echo "Cloudflare DNS dry-run should skip tunnel-managed Mealie public DNS" >&2
+  echo "${cloudflare_dry_run}" >&2
+  exit 1
+fi
+if [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A reader.home.feocco.com -> 100.120.139.67 (DNS only)"* ]] || \
+   [[ "${cloudflare_dry_run}" != *"Would upsert Cloudflare A pirate-radio.home.feocco.com -> 100.120.139.67 (DNS only)"* ]]; then
+  echo "Cloudflare DNS dry-run should keep active and retired Pirate Radio hostnames on the service TailVIP" >&2
+  echo "${cloudflare_dry_run}" >&2
+  exit 1
+fi
+
+cloudflare_fixture="$(mktemp)"
+PYTHONPATH="${REPO_DIR}/scripts/lib" python3 - "${REPO_DIR}" "${cloudflare_fixture}" <<'PY'
+import json
+import pathlib
+import runpy
+import sys
+
+base = pathlib.Path(sys.argv[1])
+fixture = pathlib.Path(sys.argv[2])
+sync = runpy.run_path(str(base / "scripts" / "sync-cloudflare-dns"))
+records = [
+    {
+        "id": f"record-{record['service']}",
+        "type": "A",
+        "name": record["name"],
+        "content": record["value"],
+        "proxied": False,
+    }
+    for record in sync["desired_records"](base, "macmini")
+]
+fixture.write_text(json.dumps({"result": records}, indent=2))
+PY
+CLOUDFLARE_API_TOKEN=test-api-key \
+CLOUDFLARE_ZONE_ID=test-zone \
+CLOUDFLARE_DNS_RECORDS_FIXTURE="${cloudflare_fixture}" \
+  "${REPO_DIR}/scripts/sync-cloudflare-dns" --host macmini --check >/dev/null
+rm -f "${cloudflare_fixture}"
+
+route_dns_dispatch="$("${REPO_DIR}/scripts/dispatch-route-dns" --provider unifi --mode apply --print)"
+if [[ "${route_dns_dispatch}" != *"gh workflow run route-dns.yml"* ]] || \
+   [[ "${route_dns_dispatch}" != *"provider=unifi"* ]] || \
+   [[ "${route_dns_dispatch}" != *"mode=apply"* ]]; then
+  echo "Route DNS dispatcher should target the credentialed workflow" >&2
+  echo "${route_dns_dispatch}" >&2
+  exit 1
+fi
+test -f "${REPO_DIR}/.github/workflows/route-dns.yml"
+assert_contains "${REPO_DIR}/.github/workflows/route-dns.yml" 'UNIFI_API_KEY: ${{ secrets.UNIFI_API_KEY }}'
+assert_contains "${REPO_DIR}/.github/workflows/route-dns.yml" 'CADDY__CLOUDFLARE_API_TOKEN: ${{ secrets.CADDY__CLOUDFLARE_API_TOKEN }}'
+
+deploy_dry_run="$("${REPO_DIR}/scripts/homelab-deploy" --host macmini caddy --dry-run --deploy-base-dir "${REPO_DIR}")"
+if [[ "${deploy_dry_run}" != *"Would generate Caddy config"* ]]; then
+  echo "Caddy dry-run should show deploy-time config generation" >&2
+  echo "${deploy_dry_run}" >&2
+  exit 1
+fi
+
+docs_deploy_dry_run="$("${REPO_DIR}/scripts/homelab-deploy" --host macmini homelab-docs --dry-run --deploy-base-dir "${REPO_DIR}")"
+if [[ "${docs_deploy_dry_run}" != *"Would build Homelab Docs site"* ]]; then
+  echo "Homelab Docs dry-run should show deploy-time site generation" >&2
+  echo "${docs_deploy_dry_run}" >&2
+  exit 1
+fi

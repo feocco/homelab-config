@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUNTIME_DIR="${1:-}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  migrate-host-runtime-layout RUNTIME_DIR
+
+Moves existing per-service runtime data from the pre-multi-host layout:
+
+  <runtime>/<service>/data
+
+to the multi-host layout:
+
+  <runtime>/services/<service>/data
+
+The migration is idempotent and only moves old data when the new data directory
+does not already exist.
+EOF
+}
+
+if [[ -z "${RUNTIME_DIR}" || "${RUNTIME_DIR}" == "-h" || "${RUNTIME_DIR}" == "--help" ]]; then
+  usage
+  [[ -z "${RUNTIME_DIR}" ]] && exit 2
+  exit 0
+fi
+
+if [[ ! -d "${RUNTIME_DIR}" ]]; then
+  echo "Missing runtime directory: ${RUNTIME_DIR}" >&2
+  exit 2
+fi
+
+while IFS= read -r service_dir; do
+  service="$(basename "${service_dir}")"
+  old_data="${RUNTIME_DIR}/${service}/data"
+  new_data="${RUNTIME_DIR}/services/${service}/data"
+
+  [[ -d "${old_data}" ]] || continue
+  if [[ -e "${new_data}" ]]; then
+    echo "Keeping existing ${new_data}; old data remains at ${old_data}"
+    continue
+  fi
+
+  mkdir -p "$(dirname "${new_data}")"
+  mv "${old_data}" "${new_data}"
+  echo "Migrated ${old_data} -> ${new_data}"
+done < <(find "${RUNTIME_DIR}/services" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)

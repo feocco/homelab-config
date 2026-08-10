@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHONPATH="${SCRIPT_DIR}/lib${PYTHONPATH:+:${PYTHONPATH}}" python3 - "$@" <<'PY'
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import pathlib
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any
+
+from homelab_catalog import build_catalog
+
+
+def truthy(value: Any) -> str:
+    return "yes" if value else "no"
+
+
+def display_name(row: dict[str, Any]) -> str:
+    return str(row.get("dashboard_name") or row.get("name") or row["service"])
+
+
+def service_href(row: dict[str, Any]) -> str:
+    return str(row.get("docs_url") or row.get("homepage_url") or row.get("live_base_url") or "")
+
+
+def openapi_url(row: dict[str, Any]) -> str:
+    docs_url = str(row.get("docs_url") or "")
+    openapi_path = str(row.get("openapi_path") or "")
+    if not docs_url or not openapi_path:
+        return ""
+    docs_path = str(row.get("docs_path") or "")
+    base = docs_url
+    if docs_path and docs_url.endswith(docs_path):
+        base = docs_url[: -len(docs_path)]
+    return urllib.parse.urljoin(base.rstrip("/") + "/", openapi_path.lstrip("/"))
+
+
+def fetch_text(url: str, timeout: float) -> tuple[int, str, str]:
+    request = urllib.request.Request(url, headers={"User-Agent": "homelab-docs-build/1.0"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        body = response.read(1_000_000).decode("utf-8", errors="replace")
+        return response.status, response.headers.get("Content-Type", ""), body
+
+
+def docs_status(row: dict[str, Any], timeout: float) -> tuple[str, str]:
+    docs_url = str(row.get("docs_url") or "")
+    openapi = openapi_url(row)
+    if not docs_url and not openapi:
+        return "Not migrated", "No `docs_path` or `openapi_path` is declared."
+    if not docs_url or not openapi:
+        return "Declared but failing", "Docs metadata is incomplete."
+    try:
+        docs_status_code, docs_content_type, _ = fetch_text(docs_url, timeout)
+        if docs_status_code >= 400 or "text/html" not in docs_content_type.lower():
+            return "Declared but failing", f"`/docs` returned HTTP {docs_status_code} with `{docs_content_type}`."
+        openapi_status_code, openapi_content_type, openapi_body = fetch_text(openapi, timeout)
+        if openapi_status_code >= 400 or "json" not in openapi_content_type.lower():
+            return "Declared but failing", f"`/openapi.json` returned HTTP {openapi_status_code} with `{openapi_content_type}`."
+        payload = json.loads(openapi_body)
+        if not isinstance(payload, dict) or not payload.get("openapi") or not isinstance(payload.get("paths"), dict):
+            return "Declared but failing", "`/openapi.json` did not contain OpenAPI metadata and paths."
+    except Exception as exc:
+        return "Declared but failing", str(exc)
+    return "Live docs available", "Live `/docs` and `/openapi.json` responded during the docs build."
+
+
+def enabled_service_groups(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        if row.get("enabled") is not True:
+            continue
+        grouped.setdefault(str(row["service"]), []).append(row)
+    return grouped
+
+
+def canonical_row(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return sorted(rows, key=lambda row: (row.get("host") != "macmini", str(row.get("host")), str(row["service"])))[0]
+
+
+def service_filename(service: str) -> str:
+    return f"{service}.md"
+
+
+def service_page(row: dict[str, Any], rows: list[dict[str, Any]], status: tuple[str, str]) -> str:
+    href = service_href(row)
+    docs_url = str(row.get("docs_url") or "")
+    openapi = openapi_url(row)
+    source_repo = str(row.get("source_repo") or "")
+    status_label, status_detail = status
+    hosts = ", ".join(
+        f"`{item['host']}`"
+        for item in sorted(rows, key=lambda value: str(value["host"]))
+    )
+    lines = [
+        f"# {display_name(row)}",
+        "",
+        "Generated from the homelab service catalog. App-owned documentation remains with the service.",
+        "",
+        "## Catalog",
+        "",
+        f"- Service: `{row['service']}`",
+        f"- Kind: `{row.get('kind') or 'unknown'}`",
+        f"- Hosts: {hosts}",
+        f"- Route: `{row.get('route_hostname') or 'none'}`",
+        f"- Health: `{row.get('health_path') or 'none'}`",
+        f"- Monitoring: `{truthy(row.get('monitoring'))}`",
+        f"- SRE: `{truthy(row.get('sre_enabled'))}`",
+    ]
+    if href:
+        lines.append(f"- Primary link: [{href}]({href})")
+    if source_repo:
+        lines.append(f"- Source repo: [github.com/{source_repo}](https://github.com/{source_repo})")
+    lines.extend([
+        "",
+        "## Service Docs",
+        "",
+        f"- Status: **{status_label}**",
+        f"- Detail: {status_detail}",
+    ])
+    if docs_url:
+        lines.append(f"- Live docs: [{docs_url}]({docs_url})")
+    if openapi:
+        lines.append(f"- OpenAPI: [{openapi}]({openapi})")
+    if docs_url and status_label == "Live docs available":
+        escaped = html.escape(docs_url, quote=True)
+        lines.extend([
+            "",
+            '<iframe src="' + escaped + '" title="' + html.escape(display_name(row), quote=True) + ' live service docs" loading="lazy" style="width: 100%; min-height: 760px; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 8px;"></iframe>',
+        ])
+    else:
+        lines.extend([
+            "",
+            "Live service documentation is not embedded until the service docs endpoints pass validation.",
+        ])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def overview_page(groups: dict[str, list[dict[str, Any]]], statuses: dict[str, tuple[str, str]]) -> str:
+    lines = [
+        "# Services",
+        "",
+        "Generated service documentation portal. Each page is a catalog wrapper over app-owned live docs.",
+        "",
+        "| Service | Docs status | Host | Route |",
+        "| --- | --- | --- | --- |",
+    ]
+    for service in sorted(groups):
+        row = canonical_row(groups[service])
+        status_label, _ = statuses[service]
+        route = str(row.get("route_hostname") or "")
+        hosts = ", ".join(str(item["host"]) for item in sorted(groups[service], key=lambda value: str(value["host"])))
+        lines.append(f"| [{display_name(row)}]({service}/index.md) | {status_label} | {hosts} | {route or '-'} |")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def nav_fragment(groups: dict[str, list[dict[str, Any]]]) -> str:
+    lines = [
+        "      - Services:",
+        "          - Overview: services/index.md",
+    ]
+    for service in sorted(groups, key=lambda item: display_name(canonical_row(groups[item])).lower()):
+        row = canonical_row(groups[service])
+        lines.append(f"          - {display_name(row)}: services/{service}/index.md")
+    return "\n".join(lines) + "\n"
+
+
+def write_docs(catalog: dict[str, Any], output: pathlib.Path, services_dir: pathlib.Path, nav_output: pathlib.Path, timeout: float) -> None:
+    groups = enabled_service_groups(catalog["services"])
+    statuses = {service: docs_status(canonical_row(rows), timeout) for service, rows in groups.items()}
+    output.parent.mkdir(parents=True, exist_ok=True)
+    services_dir.mkdir(parents=True, exist_ok=True)
+    output.write_text(overview_page(groups, statuses), encoding="utf-8")
+    for service, rows in groups.items():
+        row = canonical_row(rows)
+        (services_dir / service_filename(service)).write_text(service_page(row, rows, statuses[service]), encoding="utf-8")
+    nav_output.parent.mkdir(parents=True, exist_ok=True)
+    nav_output.write_text(nav_fragment(groups), encoding="utf-8")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Generate MkDocs service index and wrapper pages.")
+    parser.add_argument("--base-dir", default=".", help="Repository root")
+    parser.add_argument("--output", default="docs/generated/service-index.md", help="Output markdown path")
+    parser.add_argument("--services-dir", default="", help="Output directory for generated service pages")
+    parser.add_argument("--nav-output", default="", help="Output YAML fragment for generated MkDocs nav")
+    parser.add_argument("--timeout", type=float, default=2.0, help="Per-request timeout for live docs checks")
+    args = parser.parse_args()
+
+    base_dir = pathlib.Path(args.base_dir).resolve()
+    output = pathlib.Path(args.output)
+    if not output.is_absolute():
+        output = base_dir / output
+    services_dir = pathlib.Path(args.services_dir) if args.services_dir else output.parent / "services"
+    if not services_dir.is_absolute():
+        services_dir = base_dir / services_dir
+    nav_output = pathlib.Path(args.nav_output) if args.nav_output else output.parent / "services-nav.yaml"
+    if not nav_output.is_absolute():
+        nav_output = base_dir / nav_output
+    write_docs(build_catalog(base_dir), output, services_dir, nav_output, args.timeout)
+    return 0
+
+
+raise SystemExit(main())
+PY

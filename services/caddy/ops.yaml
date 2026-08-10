@@ -1,0 +1,16 @@
+service: caddy
+kind: infra
+host: macmini
+source_repo: feocco/homelab-config
+image: ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare
+container: caddy
+http_port: 80
+port_env: CADDY_HTTP_PORT
+tailnet: false
+monitoring: false
+sre: false
+dashboard_name: Caddy
+redeploy_on:
+  - ^(scripts/generate-caddy-config|scripts/lib/homelab_catalog.py|services/[^/]+/ops.yaml)$
+secrets:
+  - CLOUDFLARE_API_TOKEN

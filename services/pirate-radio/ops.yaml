@@ -1,0 +1,40 @@
+service: pirate-radio
+kind: multi-container
+host: macmini
+source_repo: feocco/pirate-radio
+images:
+  - ghcr.io/feocco/pirate-radio:latest
+  - postgres:17-alpine
+public_image: true
+containers:
+  - pirate-radio
+  - pirate-radio-postgres
+http_port: 8103
+port_env: SERVICE_PORT
+health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+docs_auth_required: true
+api_framework: node-http-server
+live_base_url: https://reader.home.feocco.com
+tailnet: false
+monitoring: true
+sre: true
+route_hostname: reader.home.feocco.com
+route_target_port: 8103
+route_https: true
+route_dns: unifi
+route_tailscale_service: svc:pirate-radio
+dashboard_name: Pirate Radio
+dashboard_group: Runtime Services
+dashboard_description: Private multi-source audio reader
+dashboard_icon: mdi-radio-tower
+secrets:
+  - OPENAI_API_KEY
+  - POSTGRES_PASSWORD
+  - PIRATE_RADIO_OIDC_CLIENT_ID
+  - PIRATE_RADIO_OIDC_CLIENT_SECRET
+  - X_API_BEARER_TOKEN
+  - HA_URL
+  - HA_LONG_LIVED_TOKEN
+  - HOMELAB_FUNCTIONS_TOKEN

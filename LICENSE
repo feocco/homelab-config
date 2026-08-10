@@ -1,0 +1,11 @@
+All Rights Reserved
+
+Copyright (c) Joe Feocco
+
+This repository is published as a read-only architecture showcase. You may view
+the source. You may not use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of this software or its configuration without
+prior written permission, except for brief quotation for commentary or review.
+
+This is not a template for deploying someone else's homelab. Secrets, private
+host overlays, and live credentials are intentionally absent.

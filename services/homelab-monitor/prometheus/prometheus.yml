@@ -1,0 +1,149 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - prometheus:9090
+
+  - job_name: node-exporter
+    static_configs:
+      - targets:
+          - host.docker.internal:9100
+        labels:
+          host: macmini
+
+  - job_name: docker-stats-exporter
+    static_configs:
+      - targets:
+          - docker-stats-exporter:9109
+        labels:
+          host: macmini
+
+  - job_name: streaming-sessions-kafka-jmx
+    static_configs:
+      - targets:
+          - host.docker.internal:19104
+        labels:
+          service: streaming-sessions-kafka
+          host: macmini
+
+  - job_name: blackbox-exporter
+    static_configs:
+      - targets:
+          - blackbox-exporter:9115
+
+  - job_name: openai-cost-exporter
+    scrape_interval: 60s
+    scrape_timeout: 55s
+    static_configs:
+      - targets:
+          - openai-cost-exporter:9108
+
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module:
+        - http_2xx
+    static_configs:
+      - targets:
+          - http://host.docker.internal:7576/
+        labels:
+          service: homepage
+          host: macmini
+      - targets:
+          - http://host.docker.internal:8088/health
+        labels:
+          service: plant-monitor
+          host: macmini
+      - targets:
+          - http://host.docker.internal:8091/health
+        labels:
+          service: homelab-functions
+          host: macmini
+      - targets:
+          - http://host.docker.internal:8092/health
+        labels:
+          service: hass-janitor
+          host: macmini
+      - targets:
+          - http://host.docker.internal:8093/health
+        labels:
+          service: homelab-log-watcher
+          host: macmini
+      - targets:
+          - http://host.docker.internal:8094/health
+        labels:
+          service: homelab-sre-agent
+          host: macmini
+      - targets:
+          - http://host.docker.internal:8099/health
+        labels:
+          service: hello-nas
+          host: macmini
+      - targets:
+          - http://host.docker.internal:8097/health
+        labels:
+          service: mealie-planner
+          host: macmini
+      - targets:
+          - http://host.docker.internal:8104/health
+        labels:
+          service: bedtime
+          host: macmini
+      - targets:
+          - http://host.docker.internal:8100/health
+        labels:
+          service: instacart-history-service
+          host: macmini
+      - targets:
+          - http://host.docker.internal:8102/health
+        labels:
+          service: laundry-monitor
+          host: macmini
+      - targets:
+          - http://host.docker.internal:9000/-/health/ready/
+        labels:
+          service: authentik
+          host: macmini
+      - targets:
+          - http://host.docker.internal:8103/health
+        labels:
+          service: pirate-radio
+          host: macmini
+      - targets:
+          - http://host.docker.internal:3000/api/health
+        labels:
+          service: grafana
+          host: macmini
+      - targets:
+          - http://192.168.1.191:8181/admin/
+        labels:
+          service: pi-hole
+          host: nasfeo
+      - targets:
+          - https://192.168.1.191:9443/
+        labels:
+          service: portainer
+          host: nasfeo
+      - targets:
+          - http://192.168.1.191:5000/
+        labels:
+          service: synology-dsm
+          host: nasfeo
+      - targets:
+          - http://192.168.1.159:8123/
+        labels:
+          service: home-assistant
+          host: homeassistant
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

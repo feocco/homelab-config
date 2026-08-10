@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /services/caddy
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - caddy
+  # The containerized NAS runner cannot self-update like the native Mac mini
+  # runner, so GitHub drops support for a stale pin with no local warning.
+  - package-ecosystem: docker
+    directory: /github-runner
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - github-runner

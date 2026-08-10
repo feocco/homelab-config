@@ -1,0 +1,17 @@
+services:
+  homelab-docs:
+    image: nginx:1.29-alpine
+    container_name: homelab-docs
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${HOMELAB_DOCS_HTTP_PORT:-8112}:80"
+    volumes:
+      - ../../.site:/usr/share/nginx/html:ro
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"

@@ -1,0 +1,30 @@
+service: streaming-sessions
+kind: multi-container
+host: macmini
+source_repo: feocco/streaming-sessions
+image: ghcr.io/feocco/streaming-sessions:latest
+containers:
+  - streaming-sessions-api
+  - streaming-sessions-collector
+  - streaming-sessions-materializer
+http_port: 8110
+port_env: STREAMING_SESSIONS_HOST_PORT
+health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: fastapi
+live_base_url: https://streaming-sessions.home.feocco.com
+tailnet: false
+monitoring: false
+sre: false
+route_hostname: streaming-sessions.home.feocco.com
+route_target_port: 8110
+route_https: true
+route_dns: unifi
+dashboard_name: Streaming Sessions
+dashboard_group: Runtime Services
+dashboard_description: Private Codex session search
+dashboard_icon: mdi-television-play
+secrets:
+  - DATABASE_URL
+  - STREAMING_SESSIONS_API_TOKEN

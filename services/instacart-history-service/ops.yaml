@@ -1,0 +1,27 @@
+service: instacart-history-service
+kind: app
+host: macmini
+source_repo: feocco/instacart-history-service
+image: ghcr.io/feocco/instacart-history-service:latest
+public_image: true
+container: instacart-history-service
+http_port: 8100
+port_env: INSTACART_HISTORY_PORT
+health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: fastapi
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8100
+tailnet: true
+monitoring: true
+sre: false
+route_hostname: instacart-history-service.home.feocco.com
+route_target_port: 8100
+route_https: true
+route_dns: unifi
+dashboard_name: Instacart History
+dashboard_group: Runtime Services
+dashboard_description: Instacart purchase history service
+dashboard_icon: docker.png
+secrets:
+  - OPENAI_API_KEY

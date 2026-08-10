@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+"${REPO_DIR}/scripts/tests/check-service-inventory"
+"${REPO_DIR}/scripts/tests/check-secret-rendering"
+"${REPO_DIR}/scripts/tests/check-service-rollout"
+"${REPO_DIR}/scripts/tests/check-tailscale-services"
+"${REPO_DIR}/scripts/tests/check-authentik-config"
+"${REPO_DIR}/scripts/tests/check-docs-site"
+"${REPO_DIR}/scripts/tests/check-service-docs-migration"
+"${REPO_DIR}/scripts/tests/check-homepage-catalog"
+"${REPO_DIR}/scripts/tests/check-smoke-signal-config"
+"${REPO_DIR}/scripts/tests/check-caddy-routes"
+"${REPO_DIR}/scripts/tests/check-redeploy-image"
+"${REPO_DIR}/scripts/tests/check-deploy-guards"
+
+echo "Deploy tooling checks passed."

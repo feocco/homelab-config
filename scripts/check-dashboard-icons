@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Network check: every icon Homepage will render must actually resolve upstream.
+# Kept out of test-deploy-tooling because it needs the public CDNs; run it after
+# changing dashboard_icon fields or manual-links.yaml icons.
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+generated="$(mktemp -d)"
+trap 'rm -rf "${generated}"' EXIT
+"${REPO_DIR}/scripts/generate-homepage-config" --output "${generated}" >/dev/null
+
+python3 - "${generated}/services.yaml" <<'PY'
+import json
+import pathlib
+import sys
+import urllib.error
+import urllib.request
+
+# Mirrors Homepage's own icon resolution (src/components/resolvedicon.jsx).
+MDI = "https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/{name}.svg"
+SIMPLE = "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/{name}.svg"
+SELFHST = "https://cdn.jsdelivr.net/gh/selfhst/icons/{ext}/{name}.{ext}"
+DASHBOARD = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/{ext}/{name}"
+
+
+def clean(value: str) -> str:
+    if value.startswith('"') and value.endswith('"'):
+        return json.loads(value)
+    return value
+
+
+def icon_url(icon: str) -> str:
+    if icon.startswith(("http://", "https://")):
+        return icon
+    if icon.startswith("mdi-"):
+        return MDI.format(name=icon[4:])
+    if icon.startswith("si-"):
+        return SIMPLE.format(name=icon[3:])
+    if icon.startswith("sh-"):
+        name = icon[3:]
+        ext = name.rsplit(".", 1)[1] if "." in name else "svg"
+        return SELFHST.format(ext=ext, name=name.rsplit(".", 1)[0])
+    ext = icon.rsplit(".", 1)[1] if "." in icon else "png"
+    return DASHBOARD.format(ext=ext, name=icon)
+
+
+icons: dict[str, list[str]] = {}
+current = ""
+for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
+    if line.startswith("    - "):
+        current = clean(line.split("- ", 1)[1].rstrip(":"))
+        continue
+    stripped = line.strip()
+    if current and stripped.startswith("icon:"):
+        icons.setdefault(clean(stripped.split(":", 1)[1].strip()), []).append(current)
+
+failures = []
+for icon in sorted(icons):
+    if icon.startswith("/"):
+        # Local icons need a /app/public/icons mount; there is none today.
+        failures.append((icon, icons[icon], "local icon path with no mounted icons volume"))
+        continue
+    url = icon_url(icon)
+    request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "homelab-icon-check"})
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            if response.status != 200:
+                failures.append((icon, icons[icon], f"HTTP {response.status}"))
+    except urllib.error.HTTPError as error:
+        failures.append((icon, icons[icon], f"HTTP {error.code}"))
+    except Exception as error:  # noqa: BLE001 - network failures are the signal here
+        failures.append((icon, icons[icon], str(error)))
+
+print(f"Checked {len(icons)} distinct icons across the generated Homepage config.")
+if failures:
+    print("\nUnresolvable icons:", file=sys.stderr)
+    for icon, cards, reason in failures:
+        print(f"  {icon} ({reason}) used by: {', '.join(sorted(cards))}", file=sys.stderr)
+    raise SystemExit(1)
+print("All icons resolve.")
+PY

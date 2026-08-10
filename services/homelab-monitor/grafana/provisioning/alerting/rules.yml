@@ -1,0 +1,583 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: Homelab critical
+    folder: Homelab
+    interval: 1m
+    rules:
+      - uid: homelab_target_down
+        title: Host or exporter target down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: up{job=~"prometheus|node-exporter|docker-stats-exporter|streaming-sessions-kafka-jmx|blackbox-exporter|openai-cost-exporter"} == bool 0
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: Alerting
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: A Prometheus scrape target is down.
+          description: Check Grafana target health, native node_exporter, and the corresponding exporter container.
+        labels:
+          severity: critical
+
+      - uid: homelab_http_probe_down
+        title: HTTP service probe down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: probe_success{job="blackbox-http"} == bool 0
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: Alerting
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: A self-hosted HTTP endpoint is failing its blackbox probe.
+          description: Check the service container, endpoint health path, and Mac mini or NAS networking.
+        labels:
+          severity: critical
+
+      - uid: homelab_cpu_pressure
+        title: Mac mini CPU pressure
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 90
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: Mac mini CPU busy is above 90 percent.
+          description: Capacity pressure is sustained; check container CPU by service.
+        labels:
+          severity: critical
+
+      - uid: homelab_load_pressure
+        title: Mac mini load pressure
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: node_load15 / count(count by (cpu)(node_cpu_seconds_total{mode="idle"})) > 1
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: Mac mini 15 minute load per CPU is above 1.0.
+          description: Sustained load indicates the Mac mini is saturated or blocked on work.
+        labels:
+          severity: critical
+
+      - uid: homelab_low_memory
+        title: Mac mini available memory low
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: node_memory_free_bytes + node_memory_inactive_bytes + node_memory_purgeable_bytes < 1024 * 1024 * 1024
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: Mac mini available memory is below 1 GiB.
+          description: Available memory is low; inspect container memory and active workloads.
+        labels:
+          severity: critical
+
+      - uid: homelab_swap_activity
+        title: Mac mini swap activity
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: rate(node_memory_swapped_in_bytes_total[5m]) + rate(node_memory_swapped_out_bytes_total[5m]) > 50 * 1024 * 1024
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: Mac mini is actively swapping.
+          description: Sustained swap activity above 50 MiB/s usually means memory pressure or a runaway container.
+        labels:
+          severity: critical
+
+      - uid: homelab_root_disk_full
+        title: Mac mini root disk high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: max(100 * (1 - node_filesystem_avail_bytes{mountpoint=~"/|/System/Volumes/Data"} / node_filesystem_size_bytes{mountpoint=~"/|/System/Volumes/Data"})) > 85
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: Mac mini root filesystem is above 85 percent.
+          description: Root filesystem pressure can break package updates and service startup.
+        labels:
+          severity: critical
+
+      - uid: homelab_container_oom
+        title: Container OOM killed
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: homelab_docker_container_oom_killed{name!=""} == bool 1
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: A Docker container had an OOM event.
+          description: Check container memory usage and Mac mini RAM pressure.
+        labels:
+          severity: critical
+
+      - uid: homelab_container_restart
+        title: Important container restarted
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: changes(homelab_docker_container_start_time_seconds{name=~"plant-monitor|homelab-functions|hass-janitor|homelab-log-watcher|homelab-sre-agent|hello-nas|homepage|mealie-planner|instacart-history-service|pirate-radio|pirate-radio-postgres|authentik-server|authentik-worker|authentik-postgres|laundry-monitor|bedtime|homelab-monitor-(prometheus|grafana|blackbox-exporter|openai-cost-exporter|docker-stats-exporter)"}[15m]) > 0
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: An important Docker container restarted.
+          description: Check recent logs and deploy history for the affected service.
+        labels:
+          severity: critical
+
+      - uid: homelab_container_memory_high
+        title: Container memory high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: |
+                (
+                  homelab_docker_container_memory_usage_bytes{name!="",name!="streaming-sessions-kafka"} > 700 * 1024 * 1024
+                )
+                or
+                (
+                  homelab_docker_container_memory_usage_bytes{name="streaming-sessions-kafka"} > 1300 * 1024 * 1024
+                )
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: A Docker container crossed its memory alert threshold.
+          description: Default threshold is 700 MiB; streaming-sessions-kafka is allowed 1300 MiB because its Kafka JVM normally reserves about 1 GiB.
+        labels:
+          severity: critical
+
+      - uid: homelab_kafka_gc_pressure
+        title: Streaming Sessions Kafka GC pressure
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 100 * sum(rate(kafka_jvm_gc_collection_seconds_total{job="streaming-sessions-kafka-jmx"}[5m])) > 10
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: Streaming Sessions Kafka is spending more than 10 percent of time in GC.
+          description: Kafka may be under heap pressure after the 512 MiB heap cap; check the Kafka JVM GC and heap panels.
+        labels:
+          severity: critical
+          service: streaming-sessions-kafka
+
+  - orgId: 1
+    name: Homelab cost critical
+    folder: Homelab
+    interval: 1m
+    rules:
+      - uid: homelab_openai_daily_spend_spike
+        title: OpenAI daily spend spike
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: openai_cost_usd{window="today"} > bool openai_cost_alert_threshold_usd{window="today"}
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: OpenAI spend today is above its configured threshold.
+          description: This alert fires when the refreshed today cost gauge crosses OPENAI_COST_DAILY_SPEND_SPIKE_THRESHOLD_USD; it does not wait for the UTC day to close.
+        labels:
+          severity: critical
+          category: cost
+          service: openai
+
+      - uid: homelab_openai_7d_spend_high
+        title: OpenAI 7-day spend high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: openai_cost_usd{window="last_7d"} > bool openai_cost_alert_threshold_usd{window="last_7d"}
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: C
+              type: reduce
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: OpenAI spend over the last 7 days is above its configured threshold.
+          description: This alert fires when the refreshed rolling 7-day cost gauge crosses OPENAI_COST_7D_SPEND_HIGH_THRESHOLD_USD.
+        labels:
+          severity: critical
+          category: cost
+          service: openai

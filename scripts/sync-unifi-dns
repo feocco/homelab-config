@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+"""Sync homelab route hostnames into UniFi local DNS Host A records."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import pathlib
+import re
+import ssl
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any
+
+
+CLOUD_API_BASE = "https://api.ui.com"
+
+
+def clean_scalar(value: str) -> Any:
+    value = value.strip().strip('"').strip("'")
+    if value.lower() == "true":
+        return True
+    if value.lower() == "false":
+        return False
+    if re.fullmatch(r"-?[0-9]+", value):
+        return int(value)
+    return value
+
+
+def parse_host_file(path: pathlib.Path) -> tuple[str, dict[str, dict[str, Any]]]:
+    bind_addr = ""
+    services: dict[str, dict[str, Any]] = {}
+    in_services = False
+    current = ""
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if re.match(r"^  bind_addr:\s+", line):
+            bind_addr = str(clean_scalar(line.split(":", 1)[1]))
+            continue
+        if line == "services:":
+            in_services = True
+            continue
+        if not in_services:
+            continue
+        match = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if match:
+            current = match.group(1)
+            services[current] = {"enabled": True, "path": f"services/{current}"}
+            continue
+        if not current:
+            continue
+        match = re.match(r"^    path:\s*(.+)\s*$", line)
+        if match:
+            services[current]["path"] = clean_scalar(match.group(1))
+            continue
+        match = re.match(r"^    enabled:\s*(.+)\s*$", line)
+        if match:
+            services[current]["enabled"] = clean_scalar(match.group(1)) is not False
+    return bind_addr, services
+
+
+def parse_ops(path: pathlib.Path) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    current_list: str | None = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line.startswith("  - "):
+            if current_list is None:
+                continue
+            data[current_list].append(clean_scalar(line[4:]))
+            continue
+        if line.startswith(" "):
+            continue
+        match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):(?:\s*(.*))?$", line)
+        if not match:
+            continue
+        key, value = match.groups()
+        if value == "":
+            data[key] = []
+            current_list = key
+        else:
+            data[key] = clean_scalar(value or "")
+            current_list = None
+    return data
+
+
+def parse_retired_routes(path: pathlib.Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    routes: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        match = re.match(r"^  - hostname:\s*(.+)\s*$", line)
+        if match:
+            current = {"hostname": str(clean_scalar(match.group(1)))}
+            routes.append(current)
+            continue
+        if current is None:
+            continue
+        match = re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.+)\s*$", line)
+        if match:
+            key, value = match.groups()
+            current[key] = str(clean_scalar(value))
+    return [route for route in routes if route.get("hostname") and route.get("to")]
+
+
+def desired_records(base_dir: pathlib.Path, host: str) -> list[dict[str, str]]:
+    bind_addr, services = parse_host_file(base_dir / "hosts" / host / "services.yaml")
+    if not bind_addr:
+        raise SystemExit(f"hosts/{host}/services.yaml is missing host.bind_addr")
+    records: list[dict[str, str]] = []
+    active_hostnames: set[str] = set()
+    for service, entry in sorted(services.items()):
+        if entry.get("enabled") is False:
+            continue
+        manifest = parse_ops(base_dir / str(entry["path"]) / "ops.yaml")
+        if manifest.get("route_dns") != "unifi":
+            continue
+        hostname = str(manifest.get("route_hostname") or "")
+        if not hostname:
+            continue
+        active_hostnames.add(hostname)
+        alias_target = str(manifest.get("route_dns_alias_target") or "")
+        if alias_target:
+            records.append({"service": service, "type": "CNAME", "name": hostname, "value": alias_target})
+        else:
+            records.append({"service": service, "type": "A", "name": hostname, "value": bind_addr})
+    if services.get("caddy", {}).get("enabled") is not False:
+        for route in parse_retired_routes(base_dir / "services" / "caddy" / "retired-routes.yaml"):
+            hostname = route["hostname"]
+            if hostname in active_hostnames:
+                continue
+            records.append({"service": "caddy-retired-route", "type": "A", "name": hostname, "value": bind_addr})
+    return records
+
+
+def headers() -> dict[str, str]:
+    api_key = os.environ.get("UNIFI_API_KEY", "")
+    if not api_key:
+        raise SystemExit("UNIFI_API_KEY is required unless --dry-run is used")
+    return {"Accept": "application/json", "Content-Type": "application/json", "X-API-KEY": api_key}
+
+
+def request_json(method: str, url: str, payload: dict[str, Any] | None = None) -> Any:
+    data = None if payload is None else json.dumps(payload).encode()
+    context = None
+    pinned_fingerprint = os.environ.get("UNIFI_CERT_SHA256", "").replace(":", "").lower()
+    expected_host = os.environ.get("UNIFI_TLS_SERVER_NAME", "")
+    if pinned_fingerprint and os.environ.get("UNIFI_SKIP_TLS_VERIFY", "").lower() == "true":
+        raise SystemExit("Set either UNIFI_CERT_SHA256 or UNIFI_SKIP_TLS_VERIFY=true, not both")
+    if pinned_fingerprint:
+        if not re.fullmatch(r"[0-9a-f]{64}", pinned_fingerprint):
+            raise SystemExit("UNIFI_CERT_SHA256 must be a SHA-256 certificate fingerprint")
+        context = ssl._create_unverified_context()
+    if os.environ.get("UNIFI_SKIP_TLS_VERIFY", "").lower() == "true":
+        context = ssl._create_unverified_context()
+    req = urllib.request.Request(url, data=data, headers=headers(), method=method)
+    try:
+        with urllib.request.urlopen(req, context=context, timeout=20) as response:
+            if pinned_fingerprint:
+                der_cert = response.fp.raw._sock.getpeercert(binary_form=True)
+                actual = hashlib.sha256(der_cert).hexdigest()
+                if actual != pinned_fingerprint:
+                    raise SystemExit("UniFi TLS certificate fingerprint does not match UNIFI_CERT_SHA256")
+            body = response.read().decode()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise SystemExit(f"UniFi API {method} {url} failed: HTTP {exc.code}: {detail}") from exc
+    return json.loads(body) if body else {}
+
+
+def discover_console_id() -> str:
+    configured = os.environ.get("UNIFI_CONSOLE_ID", "")
+    if configured:
+        return configured
+    fixture = os.environ.get("UNIFI_HOSTS_FIXTURE", "")
+    if fixture:
+        payload = json.loads(pathlib.Path(fixture).read_text())
+    else:
+        payload = request_json("GET", f"{CLOUD_API_BASE}/v1/hosts?pageSize=100")
+    hosts = payload.get("data") or payload.get("hosts") or payload if isinstance(payload, dict) else payload
+    if isinstance(hosts, dict):
+        hosts = hosts.get("data") or hosts.get("hosts") or []
+    hosts = list(hosts or [])
+    if not hosts:
+        raise SystemExit("Could not discover a UniFi console; set UNIFI_CONSOLE_ID or UNIFI_BASE_URL")
+    if len(hosts) > 1:
+        raise SystemExit("Multiple UniFi consoles are available; set UNIFI_CONSOLE_ID")
+    console_id = str(hosts[0].get("id") or hosts[0].get("hostId") or "")
+    if not console_id:
+        raise SystemExit("Discovered UniFi console is missing an id; set UNIFI_CONSOLE_ID")
+    return console_id
+
+
+def base_url() -> str:
+    value = os.environ.get("UNIFI_BASE_URL", "").rstrip("/")
+    if value:
+        if value.endswith("/proxy/network/integration/v1"):
+            return value
+        return value + "/proxy/network/integration/v1"
+    console_id = urllib.parse.quote(discover_console_id(), safe="")
+    return f"{CLOUD_API_BASE}/v1/connector/consoles/{console_id}/proxy/network/integration/v1"
+
+
+def site_id(api_base: str) -> str:
+    value = os.environ.get("UNIFI_SITE_ID", "")
+    if value:
+        return value
+    payload = request_json("GET", f"{api_base}/sites")
+    sites = payload.get("data") or payload.get("sites") or payload
+    if isinstance(sites, dict):
+        sites = sites.get("data") or sites.get("sites") or []
+    for site in sites:
+        if site.get("name") == "default" or site.get("internalReference") == "default":
+            return str(site.get("id") or site.get("_id") or site.get("siteId"))
+    if sites:
+        first = sites[0]
+        return str(first.get("id") or first.get("_id") or first.get("siteId"))
+    raise SystemExit("Could not discover UniFi site id; set UNIFI_SITE_ID")
+
+
+def normalize_records(payload: Any) -> list[dict[str, str]]:
+    items = payload.get("records") if isinstance(payload, dict) else payload
+    if isinstance(items, dict):
+        items = items.get("data") or items.get("records") or []
+    records: list[dict[str, str]] = []
+    for item in items or []:
+        record_type = str(item.get("type") or item.get("recordType") or "").upper()
+        if record_type == "A_RECORD":
+            record_type = "A"
+        if record_type == "CNAME_RECORD":
+            record_type = "CNAME"
+        name = str(item.get("domain") or item.get("name") or item.get("domainName") or item.get("fqdn") or "")
+        value = str(
+            item.get("targetDomain")
+            or item.get("ipv4Address")
+            or item.get("value")
+            or item.get("ipAddress")
+            or item.get("content")
+            or ""
+        )
+        record_id = str(item.get("id") or item.get("_id") or "")
+        if record_type and name:
+            records.append({"id": record_id, "type": record_type, "name": name.rstrip("."), "value": value})
+    return records
+
+
+def current_records(api_base: str, site: str) -> list[dict[str, str]]:
+    fixture = os.environ.get("UNIFI_DNS_RECORDS_FIXTURE")
+    if fixture:
+        return normalize_records(json.loads(pathlib.Path(fixture).read_text()))
+    payload = request_json("GET", f"{api_base}/sites/{site}/dns/policies")
+    return normalize_records(payload.get("data", payload))
+
+
+def upsert_record(api_base: str, site: str, record: dict[str, str], existing: dict[str, str] | None) -> None:
+    if record["type"] == "CNAME":
+        payload = {
+            "type": "CNAME_RECORD",
+            "enabled": True,
+            "domain": record["name"],
+            "targetDomain": record["value"],
+            "ttlSeconds": 300,
+        }
+    else:
+        payload = {
+            "type": "A_RECORD",
+            "enabled": True,
+            "domain": record["name"],
+            "ipv4Address": record["value"],
+            "ttlSeconds": 300,
+        }
+    if existing and existing.get("id"):
+        request_json("PUT", f"{api_base}/sites/{site}/dns/policies/{existing['id']}", payload)
+    else:
+        request_json("POST", f"{api_base}/sites/{site}/dns/policies", payload)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[1]))
+    parser.add_argument("--host", default="macmini")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--check", action="store_true")
+    mode.add_argument("--apply", action="store_true")
+    args = parser.parse_args(argv)
+
+    records = desired_records(pathlib.Path(args.base_dir), args.host)
+    if args.dry_run or not (args.check or args.apply):
+        for record in records:
+            print(f"Would upsert {record['type']} {record['name']} -> {record['value']} for {record['service']} on {args.host}")
+        return 0
+
+    fixture = os.environ.get("UNIFI_DNS_RECORDS_FIXTURE")
+    if fixture and args.check:
+        api_base = ""
+        site = os.environ.get("UNIFI_SITE_ID", "fixture")
+    else:
+        api_base = base_url()
+        site = site_id(api_base)
+    existing = current_records(api_base, site)
+    by_name = {row["name"]: row for row in existing}
+    missing: list[str] = []
+    for record in records:
+        found = by_name.get(record["name"])
+        if args.check:
+            if not found or found.get("type") != record["type"] or found.get("value") != record["value"]:
+                missing.append(f"{record['type']} {record['name']} -> {record['value']}")
+            continue
+        upsert_record(api_base, site, record, found)
+        print(f"Upserted {record['type']} {record['name']} -> {record['value']}")
+
+    if missing:
+        print("UniFi DNS records differ from route manifests:", file=sys.stderr)
+        for item in missing:
+            print(f"  {item}", file=sys.stderr)
+        return 1
+    if args.check:
+        print("UniFi DNS records match route manifests.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+assert_json_value() {
+  local json_file="$1"
+  local expression="$2"
+  local expected="$3"
+
+  python3 - "${json_file}" "${expression}" "${expected}" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+value = eval(sys.argv[2], {"__builtins__": {}}, {"payload": payload})
+expected = sys.argv[3]
+if str(value).lower() != expected.lower():
+    raise SystemExit(f"{sys.argv[2]} expected {expected!r}, got {value!r}")
+PY
+}
+
+test -x "${REPO_DIR}/scripts/check-service-docs-migration"
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "${tmpdir}"' EXIT
+
+"${REPO_DIR}/scripts/check-service-docs-migration" \
+  --service hello-nas \
+  --host macmini \
+  --stage manifest \
+  --format json >"${tmpdir}/hello-manifest.json"
+assert_json_field "${tmpdir}/hello-manifest.json" "success" "true"
+assert_json_value "${tmpdir}/hello-manifest.json" "payload['stages'][0]['name']" "manifest"
+assert_json_value "${tmpdir}/hello-manifest.json" "payload['stages'][0]['success']" "true"
+
+"${REPO_DIR}/scripts/check-service-docs-migration" \
+  --service hello-nas \
+  --host macmini \
+  --stage docs-site \
+  --format json >"${tmpdir}/hello-docs-site.json"
+assert_json_field "${tmpdir}/hello-docs-site.json" "success" "true"
+assert_json_value "${tmpdir}/hello-docs-site.json" "payload['stages'][0]['docs_status']" "Live docs available"
+
+"${REPO_DIR}/scripts/check-service-docs-migration" \
+  --service homelab-functions \
+  --host macmini \
+  --stage docs-site \
+  --format json >"${tmpdir}/functions-docs-site.json"
+assert_json_field "${tmpdir}/functions-docs-site.json" "success" "true"
+assert_json_value "${tmpdir}/functions-docs-site.json" "payload['stages'][0]['docs_status']" "Live docs available"
+
+assert_fails "${tmpdir}/caddy-docs-site.out" \
+  "${REPO_DIR}/scripts/check-service-docs-migration" \
+    --service caddy \
+    --host macmini \
+    --stage docs-site \
+    --format json
+assert_json_field "${tmpdir}/caddy-docs-site.out" "success" "false"
+assert_json_value "${tmpdir}/caddy-docs-site.out" "payload['stages'][0]['docs_status']" "Not migrated"
+
+assert_fails "${tmpdir}/app-no-proof.out" \
+  "${REPO_DIR}/scripts/check-service-docs-migration" \
+    --service hello-nas \
+    --host macmini \
+    --stage app \
+    --app-repo "${REPO_DIR}" \
+    --format json
+assert_contains "${tmpdir}/app-no-proof.out" "app stage requires --app-test-command or --local-base-url"

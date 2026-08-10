@@ -1,0 +1,433 @@
+defaults:
+  issue_repo: feocco/homelab-config
+  deploy_repo: feocco/homelab-config
+
+services:
+  hello-nas:
+    containers:
+      - hello-nas
+    images:
+      - ghcr.io/feocco/hello-nas:*
+    source:
+      repo: feocco/hello-nas
+      path_hint: /Users/feocco/code/hello-nas
+    issue_repo: feocco/hello-nas
+    deploy:
+      path: services/hello-nas
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/hello-nas
+    labels:
+      - homelab-sre
+      - hello-nas
+    sre:
+      enabled: true
+      autofix: true
+      repo_daily_limit: 5
+
+  plant-monitor:
+    containers:
+      - plant-monitor
+    images:
+      - ghcr.io/feocco/plant-monitor:*
+    source:
+      repo: feocco/plant-monitor
+      path_hint: /Users/feocco/code/plant-monitor
+    issue_repo: feocco/plant-monitor
+    deploy:
+      path: services/plant-monitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/plant-monitor
+    labels:
+      - homelab-sre
+      - plant-monitor
+    sre:
+      enabled: true
+      autofix: true
+      repo_daily_limit: 5
+
+  homelab-functions:
+    containers:
+      - homelab-functions
+    images:
+      - ghcr.io/feocco/homelab-functions:*
+    source:
+      repo: feocco/homelab-functions
+      path_hint: /Users/feocco/code/homelab-functions
+    issue_repo: feocco/homelab-functions
+    deploy:
+      path: services/homelab-functions
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homelab-functions
+    labels:
+      - homelab-sre
+      - homelab-functions
+    sre:
+      enabled: true
+      autofix: true
+      repo_daily_limit: 5
+
+  hass-janitor:
+    containers:
+      - hass-janitor
+    images:
+      - ghcr.io/feocco/hass-janitor:*
+    source:
+      repo: feocco/hass-janitor
+      path_hint: /Users/feocco/code/hass-janitor
+    issue_repo: feocco/hass-janitor
+    deploy:
+      path: services/hass-janitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/hass-janitor
+    labels:
+      - homelab-sre
+      - hass-janitor
+    sre:
+      enabled: true
+      autofix: true
+      repo_daily_limit: 5
+
+  homelab-log-watcher:
+    containers:
+      - homelab-log-watcher
+    images:
+      - ghcr.io/feocco/homelab-log-watcher:*
+    source:
+      repo: feocco/homelab-log-watcher
+      path_hint: /Users/feocco/code/homelab-log-watcher
+    issue_repo: feocco/homelab-log-watcher
+    deploy:
+      path: services/homelab-log-watcher
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homelab-log-watcher
+    labels:
+      - homelab-sre
+      - homelab-log-watcher
+    sre:
+      enabled: true
+      autofix: true
+      repo_daily_limit: 5
+
+  homelab-sre-agent:
+    containers:
+      - homelab-sre-agent
+    images:
+      - ghcr.io/feocco/homelab-sre-agent:*
+    source:
+      repo: feocco/homelab-sre-agent
+      path_hint: /Users/feocco/code/homelab-sre-agent
+    issue_repo: feocco/homelab-sre-agent
+    deploy:
+      path: services/homelab-sre-agent
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homelab-sre-agent
+    labels:
+      - homelab-sre
+      - homelab-sre-agent
+    sre:
+      enabled: true
+      autofix: true
+      repo_daily_limit: 5
+
+  caddy:
+    containers:
+      - caddy
+    images:
+      - caddy:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/caddy
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/caddy
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/caddy
+    labels:
+      - homelab-sre
+      - caddy
+    sre:
+      enabled: false
+      autofix: false
+
+  homepage:
+    containers:
+      - homepage
+    images:
+      - gethomepage/homepage:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/homepage
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/homepage
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homepage
+    labels:
+      - homelab-sre
+      - homepage
+    sre:
+      enabled: false
+      autofix: false
+
+  homelab-monitor:
+    containers:
+      - homelab-monitor-prometheus
+      - homelab-monitor-grafana
+      - homelab-monitor-blackbox-exporter
+      - homelab-monitor-docker-stats-exporter
+      - homelab-monitor-openai-cost-exporter
+    images:
+      - prom/prometheus:*
+      - grafana/grafana:*
+      - prom/blackbox-exporter:*
+      - python:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/homelab-monitor
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/homelab-monitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homelab-monitor
+    labels:
+      - homelab-sre
+      - homelab-monitor
+    sre:
+      enabled: false
+      autofix: false
+
+  netalertx:
+    containers:
+      - netalertx
+    images:
+      - ghcr.io/netalertx/netalertx:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/homelab-config/services/netalertx
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/netalertx
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/netalertx
+    labels:
+      - homelab-sre
+      - netalertx
+    sre:
+      enabled: false
+      autofix: false
+
+  bedtime:
+    containers:
+      - bedtime
+    images:
+      - ghcr.io/feocco/bedtime:*
+    source:
+      repo: feocco/bedtime
+      path_hint: /Users/feocco/code/bedtime
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/bedtime
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/bedtime
+    labels:
+      - homelab-sre
+      - bedtime
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
+
+  mealie:
+    containers:
+      - mealie
+      - mealie-postgres
+      - mealie-cloudflared
+    images:
+      - ghcr.io/mealie-recipes/mealie:*
+      - postgres:*
+      - cloudflare/cloudflared:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/mealie
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/mealie
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/mealie
+    labels:
+      - homelab-sre
+      - mealie
+    sre:
+      enabled: false
+      autofix: false
+
+  mealie-planner:
+    containers:
+      - mealie-planner
+    images:
+      - ghcr.io/feocco/mealie-planner:*
+    source:
+      repo: feocco/mealie-planner
+      path_hint: /Users/feocco/code/mealie-planner
+    issue_repo: feocco/mealie-planner
+    deploy:
+      path: services/mealie-planner
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/mealie-planner
+    labels:
+      - homelab-sre
+      - mealie-planner
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
+
+  instacart-history-service:
+    containers:
+      - instacart-history-service
+    images:
+      - ghcr.io/feocco/instacart-history-service:*
+    source:
+      repo: feocco/instacart-history-service
+      path_hint: /Users/feocco/code/instacart-history-service
+    issue_repo: feocco/instacart-history-service
+    deploy:
+      path: services/instacart-history-service
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/instacart-history-service
+    labels:
+      - homelab-sre
+      - instacart-history-service
+    sre:
+      enabled: false
+      autofix: false
+      repo_daily_limit: 1
+
+  dog-bowl-monitor:
+    containers:
+      - dog-bowl-monitor
+    images:
+      - ghcr.io/feocco/dog-bowl-monitor:*
+    source:
+      repo: feocco/dog-bowl-monitor
+      path_hint: /Users/feocco/code/dog-bowl-monitor
+    issue_repo: feocco/dog-bowl-monitor
+    deploy:
+      path: services/dog-bowl-monitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/dog-bowl-monitor
+    labels:
+      - homelab-sre
+      - dog-bowl-monitor
+    sre:
+      enabled: false
+      autofix: false
+      repo_daily_limit: 1
+
+  laundry-monitor:
+    containers:
+      - laundry-monitor
+    images:
+      - ghcr.io/feocco/laundry-monitor:*
+    source:
+      repo: feocco/laundry-monitor
+      path_hint: /Users/feocco/code/laundry-monitor
+    issue_repo: feocco/laundry-monitor
+    deploy:
+      path: services/laundry-monitor
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/laundry-monitor
+    labels:
+      - homelab-sre
+      - laundry-monitor
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
+
+  pirate-radio:
+    containers:
+      - pirate-radio
+      - pirate-radio-postgres
+    images:
+      - ghcr.io/feocco/pirate-radio:*
+      - postgres:17-alpine
+    source:
+      repo: feocco/pirate-radio
+      path_hint: /Users/feocco/code/pirate-radio
+    issue_repo: feocco/pirate-radio
+    deploy:
+      path: services/pirate-radio
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/pirate-radio
+    labels:
+      - homelab-sre
+      - pirate-radio
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
+
+  authentik:
+    containers:
+      - authentik-server
+      - authentik-worker
+      - authentik-postgres
+    images:
+      - ghcr.io/goauthentik/server:2026.5.4
+      - postgres:16-alpine
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/authentik
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/authentik
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/authentik
+    labels:
+      - homelab-sre
+      - authentik
+    sre:
+      enabled: false
+      autofix: false
+
+  streaming-sessions-kafka:
+    containers:
+      - streaming-sessions-kafka
+    images:
+      - apache/kafka:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/streaming-sessions-kafka
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/streaming-sessions-kafka
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/streaming-sessions-kafka
+    labels:
+      - homelab-sre
+      - streaming-sessions
+    sre:
+      enabled: false
+      autofix: false
+
+  streaming-sessions-postgres:
+    containers:
+      - streaming-sessions-postgres
+    images:
+      - postgres:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/streaming-sessions-postgres
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/streaming-sessions-postgres
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/streaming-sessions-postgres
+    labels:
+      - homelab-sre
+      - streaming-sessions
+    sre:
+      enabled: false
+      autofix: false
+
+  streaming-sessions:
+    containers:
+      - streaming-sessions-api
+      - streaming-sessions-collector
+      - streaming-sessions-materializer
+    images:
+      - ghcr.io/feocco/streaming-sessions:*
+    source:
+      repo: feocco/streaming-sessions
+      path_hint: /Users/feocco/code/streaming-sessions
+    issue_repo: feocco/streaming-sessions
+    deploy:
+      path: services/streaming-sessions
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/streaming-sessions
+    labels:
+      - homelab-sre
+      - streaming-sessions
+    sre:
+      enabled: false
+      autofix: false

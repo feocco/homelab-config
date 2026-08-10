@@ -1,0 +1,216 @@
+#!/bin/bash
+set -euo pipefail
+
+# One-time migration helper: move identity fingerprints that were scrubbed from
+# tracked .env.config files into private, un-tracked host overlays consumed by
+# scripts/render-service-env.
+#
+# Overlay path (per host/service):
+#   ${HOMELAB_PRIVATE_CONFIG_DIR:-$HOME/homelab-private-config}/<host>/<service>.env
+#
+# Default mode harvests the real values straight from the live rendered .env
+# files on this host, so you do not type anything. Run it BEFORE deploying the
+# scrubbed config (while the live .env files still hold the real values).
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+source "${SCRIPT_DIR}/lib-service-secrets"
+
+HOST="macmini"
+MODE="from-live"
+DEPLOY_BASE_DIR=""
+INPUT_FILE=""
+PRIVATE_ROOT="${HOMELAB_PRIVATE_CONFIG_DIR:-${HOME}/homelab-private-config}"
+FORCE="false"
+
+# Migration map: host|service|KEY|human description.
+# These are the exact keys scrubbed from tracked config for the public repo.
+# All currently live only on macmini; the map is host-aware so future hosts can
+# be added without changing the logic.
+PRIVATE_KEYS=(
+  "macmini|caddy|CADDY_ACME_EMAIL|Let's Encrypt / ACME registration email"
+  "macmini|authentik|AUTHENTIK_BOOTSTRAP_EMAIL|Initial Authentik admin email"
+  "macmini|mealie|DEFAULT_EMAIL|Initial Mealie admin email"
+  "macmini|homelab-functions|HA_NOTIFY_JOE_SERVICE|Home Assistant notify.* entity for Joe's phone"
+  "macmini|homelab-functions|HA_NOTIFY_JESS_SERVICE|Home Assistant notify.* entity for Jess's phone"
+  "macmini|homelab-sre-agent|SRE_DIAGNOSTIC_S3_BUCKET|S3 bucket for SRE diagnostics (contains AWS account id)"
+  "macmini|homelab-sre-agent|GITHUB_APP_ID|GitHub App id for the SRE agent"
+  "macmini|homelab-sre-agent|GITHUB_APP_INSTALLATION_ID|GitHub App installation id for the SRE agent"
+)
+
+# Values that mean "not filled in" and must not be written as if real.
+is_placeholder() {
+  case "$1" in
+    "" | replace_me | replace_me_* | owner@example.com | mealie@example.com \
+      | notify.mobile_app_your_phone | notify.mobile_app_jess_phone)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  install-private-config [--host HOST] [--from-live] [--deploy-base-dir DIR]
+  install-private-config [--host HOST] --from-file FILE
+  install-private-config --print-template [--host HOST]
+
+Modes:
+  --from-live      (default) Read real values from the live rendered
+                   <deploy-base>/services/<service>/.env files and write the
+                   private overlays. No manual entry. Run before deploying the
+                   scrubbed config.
+  --from-file FILE Read values from a filled template (INI style, see
+                   --print-template). Use if the live .env files already hold
+                   placeholders.
+  --print-template Print a commented template to stdout. Fill it in, then feed
+                   it back with --from-file.
+
+Options:
+  --host HOST            Host whose overlays to write (default: macmini).
+  --deploy-base-dir DIR  Where live .env files live (default: this host's
+                         deploy_base_dir from hosts/<host>/services.yaml, else
+                         $HOME/homelab-config-runtime).
+  --force                Overwrite existing overlay keys.
+
+Overlay root: ${HOMELAB_PRIVATE_CONFIG_DIR:-$HOME/homelab-private-config}
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host) HOST="${2:?--host requires a value}"; shift 2 ;;
+    --from-live) MODE="from-live"; shift ;;
+    --from-file) MODE="from-file"; INPUT_FILE="${2:?--from-file requires a path}"; shift 2 ;;
+    --print-template) MODE="print-template"; shift ;;
+    --deploy-base-dir) DEPLOY_BASE_DIR="${2:?--deploy-base-dir requires a value}"; shift 2 ;;
+    --force) FORCE="true"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+print_template() {
+  echo "# Homelab private overlay template."
+  echo "# Fill in real values, then: install-private-config --from-file THIS_FILE"
+  echo "# Sections are [<host>/<service>]. Lines are KEY=value."
+  echo
+  local current=""
+  local entry host service key desc
+  for entry in "${PRIVATE_KEYS[@]}"; do
+    IFS='|' read -r host service key desc <<< "${entry}"
+    [[ "${host}" == "${HOST}" ]] || continue
+    if [[ "${current}" != "${host}/${service}" ]]; then
+      [[ -n "${current}" ]] && echo
+      echo "[${host}/${service}]"
+      current="${host}/${service}"
+    fi
+    echo "# ${desc}"
+    echo "${key}="
+  done
+}
+
+resolve_deploy_base() {
+  if [[ -n "${DEPLOY_BASE_DIR}" ]]; then
+    printf '%s' "$(service_secret_expand_path "${DEPLOY_BASE_DIR}")"
+    return
+  fi
+  local services_file base
+  services_file="$(service_secret_services_file "${BASE_DIR}" "${HOST}")"
+  base="$(service_secret_host_deploy_base_dir "${services_file}")"
+  [[ -n "${base}" ]] || base="${HOME}/homelab-config-runtime"
+  printf '%s' "$(service_secret_expand_path "${base}")"
+}
+
+# Read a KEY from an INI-style template section [host/service].
+value_from_template() {
+  local file="$1" want_section="$2" want_key="$3"
+  awk -v section="${want_section}" -v key="${want_key}" '
+    /^\[.*\]$/ { cur=substr($0,2,length($0)-2); next }
+    cur==section {
+      line=$0
+      sub(/[[:space:]]*#.*$/, "", line)
+      if (line ~ "^"key"=") { sub("^"key"=", "", line); print line; exit }
+    }
+  ' "${file}"
+}
+
+write_overlays() {
+  local deploy_base="$1"
+  mkdir -p "${PRIVATE_ROOT}"
+  chmod 700 "${PRIVATE_ROOT}" 2>/dev/null || true
+
+  local entry host service key desc value src
+  local wrote=0 skipped=0 missing=0
+
+  for entry in "${PRIVATE_KEYS[@]}"; do
+    IFS='|' read -r host service key desc <<< "${entry}"
+    [[ "${host}" == "${HOST}" ]] || continue
+
+    if [[ "${MODE}" == "from-live" ]]; then
+      local live_env="${deploy_base}/${service}/.env"
+      # service dir name matches service name in this repo layout
+      live_env="${deploy_base}/services/${service}/.env"
+      value=""
+      if [[ -f "${live_env}" ]] && service_secret_env_value "${live_env}" "${key}" >/dev/null 2>&1; then
+        value="$(service_secret_env_value "${live_env}" "${key}")"
+      fi
+      src="${live_env}"
+    else
+      value="$(value_from_template "${INPUT_FILE}" "${host}/${service}" "${key}")"
+      src="${INPUT_FILE}"
+    fi
+
+    if is_placeholder "${value}"; then
+      echo "  MISSING ${host}/${service} ${key} (no real value in ${src})" >&2
+      missing=$((missing+1))
+      continue
+    fi
+
+    local overlay="${PRIVATE_ROOT}/${host}/${service}.env"
+    mkdir -p "${PRIVATE_ROOT}/${host}"
+
+    if [[ -f "${overlay}" ]] && grep -q "^${key}=" "${overlay}" && [[ "${FORCE}" != "true" ]]; then
+      echo "  keep    ${host}/${service} ${key} (already set; --force to overwrite)"
+      skipped=$((skipped+1))
+      continue
+    fi
+
+    # Remove any existing line for this key (preserving unmanaged keys), then
+    # append the current value.
+    if [[ -f "${overlay}" ]]; then
+      grep -v "^${key}=" "${overlay}" > "${overlay}.tmp" 2>/dev/null || true
+      mv "${overlay}.tmp" "${overlay}"
+    fi
+    printf '%s=%s\n' "${key}" "${value}" >> "${overlay}"
+    chmod 600 "${overlay}"
+    echo "  wrote   ${host}/${service} ${key}"
+    wrote=$((wrote+1))
+  done
+
+  echo
+  echo "Overlays under: ${PRIVATE_ROOT}/${HOST}/"
+  echo "Summary: wrote=${wrote} kept=${skipped} missing=${missing}"
+  if [[ "${missing}" -gt 0 ]]; then
+    echo "Some values were placeholders. Re-run with --print-template > file, fill it, then --from-file file." >&2
+    return 1
+  fi
+}
+
+case "${MODE}" in
+  print-template)
+    print_template
+    ;;
+  from-live)
+    deploy_base="$(resolve_deploy_base)"
+    echo "Harvesting live values for host=${HOST} from ${deploy_base}/services/*/.env"
+    write_overlays "${deploy_base}"
+    ;;
+  from-file)
+    [[ -f "${INPUT_FILE}" ]] || { echo "No such file: ${INPUT_FILE}" >&2; exit 2; }
+    echo "Reading values for host=${HOST} from ${INPUT_FILE}"
+    write_overlays ""
+    ;;
+esac

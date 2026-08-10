@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+test -f "${REPO_DIR}/mkdocs.yml"
+assert_contains "${REPO_DIR}/mkdocs.yml" "material"
+assert_contains "${REPO_DIR}/mkdocs.yml" "Home: index.md"
+assert_contains "${REPO_DIR}/mkdocs.yml" "generated/service-index.md"
+assert_contains "${REPO_DIR}/mkdocs.yml" "docs/docs-site.md"
+assert_contains "${REPO_DIR}/mkdocs.yml" "docs/service-docs-migration.md"
+assert_contains "${REPO_DIR}/mkdocs.yml" "Authentication And Identity: docs/authentication.md"
+assert_contains "${REPO_DIR}/mkdocs.yml" "Working Reports"
+assert_contains "${REPO_DIR}/mkdocs.yml" "docs/reports/index.md"
+assert_contains "${REPO_DIR}/mkdocs.yml" "docs/reports/service-docs-migration-review.md"
+assert_contains "${REPO_DIR}/mkdocs.yml" "services/caddy/README.md"
+if grep -q "services/homepage/README.md" "${REPO_DIR}/mkdocs.yml"; then
+  echo "Application-specific service pages should come from generated service docs links, not static MkDocs nav." >&2
+  exit 1
+fi
+assert_contains "${REPO_DIR}/mkdocs.yml" "mermaid"
+
+test -f "${REPO_DIR}/docs/requirements.txt"
+assert_contains "${REPO_DIR}/docs/requirements.txt" "mkdocs-material"
+test -f "${REPO_DIR}/docs/docs-site.md"
+test -f "${REPO_DIR}/docs/authentication.md"
+assert_contains "${REPO_DIR}/docs/authentication.md" "## Reachability Classes"
+assert_contains "${REPO_DIR}/docs/authentication.md" "homelab-authentik-app-integration"
+assert_contains "${REPO_DIR}/docs/docs-site.md" "scripts/build-docs-site"
+assert_contains "${REPO_DIR}/docs/docs-site.md" "scripts/check-service-docs-migration"
+assert_contains "${REPO_DIR}/docs/docs-site.md" "docs/generated/service-index.md"
+assert_contains "${REPO_DIR}/docs/docs-site.md" ".local/mkdocs-src"
+assert_contains "${REPO_DIR}/docs/docs-site.md" ".site/"
+assert_contains "${REPO_DIR}/docs/docs-site.md" "http://127.0.0.1:8765/"
+assert_contains "${REPO_DIR}/docs/docs-site.md" "https://docs.home.feocco.com"
+assert_contains "${REPO_DIR}/docs/docs-site.md" "Working Reports"
+if grep -q "GitHub Pages" "${REPO_DIR}/docs/docs-site.md"; then
+  echo "Docs site documentation should describe only the private homelab route, not GitHub Pages." >&2
+  exit 1
+fi
+assert_contains "${REPO_DIR}/docs/docs-site.md" "docs_path"
+assert_contains "${REPO_DIR}/docs/docs-site.md" "openapi_path"
+assert_contains "${REPO_DIR}/docs/docs-site.md" "api_framework"
+test -f "${REPO_DIR}/docs/service-docs-migration.md"
+assert_contains "${REPO_DIR}/docs/service-docs-migration.md" "scripts/check-service-docs-migration"
+assert_contains "${REPO_DIR}/docs/service-docs-migration.md" "--format json"
+assert_contains "${REPO_DIR}/docs/service-docs-migration.md" "Live docs available"
+assert_contains "${REPO_DIR}/docs/service-api-conventions.md" "service-docs-migration.md"
+test -f "${REPO_DIR}/docs/reports/index.md"
+assert_contains "${REPO_DIR}/docs/reports/index.md" "not durable source-of-truth files"
+test -f "${REPO_DIR}/docs/reports/service-docs-migration-review.md"
+assert_contains "${REPO_DIR}/docs/reports/service-docs-migration-review.md" "subjective companion"
+assert_contains "${REPO_DIR}/docs/reports/service-docs-migration-review.md" "required before calling migrated"
+test -f "${REPO_DIR}/.github/workflows/docs.yml"
+assert_contains "${REPO_DIR}/.github/workflows/docs.yml" "scripts/build-docs-site"
+if grep -Eq "deploy-pages|upload-pages-artifact|github-pages|pages: write|id-token: write" "${REPO_DIR}/.github/workflows/docs.yml"; then
+  echo "Docs workflow should build the private docs site only; GitHub Pages deployment must stay disabled." >&2
+  exit 1
+fi
+assert_contains "${REPO_DIR}/.gitignore" "docs/generated/*"
+assert_contains "${REPO_DIR}/.gitignore" "!docs/generated/.gitkeep"
+
+tmpdir="$(mktemp -d)"
+"${REPO_DIR}/scripts/generate-docs-service-index" --output "${tmpdir}/service-index.md"
+assert_contains "${tmpdir}/service-index.md" "# Services"
+assert_contains "${tmpdir}/service-index.md" "Generated service documentation portal"
+assert_contains "${tmpdir}/service-index.md" "Docs status"
+assert_contains "${tmpdir}/service-index.md" "Plant Monitor"
+assert_contains "${tmpdir}/service-index.md" "macmini"
+assert_contains "${tmpdir}/service-index.md" "plant-monitor.home.feocco.com"
+assert_contains "${tmpdir}/service-index.md" "Live docs available"
+assert_contains "${tmpdir}/service-index.md" "Not migrated"
+assert_contains "${tmpdir}/service-index.md" "Pirate Radio"
+test -f "${tmpdir}/services/hello-nas.md"
+test -f "${tmpdir}/services/homelab-functions.md"
+assert_contains "${tmpdir}/services/hello-nas.md" "# Hello NAS"
+assert_contains "${tmpdir}/services/hello-nas.md" "Live docs available"
+assert_contains "${tmpdir}/services/hello-nas.md" '<iframe src="https://hello-nas.home.feocco.com/docs"'
+assert_contains "${tmpdir}/services/homelab-functions.md" "# homelab-functions"
+assert_contains "${tmpdir}/services/homelab-functions.md" "Live docs available"
+assert_contains "${tmpdir}/services/homelab-functions.md" '<iframe src="https://homelab-functions.home.feocco.com/docs"'
+assert_contains "${tmpdir}/services-nav.yaml" "      - Services:"
+assert_contains "${tmpdir}/services-nav.yaml" "          - Overview: services/index.md"
+assert_contains "${tmpdir}/services-nav.yaml" "          - Hello NAS: services/hello-nas/index.md"
+if grep -q "## By Domain\\|## By Host And Status\\|### Migrated" "${tmpdir}/service-index.md"; then
+  echo "Service overview should not use the old domain/host/status-heavy layout." >&2
+  exit 1
+fi
+rm -rf "${tmpdir}"
+
+"${REPO_DIR}/scripts/generate-docs-service-index" --output "${REPO_DIR}/docs/generated/service-index.md"
+test -f "${REPO_DIR}/docs/generated/service-index.md"
+if git -C "${REPO_DIR}" ls-files --error-unmatch docs/generated/service-index.md >/dev/null 2>&1; then
+  echo "Generated docs service index must not be tracked." >&2
+  exit 1
+fi
+
+assert_contains "${REPO_DIR}/services/homelab-docs/ops.yaml" "dashboard_name: Homelab Docs"
+assert_contains "${REPO_DIR}/services/homelab-docs/ops.yaml" "route_hostname: docs.home.feocco.com"
+
+if python3 -m mkdocs --version >/dev/null 2>&1; then
+  "${REPO_DIR}/scripts/build-docs-site" --site-dir "${tmpdir}/site"
+fi

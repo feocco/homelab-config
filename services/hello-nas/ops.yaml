@@ -1,0 +1,26 @@
+service: hello-nas
+kind: app
+host: macmini
+source_repo: feocco/hello-nas
+image: ghcr.io/feocco/hello-nas:latest
+public_image: true
+container: hello-nas
+http_port: 8099
+port_env: HOST_PORT
+health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: python-http-server
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8099
+tailnet: true
+monitoring: true
+sre: true
+route_hostname: hello-nas.home.feocco.com
+route_target_port: 8099
+route_https: true
+route_dns: unifi
+dashboard_name: Hello NAS
+dashboard_group: Runtime Services
+dashboard_description: Deployment smoke test service
+dashboard_icon: docker.png
+secrets:

@@ -1,0 +1,15 @@
+service: streaming-sessions-kafka
+kind: infra
+host: macmini
+source_repo: feocco/homelab-config
+images:
+  - apache/kafka:4.2.1
+  - bitnami/jmx-exporter@sha256:3689ebfe4fab0059fcbb765dd9cc738f889dc275973270105f9c75b04b0969b1
+public_image: true
+containers:
+  - streaming-sessions-kafka
+  - streaming-sessions-kafka-jmx
+monitoring: false
+sre: false
+route_exempt_reason: localhost Kafka broker only
+secrets:

@@ -1,0 +1,24 @@
+service: homelab-docs
+kind: infra
+host: macmini
+source_repo: feocco/homelab-config
+image: nginx:1.29-alpine
+public_image: true
+container: homelab-docs
+http_port: 8112
+port_env: HOMELAB_DOCS_HTTP_PORT
+health_path: /
+tailnet: false
+monitoring: false
+sre: false
+route_hostname: docs.home.feocco.com
+route_target_port: 8112
+route_https: true
+route_dns: unifi
+dashboard_name: Homelab Docs
+dashboard_group: Sources of Truth
+dashboard_description: Searchable documentation website
+dashboard_icon: mdi-book-open-page-variant
+redeploy_on:
+  - ^(mkdocs.yml|docs/|services/[^/]+/README.md|services/[^/]+/ops.yaml|hosts/[^/]+/services.yaml|scripts/(build-docs-site|generate-docs-service-index|generate-service-catalog|lib/homelab_catalog.py))
+secrets:

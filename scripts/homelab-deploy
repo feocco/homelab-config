@@ -1,0 +1,631 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="${HOMELAB_CONFIG_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+COMPOSE_IMAGE="${COMPOSE_IMAGE:-docker/compose:1.29.2}"
+HOST="nasfeo"
+DEPLOY_BASE_DIR=""
+MODE=""
+SERVICE=""
+DRY_RUN="false"
+FORCE_RECREATE="false"
+ALLOW_DIRTY="false"
+ALLOW_FOREIGN_HOST="false"
+SKIP_CONFIG_VALIDATE="false"
+CANARY="false"
+
+source "${SCRIPT_DIR}/lib-service-secrets"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  homelab-deploy [--host HOST] --list
+  homelab-deploy [--host HOST] --all [--dry-run] [--force-recreate] [--canary] [--allow-dirty]
+  homelab-deploy [--host HOST] --changed [--dry-run] [--base-dir DIR] [--deploy-base-dir DIR]
+  homelab-deploy [--host HOST] <service> [--dry-run] [--force-recreate] [--canary] [--allow-dirty] [--deploy-base-dir DIR]
+  homelab-deploy [--host HOST] --service <service> [--dry-run] [--force-recreate] [--canary] [--allow-dirty] [--deploy-base-dir DIR]
+
+Guard flags (each skips exactly one guard):
+  --allow-dirty          deploy from a dirty worktree (emergency runtime edit)
+  --canary               deploy from a non-main branch as a temporary canary
+  --allow-foreign-host   deploy to macmini from a machine that is not the
+                         production host (never production DNS/HTTPS proof)
+  --skip-config-validate skip pre-deploy config validation (emergency only)
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host)
+      HOST="${2:?--host requires a value}"
+      shift 2
+      ;;
+    --service)
+      SERVICE="${2:?--service requires a value}"
+      MODE="${MODE:-service}"
+      shift 2
+      ;;
+    --list)
+      MODE="list"
+      shift
+      ;;
+    --all)
+      MODE="all"
+      shift
+      ;;
+    --changed)
+      MODE="changed"
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    --force-recreate)
+      FORCE_RECREATE="true"
+      shift
+      ;;
+    --allow-dirty)
+      ALLOW_DIRTY="true"
+      shift
+      ;;
+    --allow-foreign-host)
+      ALLOW_FOREIGN_HOST="true"
+      shift
+      ;;
+    --skip-config-validate)
+      SKIP_CONFIG_VALIDATE="true"
+      shift
+      ;;
+    --canary)
+      CANARY="true"
+      shift
+      ;;
+    --base-dir)
+      BASE_DIR="${2:?--base-dir requires a value}"
+      shift 2
+      ;;
+    --deploy-base-dir)
+      DEPLOY_BASE_DIR="${2:?--deploy-base-dir requires a value}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      SERVICE="$1"
+      MODE="${MODE:-service}"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "${MODE}" ]]; then
+  usage >&2
+  exit 2
+fi
+
+SERVICES_FILE="$(service_secret_services_file "${BASE_DIR}" "${HOST}")"
+
+if [[ ! -f "${SERVICES_FILE}" ]]; then
+  echo "Missing host services file: ${SERVICES_FILE}" >&2
+  exit 2
+fi
+
+if [[ -z "${DEPLOY_BASE_DIR}" ]]; then
+  DEPLOY_BASE_DIR="$(service_secret_host_deploy_base_dir "${SERVICES_FILE}")"
+fi
+
+if [[ -z "${DEPLOY_BASE_DIR}" ]]; then
+  DEPLOY_BASE_DIR="${BASE_DIR}"
+fi
+DEPLOY_BASE_DIR="$(service_secret_expand_path "${DEPLOY_BASE_DIR}")"
+
+git_branch() {
+  if [[ -n "${GITHUB_REF_NAME:-}" ]]; then
+    echo "${GITHUB_REF_NAME}"
+    return
+  fi
+  git -C "${BASE_DIR}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"
+}
+
+git_sha() {
+  git -C "${BASE_DIR}" rev-parse HEAD 2>/dev/null || echo "unknown"
+}
+
+git_dirty_state() {
+  if ! git -C "${BASE_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "true"
+    return
+  fi
+
+  if ! git -C "${BASE_DIR}" diff --quiet --ignore-submodules -- ||
+    ! git -C "${BASE_DIR}" diff --cached --quiet --ignore-submodules -- ||
+    [[ -n "$(git -C "${BASE_DIR}" ls-files --others --exclude-standard)" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+GIT_BRANCH="$(git_branch)"
+GIT_SHA="$(git_sha)"
+GIT_DIRTY="$(git_dirty_state)"
+
+host_scalar() {
+  local key="$1"
+  awk -v key="${key}" '
+    /^host:[[:space:]]*$/ {
+      in_host=1
+      next
+    }
+    in_host && /^services:[[:space:]]*$/ {
+      in_host=0
+      next
+    }
+    in_host && $1 == key ":" {
+      print $2
+      exit
+    }
+  ' "${SERVICES_FILE}"
+}
+
+local_has_ip() {
+  local expected_ip="$1"
+  [[ -n "${expected_ip}" ]] || return 1
+
+  if command -v ifconfig >/dev/null 2>&1 &&
+    ifconfig 2>/dev/null | grep -Eq "inet ${expected_ip}([[:space:]]|/)"; then
+    return 0
+  fi
+
+  if command -v ip >/dev/null 2>&1 &&
+    ip addr show 2>/dev/null | grep -Eq "inet ${expected_ip}([[:space:]]|/)"; then
+    return 0
+  fi
+
+  return 1
+}
+
+require_host_identity() {
+  if [[ "${HOST}" != "macmini" || "${ALLOW_FOREIGN_HOST}" == "true" ]]; then
+    return 0
+  fi
+
+  local expected_user expected_ip actual_user
+  expected_user="$(host_scalar deploy_user)"
+  expected_ip="$(host_scalar bind_addr)"
+  actual_user="$(id -un 2>/dev/null || true)"
+
+  if [[ -n "${expected_user}" && "${actual_user}" != "${expected_user}" ]]; then
+    cat >&2 <<EOF
+Refusing macmini deploy from user '${actual_user}'.
+
+hosts/macmini/services.yaml requires deploy_user: ${expected_user}. Run this
+deploy on the Maclab production host, or use --allow-foreign-host only for an
+explicit off-host emergency (never as production DNS or HTTPS proof).
+EOF
+    exit 3
+  fi
+
+  if [[ -n "${expected_ip}" ]] && ! local_has_ip "${expected_ip}"; then
+    cat >&2 <<EOF
+Refusing macmini deploy because this machine does not have bind_addr ${expected_ip}.
+
+Run this deploy on the Maclab production host, or use --allow-foreign-host for
+an explicit off-host emergency. Local canary deploys must not be used as
+production DNS or HTTPS proof.
+EOF
+    exit 3
+  fi
+}
+
+require_deploy_allowed() {
+  if [[ "${DRY_RUN}" == "true" || "${MODE}" == "list" ]]; then
+    return 0
+  fi
+
+  if [[ "${GIT_DIRTY}" == "true" && "${ALLOW_DIRTY}" != "true" ]]; then
+    cat >&2 <<EOF
+Refusing non-dry-run deploy from a dirty worktree.
+
+main is the durable production source of truth. Commit and push first, or rerun
+with --allow-dirty only for an explicit emergency runtime edit.
+EOF
+    exit 3
+  fi
+
+  require_host_identity
+
+  if [[ "${GIT_BRANCH}" != "main" ]]; then
+    echo "Warning: deploying from non-main branch '${GIT_BRANCH}'." >&2
+    echo "Branch deploys are temporary canaries until merged and redeployed from main." >&2
+    if [[ "${CANARY}" != "true" ]]; then
+      cat >&2 <<EOF
+Refusing non-main deploy without --canary.
+
+Use --canary for a temporary branch deploy, or merge the change to main before
+deploying durable production config. --allow-dirty only skips the dirty
+worktree gate; it does not stand in for --canary.
+EOF
+      exit 3
+    fi
+  fi
+}
+
+run_config_validation() {
+  local service="$1"
+
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    return 0
+  fi
+
+  if [[ "${SKIP_CONFIG_VALIDATE}" == "true" ]]; then
+    echo "Skipping pre-deploy config validation (--skip-config-validate)." >&2
+    return 0
+  fi
+
+  local validator="${BASE_DIR}/scripts/validate-service-rollout"
+  if [[ ! -x "${validator}" ]] || ! command -v python3 >/dev/null 2>&1; then
+    echo "Warning: ${validator} or python3 unavailable; deploying without config proof." >&2
+    return 0
+  fi
+
+  echo "Validating ${service} config on ${HOST} before deploy"
+  if ! "${validator}" --service "${service}" --host "${HOST}" --check config --mode strict --base-dir "${BASE_DIR}"; then
+    cat >&2 <<EOF
+Config validation failed for ${service} on ${HOST}; refusing to deploy.
+
+Fix the manifest or runtime wiring, or rerun with --skip-config-validate only
+for an explicit emergency runtime edit.
+EOF
+    exit 3
+  fi
+}
+
+write_deploy_state() {
+  local service="$1"
+  local state_dir="${DEPLOY_BASE_DIR}/.homelab-deploy-state/${HOST}"
+  local state_file="${state_dir}/${service}.json"
+  local deployed_at
+
+  deployed_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  mkdir -p "${state_dir}"
+  cat > "${state_file}" <<EOF
+{
+  "service": "${service}",
+  "host": "${HOST}",
+  "git_branch": "${GIT_BRANCH}",
+  "git_sha": "${GIT_SHA}",
+  "git_dirty": ${GIT_DIRTY},
+  "canary": ${CANARY},
+  "deployed_at": "${deployed_at}"
+}
+EOF
+}
+
+service_entries() {
+  awk '
+    function emit() {
+      if (name != "" && enabled != "false") {
+        print name "|" path
+      }
+    }
+    /^services:[[:space:]]*$/ {
+      in_services=1
+      next
+    }
+    in_services && /^  [^[:space:]].*:[[:space:]]*$/ {
+      emit()
+      name=$1
+      sub(/:$/, "", name)
+      path=""
+      enabled="true"
+      next
+    }
+    in_services && /^    path:/ {
+      path=$2
+      next
+    }
+    in_services && /^    enabled:/ {
+      enabled=$2
+      next
+    }
+    END {
+      emit()
+    }
+  ' "${SERVICES_FILE}"
+}
+
+service_path() {
+  local service="$1"
+  service_entries | awk -F'|' -v service="${service}" '$1 == service { print $2 }'
+}
+
+enabled_service_names() {
+  service_entries | awk -F'|' '{ print $1 }' | sort
+}
+
+changed_files() {
+  local before="${BEFORE_SHA:-}"
+  local after="${AFTER_SHA:-HEAD}"
+  if [[ -n "${before}" && "${before}" != "0000000000000000000000000000000000000000" ]]; then
+    git -C "${BASE_DIR}" diff --name-only "${before}" "${after}" 2>/dev/null && return 0
+  fi
+  git -C "${BASE_DIR}" diff --name-only HEAD~1 "${after}" 2>/dev/null && return 0
+  git -C "${BASE_DIR}" show --name-only --format= "${after}"
+}
+
+manifest_redeploy_patterns() {
+  local ops_file="$1"
+  [[ -f "${ops_file}" ]] || return 0
+  awk '
+    /^redeploy_on:[[:space:]]*$/ { in_list=1; next }
+    in_list && /^  - / { line=$0; sub(/^  - /, "", line); print line; next }
+    in_list { in_list=0 }
+  ' "${ops_file}"
+}
+
+matches_redeploy_patterns() {
+  local files="$1"
+  local ops_file="$2"
+  local pattern
+  while IFS= read -r pattern; do
+    [[ -n "${pattern}" ]] || continue
+    if echo "${files}" | grep -Eq "${pattern}"; then
+      return 0
+    fi
+  done < <(manifest_redeploy_patterns "${ops_file}")
+  return 1
+}
+
+changed_services() {
+  local files service path host_config
+  files="$(changed_files)"
+  while IFS='|' read -r service path; do
+    [[ -n "${service}" ]] || continue
+    host_config="hosts/${HOST}/${service}.env.config"
+    if echo "${files}" | grep -qx "hosts/${HOST}/services.yaml" ||
+      echo "${files}" | grep -qx "service-secrets.yaml" ||
+      echo "${files}" | grep -qx "${host_config}" ||
+      echo "${files}" | grep -q "^${path}/" ||
+      matches_redeploy_patterns "${files}" "${BASE_DIR}/${path}/ops.yaml"; then
+      echo "${service}"
+    fi
+  done < <(service_entries)
+}
+
+prepare_service() {
+  local service="$1"
+  local service_dir="$2"
+
+  if [[ "${service}" == "caddy" ]]; then
+    if [[ "${DRY_RUN}" == "true" ]]; then
+      echo "Would generate Caddy config in ${service_dir}/Caddyfile"
+      return 0
+    fi
+
+    echo "Generating Caddy config in ${service_dir}/Caddyfile"
+    "${DEPLOY_BASE_DIR}/scripts/generate-caddy-config" \
+      --base-dir "${DEPLOY_BASE_DIR}" \
+      --host "${HOST}" \
+      --output "${service_dir}/Caddyfile"
+    return 0
+  fi
+
+  if [[ "${service}" == "homelab-docs" ]]; then
+    if [[ "${DRY_RUN}" == "true" ]]; then
+      echo "Would build Homelab Docs site in ${DEPLOY_BASE_DIR}/.site"
+      return 0
+    fi
+
+    echo "Building Homelab Docs site in ${DEPLOY_BASE_DIR}/.site"
+    (
+      cd "${DEPLOY_BASE_DIR}"
+      if ! python3 -m mkdocs --version >/dev/null 2>&1; then
+        python3 -m venv .local/docs-venv
+        .local/docs-venv/bin/python -m pip install -r docs/requirements.txt
+      fi
+      PATH="${DEPLOY_BASE_DIR}/.local/docs-venv/bin:${PATH}" \
+        "${DEPLOY_BASE_DIR}/scripts/build-docs-site"
+    )
+    return 0
+  fi
+
+  if [[ "${service}" == "homelab-functions" ]]; then
+    if [[ "${DRY_RUN}" == "true" ]]; then
+      echo "Would generate Homelab Functions catalog config in ${service_dir}/config"
+      return 0
+    fi
+
+    echo "Generating Homelab Functions catalog config in ${service_dir}/config"
+    mkdir -p "${service_dir}/config"
+    "${DEPLOY_BASE_DIR}/scripts/generate-service-catalog" \
+      --base-dir "${DEPLOY_BASE_DIR}" \
+      --output "${service_dir}/config/service-catalog.json"
+    "${DEPLOY_BASE_DIR}/scripts/generate-smoke-signal-config" \
+      --base-dir "${DEPLOY_BASE_DIR}" \
+      --output "${service_dir}/config"
+    return 0
+  fi
+
+  if [[ "${service}" == "homelab-smoke-signal" ]]; then
+    if [[ "${DRY_RUN}" == "true" ]]; then
+      echo "Would remove legacy homelab-sentinel container if present"
+      return 0
+    fi
+
+    echo "Removing legacy homelab-sentinel container if present"
+    docker rm -f homelab-sentinel >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  if [[ "${service}" != "homepage" ]]; then
+    return 0
+  fi
+
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    echo "Would generate Homepage config in ${service_dir}/config"
+    return 0
+  fi
+
+  echo "Generating Homepage config in ${service_dir}/config"
+  "${DEPLOY_BASE_DIR}/scripts/generate-homepage-config" \
+    --base-dir "${DEPLOY_BASE_DIR}" \
+    --output "${service_dir}/config"
+}
+
+joe_owned_compose_services() {
+  local compose_file="$1"
+
+  awk '
+    /^[^[:space:]#][^:]*:[[:space:]]*$/ {
+      if ($1 == "services:") {
+        in_services=1
+        current=""
+        next
+      }
+      if (in_services) {
+        in_services=0
+        current=""
+      }
+    }
+    !in_services {
+      next
+    }
+    /^  [^[:space:]#][^:]*:[[:space:]]*$/ {
+      current=$1
+      sub(/:$/, "", current)
+      next
+    }
+    current != "" && /^    image:[[:space:]]*/ {
+      image=$0
+      sub(/^[[:space:]]*image:[[:space:]]*/, "", image)
+      sub(/[[:space:]]+#.*$/, "", image)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", image)
+      gsub(/^["\047]|["\047]$/, "", image)
+      if (image ~ /^ghcr[.]io\/feocco\//) {
+        print current
+      }
+    }
+  ' "${compose_file}"
+}
+
+deploy_service() {
+  local service="$1"
+  local path
+  local service_dir
+  local pull_services
+
+  path="$(service_path "${service}")"
+  if [[ -z "${path}" ]]; then
+    echo "Unsupported or disabled service on ${HOST}: ${service}" >&2
+    exit 2
+  fi
+
+  service_dir="${DEPLOY_BASE_DIR}/${path}"
+  if [[ ! -f "${service_dir}/docker-compose.yml" ]]; then
+    echo "Missing compose file: ${service_dir}/docker-compose.yml" >&2
+    exit 2
+  fi
+
+  run_config_validation "${service}"
+  echo "Deploying ${service} on ${HOST} from ${service_dir}"
+  prepare_service "${service}" "${service_dir}"
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    return 0
+  fi
+
+  (
+    cd "${service_dir}"
+    if [[ "${service}" == "caddy" ]]; then
+      echo "Skipping image pull for caddy; deploy workflow builds the local Caddy image before deploy."
+    else
+      pull_services="$(joe_owned_compose_services "${service_dir}/docker-compose.yml")"
+      if [[ -n "${pull_services}" ]]; then
+        echo "Pulling Joe-owned runtime images for ${service}: ${pull_services//$'\n'/ }"
+        if ! compose pull ${pull_services}; then
+          echo "Image pull failed for Joe-owned images in ${service}; continuing with cached image if available." >&2
+        fi
+      else
+        echo "Skipping explicit image pull for ${service}; no ghcr.io/feocco/* runtime images declared."
+      fi
+    fi
+    if [[ "${FORCE_RECREATE}" == "true" ]]; then
+      compose up -d --force-recreate --remove-orphans
+    else
+      compose up -d --remove-orphans
+    fi
+    docker ps --filter "name=${service}"
+    if [[ "${service}" == "authentik" ]]; then
+      "${DEPLOY_BASE_DIR}/scripts/configure-authentik-settings" --apply
+    fi
+  )
+  write_deploy_state "${service}"
+}
+
+compose() {
+  if [[ -n "${DOCKER_CONFIG:-}" ]] && command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    docker --config "${DOCKER_CONFIG}" compose "$@"
+    return
+  fi
+
+  if command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+    return
+  fi
+
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+    return
+  fi
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Neither docker-compose nor docker is available." >&2
+    exit 2
+  fi
+
+  docker run --rm \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "${DEPLOY_BASE_DIR}:${DEPLOY_BASE_DIR}" \
+    -w "$PWD" \
+    "${COMPOSE_IMAGE}" "$@"
+}
+
+case "${MODE}" in
+  list)
+    enabled_service_names
+    ;;
+  all)
+    require_deploy_allowed
+    while read -r service; do
+      [[ -n "${service}" ]] && deploy_service "${service}"
+    done < <(enabled_service_names)
+    ;;
+  changed)
+    require_deploy_allowed
+    targets="$(changed_services | sort -u)"
+    if [[ -z "${targets}" ]]; then
+      echo "No enabled services to deploy on ${HOST}."
+      exit 0
+    fi
+    while read -r service; do
+      [[ -n "${service}" ]] && deploy_service "${service}"
+    done <<< "${targets}"
+    ;;
+  service)
+    require_deploy_allowed
+    deploy_service "${SERVICE}"
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,445 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+"${REPO_DIR}/scripts/apply-tailscale-serve" --host macmini --base-dir "${REPO_DIR}" --dry-run >/dev/null
+"${REPO_DIR}/scripts/ensure-macmini-node-exporter" --dry-run >/dev/null
+bash -n "${REPO_DIR}/scripts/check-macmini-monitor-health"
+bash -n "${REPO_DIR}/scripts/list-homelab-services"
+bash -n "${REPO_DIR}/scripts/redeploy-image"
+python3 -m py_compile "${REPO_DIR}/scripts/validate-service-rollout"
+
+caddy_image_env="$("${REPO_DIR}/scripts/caddy-image-env")"
+eval "${caddy_image_env}"
+expected_caddy_ref="${CADDY_IMAGE}:${CADDY_VERSION}-cloudflare"
+if [ "${CADDY_IMAGE_REF}" != "${expected_caddy_ref}" ]; then
+  echo "CADDY_IMAGE_REF must be derived from CADDY_IMAGE and CADDY_VERSION." >&2
+  exit 1
+fi
+assert_contains "${REPO_DIR}/services/caddy/.env.config" "CADDY_IMAGE_REF=${expected_caddy_ref}"
+assert_contains "${REPO_DIR}/services/caddy/Dockerfile" "ARG CADDY_VERSION=${CADDY_VERSION}"
+assert_contains "${REPO_DIR}/services/caddy/Dockerfile" "org.opencontainers.image.source=https://github.com/feocco/homelab-config"
+assert_contains "${REPO_DIR}/services/caddy/docker-compose.yml" "${expected_caddy_ref}"
+assert_contains "${REPO_DIR}/services/caddy/ops.yaml" "image: ${expected_caddy_ref}"
+assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" "scripts/caddy-image-env"
+assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" "          - authentik"
+assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" "authentik|bedtime|caddy"
+assert_contains "${REPO_DIR}/.github/workflows/caddy-image.yml" "scripts/caddy-image-env"
+
+python3 - \
+  "${REPO_DIR}/services/homelab-monitor/exporters/openai_cost_exporter.py" \
+  "${REPO_DIR}/services/homelab-monitor/exporters/docker_stats_exporter.py" <<'PY'
+import ast
+import pathlib
+import sys
+
+for arg in sys.argv[1:]:
+    ast.parse(pathlib.Path(arg).read_text(), filename=arg)
+PY
+
+tailscale_tmp="$(mktemp -d)"
+mkdir -p "${tailscale_tmp}/repo/hosts/testhost" "${tailscale_tmp}/bin"
+cp "${REPO_DIR}/scripts/apply-tailscale-serve" "${tailscale_tmp}/repo/apply-tailscale-serve"
+cat > "${tailscale_tmp}/repo/hosts/testhost/tailscale-serve.yaml" <<'EOF'
+services:
+  old-service:
+    enabled: false
+    http_port: 8080
+EOF
+cat > "${tailscale_tmp}/bin/tailscale" <<'EOF'
+#!/usr/bin/env bash
+if [ "$*" = "serve --http=8080 off" ]; then
+  echo "error: failed to remove web serve: handler does not exist" >&2
+  exit 1
+fi
+exit 0
+EOF
+chmod +x "${tailscale_tmp}/repo/apply-tailscale-serve" "${tailscale_tmp}/bin/tailscale"
+PATH="${tailscale_tmp}/bin:$PATH" \
+  "${tailscale_tmp}/repo/apply-tailscale-serve" --host testhost --base-dir "${tailscale_tmp}/repo" >/dev/null
+rm -rf "${tailscale_tmp}"
+
+tmp_runtime="$(mktemp -d)"
+mkdir -p "${tmp_runtime}/legacy-service/data" "${tmp_runtime}/services/legacy-service/data"
+touch "${tmp_runtime}/services/legacy-service/data/.gitkeep"
+echo "state" > "${tmp_runtime}/legacy-service/data/state.txt"
+rm -rf "${tmp_runtime}/services/legacy-service/data"
+mkdir -p "${tmp_runtime}/services/legacy-service/data"
+touch "${tmp_runtime}/services/legacy-service/data/.gitkeep"
+rm -rf "${tmp_runtime}/services/legacy-service/data"
+"${REPO_DIR}/scripts/migrate-host-runtime-layout" "${tmp_runtime}" >/dev/null
+test -f "${tmp_runtime}/services/legacy-service/data/state.txt"
+rm -rf "${tmp_runtime}"
+
+guard_tmp="$(mktemp -d)"
+guard_repo="${guard_tmp}/repo"
+guard_runtime="${guard_tmp}/runtime"
+guard_fakebin="${guard_tmp}/bin"
+mkdir -p \
+  "${guard_repo}/scripts" \
+  "${guard_repo}/hosts/macmini" \
+  "${guard_repo}/services/demo" \
+  "${guard_runtime}/services/demo" \
+  "${guard_fakebin}"
+cp "${REPO_DIR}/scripts/homelab-deploy" "${guard_repo}/scripts/homelab-deploy"
+cp "${REPO_DIR}/scripts/lib-service-secrets" "${guard_repo}/scripts/lib-service-secrets"
+chmod +x "${guard_repo}/scripts/homelab-deploy"
+cat > "${guard_repo}/hosts/macmini/services.yaml" <<EOF
+host:
+  name: macmini
+  deploy_base_dir: ${guard_runtime}
+
+services:
+  demo:
+    path: services/demo
+    enabled: true
+EOF
+cat > "${guard_runtime}/services/demo/docker-compose.yml" <<'EOF'
+services:
+  demo:
+    image: ghcr.io/feocco/demo:latest
+EOF
+cat > "${guard_fakebin}/docker-compose" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "${guard_tmp}/compose.log"
+EOF
+cat > "${guard_fakebin}/docker" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "ps" ]; then
+  echo "CONTAINER ID   IMAGE   NAMES"
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "${guard_fakebin}/docker-compose" "${guard_fakebin}/docker"
+(
+  cd "${guard_repo}"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Tooling Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+
+touch "${guard_repo}/dirty.txt"
+dirty_out="${guard_tmp}/dirty.out"
+assert_fails "${dirty_out}" env PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}"
+assert_contains "${dirty_out}" 'dirty worktree'
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${guard_runtime}" >/dev/null
+assert_json_field "${guard_runtime}/.homelab-deploy-state/macmini/demo.json" git_dirty true
+assert_contains "${guard_tmp}/compose.log" '--remove-orphans'
+rm -f "${guard_repo}/dirty.txt" "${guard_tmp}/compose.log"
+
+(
+  cd "${guard_repo}"
+  git checkout -b feature/canary >/dev/null
+)
+branch_out="${guard_tmp}/branch.out"
+assert_fails "${branch_out}" env PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}"
+assert_contains "${branch_out}" 'without --canary'
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --canary --deploy-base-dir "${guard_runtime}" >/dev/null
+assert_json_field "${guard_runtime}/.homelab-deploy-state/macmini/demo.json" canary true
+touch "${guard_repo}/dirty.txt"
+dirty_branch_out="${guard_tmp}/dirty-branch.out"
+assert_fails "${dirty_branch_out}" env PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${guard_runtime}"
+assert_contains "${dirty_branch_out}" 'without --canary'
+rm -f "${guard_repo}/dirty.txt"
+(
+  cd "${guard_repo}"
+  git checkout main >/dev/null
+)
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}" >/dev/null
+assert_json_field "${guard_runtime}/.homelab-deploy-state/macmini/demo.json" git_branch main
+
+cat > "${guard_repo}/scripts/validate-service-rollout" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "${guard_tmp}/validate.log"
+exit "\${VALIDATE_EXIT:-0}"
+EOF
+chmod +x "${guard_repo}/scripts/validate-service-rollout"
+(
+  cd "${guard_repo}"
+  git add scripts/validate-service-rollout
+  git commit -m "stub validator" >/dev/null
+)
+validate_fail_out="${guard_tmp}/validate-fail.out"
+assert_fails "${validate_fail_out}" env PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" VALIDATE_EXIT=1 \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}"
+assert_contains "${validate_fail_out}" 'Config validation failed'
+assert_contains "${guard_tmp}/validate.log" '--check config'
+rm -f "${guard_tmp}/validate.log"
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" VALIDATE_EXIT=1 \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --skip-config-validate --deploy-base-dir "${guard_runtime}" >/dev/null
+if [ -f "${guard_tmp}/validate.log" ]; then
+  echo "--skip-config-validate must not invoke the validator." >&2
+  exit 1
+fi
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+  "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}" >/dev/null
+assert_contains "${guard_tmp}/validate.log" '--mode strict'
+rm -rf "${guard_tmp}"
+
+pull_tmp="$(mktemp -d)"
+pull_repo="${pull_tmp}/repo"
+pull_runtime="${pull_tmp}/runtime"
+pull_fakebin="${pull_tmp}/bin"
+pull_compose="${pull_runtime}/services/demo/docker-compose.yml"
+mkdir -p \
+  "${pull_repo}/scripts" \
+  "${pull_repo}/hosts/macmini" \
+  "${pull_runtime}/services/demo" \
+  "${pull_fakebin}"
+cp "${REPO_DIR}/scripts/homelab-deploy" "${pull_repo}/scripts/homelab-deploy"
+cp "${REPO_DIR}/scripts/lib-service-secrets" "${pull_repo}/scripts/lib-service-secrets"
+chmod +x "${pull_repo}/scripts/homelab-deploy"
+cat > "${pull_repo}/hosts/macmini/services.yaml" <<EOF
+host:
+  name: macmini
+  deploy_base_dir: ${pull_runtime}
+
+services:
+  demo:
+    path: services/demo
+    enabled: true
+EOF
+cat > "${pull_fakebin}/docker-compose" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${COMPOSE_LOG}"
+EOF
+cat > "${pull_fakebin}/docker" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "ps" ]; then
+  echo "CONTAINER ID   IMAGE   NAMES"
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "${pull_fakebin}/docker-compose" "${pull_fakebin}/docker"
+(
+  cd "${pull_repo}"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Tooling Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+
+cat > "${pull_compose}" <<'EOF'
+services:
+  demo:
+    image: ghcr.io/feocco/demo:latest
+EOF
+PATH="${pull_fakebin}:$PATH" COMPOSE_LOG="${pull_tmp}/compose.log" HOMELAB_CONFIG_DIR="${pull_repo}" \
+  "${pull_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${pull_runtime}" >/dev/null
+assert_contains "${pull_tmp}/compose.log" 'pull demo'
+assert_contains "${pull_tmp}/compose.log" 'up -d --remove-orphans'
+rm -f "${pull_tmp}/compose.log"
+
+cat > "${pull_compose}" <<'EOF'
+services:
+  demo:
+    image: nginx:1.29-alpine
+EOF
+PATH="${pull_fakebin}:$PATH" COMPOSE_LOG="${pull_tmp}/compose.log" HOMELAB_CONFIG_DIR="${pull_repo}" \
+  "${pull_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${pull_runtime}" >/dev/null
+if grep -q '^pull' "${pull_tmp}/compose.log"; then
+  echo "Third-party images should not be explicitly pulled during deploy." >&2
+  cat "${pull_tmp}/compose.log" >&2
+  exit 1
+fi
+assert_contains "${pull_tmp}/compose.log" 'up -d --remove-orphans'
+rm -f "${pull_tmp}/compose.log"
+
+cat > "${pull_compose}" <<'EOF'
+services:
+  demo:
+    image: ghcr.io/feocco/demo:latest
+  sidecar:
+    image: nginx:1.29-alpine
+EOF
+PATH="${pull_fakebin}:$PATH" COMPOSE_LOG="${pull_tmp}/compose.log" HOMELAB_CONFIG_DIR="${pull_repo}" \
+  "${pull_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${pull_runtime}" >/dev/null
+assert_contains "${pull_tmp}/compose.log" 'pull demo'
+if grep -q 'sidecar' "${pull_tmp}/compose.log"; then
+  echo "Mixed deploy should pull only the Joe-owned image service." >&2
+  cat "${pull_tmp}/compose.log" >&2
+  exit 1
+fi
+rm -rf "${pull_tmp}"
+
+identity_tmp="$(mktemp -d)"
+identity_repo="${identity_tmp}/repo"
+identity_runtime="${identity_tmp}/runtime"
+identity_fakebin="${identity_tmp}/bin"
+mkdir -p \
+  "${identity_repo}/scripts" \
+  "${identity_repo}/hosts/macmini" \
+  "${identity_repo}/services/demo" \
+  "${identity_runtime}/services/demo" \
+  "${identity_fakebin}"
+cp "${REPO_DIR}/scripts/homelab-deploy" "${identity_repo}/scripts/homelab-deploy"
+cp "${REPO_DIR}/scripts/lib-service-secrets" "${identity_repo}/scripts/lib-service-secrets"
+chmod +x "${identity_repo}/scripts/homelab-deploy"
+cat > "${identity_repo}/hosts/macmini/services.yaml" <<EOF
+host:
+  name: macmini
+  deploy_base_dir: ${identity_runtime}
+  bind_addr: 203.0.113.254
+
+services:
+  demo:
+    path: services/demo
+    enabled: true
+EOF
+cat > "${identity_runtime}/services/demo/docker-compose.yml" <<'EOF'
+services:
+  demo:
+    image: ghcr.io/feocco/demo:latest
+EOF
+cat > "${identity_fakebin}/docker-compose" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "${identity_fakebin}/docker" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "${identity_fakebin}/docker-compose" "${identity_fakebin}/docker"
+(
+  cd "${identity_repo}"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Tooling Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+identity_out="${identity_tmp}/identity.out"
+assert_fails "${identity_out}" env PATH="${identity_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${identity_repo}" \
+  "${identity_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${identity_runtime}"
+assert_contains "${identity_out}" 'does not have bind_addr 203.0.113.254'
+allow_dirty_identity_out="${identity_tmp}/allow-dirty-identity.out"
+assert_fails "${allow_dirty_identity_out}" env PATH="${identity_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${identity_repo}" \
+  "${identity_repo}/scripts/homelab-deploy" --host macmini demo --allow-dirty --deploy-base-dir "${identity_runtime}"
+assert_contains "${allow_dirty_identity_out}" 'does not have bind_addr 203.0.113.254'
+PATH="${identity_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${identity_repo}" \
+  "${identity_repo}/scripts/homelab-deploy" --host macmini demo --allow-foreign-host --deploy-base-dir "${identity_runtime}" >/dev/null
+rm -rf "${identity_tmp}"
+
+caddy_tmp="$(mktemp -d)"
+caddy_repo="${caddy_tmp}/repo"
+caddy_runtime="${caddy_tmp}/runtime"
+caddy_fakebin="${caddy_tmp}/bin"
+caddy_auth_config="${caddy_tmp}/auth-config"
+caddy_pull_file="${caddy_tmp}/pull-called.txt"
+mkdir -p \
+  "${caddy_repo}/scripts" \
+  "${caddy_repo}/hosts/macmini" \
+  "${caddy_repo}/services/caddy" \
+  "${caddy_runtime}/scripts" \
+  "${caddy_runtime}/services/caddy" \
+  "${caddy_fakebin}" \
+  "${caddy_auth_config}"
+cp "${REPO_DIR}/scripts/homelab-deploy" "${caddy_repo}/scripts/homelab-deploy"
+cp "${REPO_DIR}/scripts/lib-service-secrets" "${caddy_repo}/scripts/lib-service-secrets"
+chmod +x "${caddy_repo}/scripts/homelab-deploy"
+cat > "${caddy_repo}/hosts/macmini/services.yaml" <<EOF
+host:
+  name: macmini
+  deploy_base_dir: ${caddy_runtime}
+
+services:
+  caddy:
+    path: services/caddy
+    enabled: true
+EOF
+cat > "${caddy_runtime}/services/caddy/docker-compose.yml" <<'EOF'
+services:
+  caddy:
+    image: ghcr.io/feocco/homelab-caddy:2.11.4-cloudflare
+EOF
+cat > "${caddy_runtime}/scripts/generate-caddy-config" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output)
+      output="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+printf '# generated\n' > "${output}"
+EOF
+chmod +x "${caddy_runtime}/scripts/generate-caddy-config"
+cat > "${caddy_fakebin}/docker" <<'EOF'
+#!/usr/bin/env bash
+config="${DOCKER_CONFIG:-}"
+if [ "${1:-}" = "--config" ]; then
+  config="$2"
+  shift 2
+fi
+if [ "${1:-}" = "compose" ] && [ "${2:-}" = "version" ]; then
+  exit 0
+fi
+if [ "${1:-}" = "compose" ] && [ "${2:-}" = "pull" ]; then
+  printf '%s\n' "${config}" > "${CADDY_PULL_FILE}"
+  echo "caddy deploy should not pull the remote GHCR image" >&2
+  exit 42
+fi
+if [ "${1:-}" = "compose" ] && [ "${2:-}" = "up" ]; then
+  exit 0
+fi
+if [ "${1:-}" = "ps" ]; then
+  echo "CONTAINER ID   IMAGE   NAMES"
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "${caddy_fakebin}/docker"
+(
+  cd "${caddy_repo}"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Tooling Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+PATH="${caddy_fakebin}:$PATH" \
+  DOCKER_CONFIG="${caddy_auth_config}" \
+  CADDY_PULL_FILE="${caddy_pull_file}" \
+  HOMELAB_CONFIG_DIR="${caddy_repo}" \
+  "${caddy_repo}/scripts/homelab-deploy" --host macmini caddy --deploy-base-dir "${caddy_runtime}" >/dev/null
+if [ -f "${caddy_pull_file}" ]; then
+  echo "Caddy deploy should use the locally built image instead of pulling from GHCR." >&2
+  exit 1
+fi
+rm -rf "${caddy_tmp}"
+
+if grep -R '\${{ github.event.inputs\.' "${REPO_DIR}/.github/workflows"; then
+  echo "Deploy workflows must not interpolate github.event.inputs directly into shell scripts." >&2
+  exit 1
+fi
+
+if grep -q 'docker logout ghcr.io' "${REPO_DIR}/.github/workflows/deploy.yml"; then
+  echo "Deploy workflow must keep GHCR credentials available for compose pull." >&2
+  exit 1
+fi
+
+assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" 'hosts/macmini/tailscale-serve.yaml scripts/apply-tailscale-serve'
+assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" 'Skipping Tailscale Serve config for service-only deployment.'

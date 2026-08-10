@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHONPATH="${SCRIPT_DIR}/lib${PYTHONPATH:+:${PYTHONPATH}}" python3 - "$@" <<'PY'
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import sys
+from typing import Any
+
+from homelab_catalog import parse_host_services, parse_simple_yaml
+
+
+HOME_DOMAIN = "home.feocco.com"
+
+
+def service_hosts(manifest: dict[str, Any]) -> list[str]:
+    hosts = manifest.get("hosts")
+    if isinstance(hosts, list):
+        return [str(host) for host in hosts]
+    host = manifest.get("host")
+    return [str(host)] if host else []
+
+
+def suggested_hostname(service: str) -> str:
+    if service == "homepage":
+        return HOME_DOMAIN
+    if service == "homelab-monitor":
+        return f"grafana.{HOME_DOMAIN}"
+    return f"{service}.{HOME_DOMAIN}"
+
+
+def rows(base_dir: pathlib.Path, host: str) -> list[dict[str, Any]]:
+    host_services = parse_host_services(base_dir / "hosts" / host / "services.yaml")
+    output: list[dict[str, Any]] = []
+    for service, host_entry in sorted(host_services.items()):
+        manifest_path = base_dir / host_entry["path"] / "ops.yaml"
+        manifest = parse_simple_yaml(manifest_path)
+        service_name = str(manifest.get("service") or service)
+        enabled = host_entry.get("enabled") is not False
+        route_hostname = str(manifest.get("route_hostname") or "")
+        route_exempt_reason = str(manifest.get("route_exempt_reason") or "")
+        http_port = manifest.get("route_target_port") or manifest.get("http_port")
+        kind = str(manifest.get("kind") or "")
+        hosts = service_hosts(manifest)
+
+        status = "eligible"
+        reason = "add route_* fields and validate through Caddy/UniFi"
+        if not enabled:
+            status = "blocked"
+            reason = "service is disabled on host"
+        elif route_hostname:
+            status = "routed"
+            reason = "route_hostname already declared"
+        elif service_name == "caddy":
+            status = "blocked"
+            reason = "Caddy is the HTTPS terminator"
+        elif route_exempt_reason:
+            status = "blocked"
+            reason = route_exempt_reason
+        elif kind == "worker":
+            status = "blocked"
+            reason = "worker has no user-facing HTTP route"
+        elif not http_port:
+            status = "blocked"
+            reason = "service has no declared HTTP port"
+        elif hosts and host not in hosts:
+            status = "blocked"
+            reason = "service manifest does not declare this host"
+
+        output.append(
+            {
+                "service": service_name,
+                "host": host,
+                "status": status,
+                "suggested_hostname": route_hostname or suggested_hostname(service_name),
+                "target_port": http_port,
+                "reason": reason,
+            }
+        )
+    return output
+
+
+def print_table(items: list[dict[str, Any]]) -> None:
+    headers = ["service", "status", "hostname", "port", "reason"]
+    table = [
+        [
+            str(item["service"]),
+            str(item["status"]),
+            str(item["suggested_hostname"]),
+            "" if item["target_port"] in (None, "") else str(item["target_port"]),
+            str(item["reason"]),
+        ]
+        for item in items
+    ]
+    widths = [len(header) for header in headers]
+    for row in table:
+        for idx, cell in enumerate(row):
+            widths[idx] = max(widths[idx], len(cell))
+    print("  ".join(header.ljust(widths[idx]) for idx, header in enumerate(headers)))
+    print("  ".join("-" * width for width in widths))
+    for row in table:
+        print("  ".join(cell.ljust(widths[idx]) for idx, cell in enumerate(row)))
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="List services ready for LAN HTTPS route conversion.")
+    parser.add_argument("--base-dir", default=".", help="homelab-config checkout")
+    parser.add_argument("--host", default="macmini", help="host manifest to inspect")
+    parser.add_argument("--format", choices=["text", "json"], default="text")
+    parser.add_argument("--status", choices=["all", "eligible", "routed", "blocked"], default="all")
+    args = parser.parse_args(argv)
+
+    items = rows(pathlib.Path(args.base_dir).resolve(), args.host)
+    if args.status != "all":
+        items = [item for item in items if item["status"] == args.status]
+    if args.format == "json":
+        print(json.dumps(items, indent=2, sort_keys=True))
+    else:
+        print_table(items)
+    return 0
+
+
+raise SystemExit(main(sys.argv[1:]))
+PY

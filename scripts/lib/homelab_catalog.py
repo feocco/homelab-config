@@ -1,0 +1,839 @@
+#!/usr/bin/env python3
+"""Build generated homelab service catalog and Homepage config."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import re
+import sys
+from typing import Any
+
+
+def clean_scalar(value: str) -> Any:
+    value = value.strip()
+    if " #" in value:
+        value = value.split(" #", 1)[0].strip()
+    value = value.strip('"').strip("'")
+    if value.lower() == "true":
+        return True
+    if value.lower() == "false":
+        return False
+    if re.fullmatch(r"-?[0-9]+", value):
+        return int(value)
+    return value
+
+
+def parse_simple_yaml(path: pathlib.Path) -> dict[str, Any]:
+    """Parse flat ops/manifest YAML. Nested keys are illegal and raise."""
+    data: dict[str, Any] = {}
+    current_list: str | None = None
+    if not path.exists():
+        return data
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line.startswith("  - "):
+            if current_list is None:
+                raise ValueError(f"List item without list key in {path}: {line}")
+            data[current_list].append(clean_scalar(line[4:]))
+            continue
+        if line.startswith(" "):
+            raise ValueError(f"Unsupported nested manifest line in {path}: {line}")
+        match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):(?:\s*(.*))?$", line)
+        if not match:
+            raise ValueError(f"Unsupported manifest line in {path}: {line}")
+        key, value = match.groups()
+        if value == "":
+            data[key] = []
+            current_list = key
+        else:
+            data[key] = clean_scalar(value or "")
+            current_list = None
+    return data
+
+
+def parse_manual_links(path: pathlib.Path) -> list[dict[str, str]]:
+    links: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    if not path.exists():
+        return links
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#") or line == "links:":
+            continue
+        match = re.match(r"^  - ([A-Za-z_][A-Za-z0-9_]*):\s*(.+)\s*$", line)
+        if match:
+            current = {match.group(1): str(clean_scalar(match.group(2)))}
+            links.append(current)
+            continue
+        match = re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.+)\s*$", line)
+        if match and current is not None:
+            current[match.group(1)] = str(clean_scalar(match.group(2)))
+    return links
+
+
+def as_list(mapping: dict[str, Any], single_key: str, list_key: str) -> list[str]:
+    values: list[str] = []
+    list_value = mapping.get(list_key)
+    if isinstance(list_value, list):
+        values.extend(str(value) for value in list_value)
+    single_value = mapping.get(single_key)
+    if single_value not in (None, ""):
+        values.append(str(single_value))
+    return values
+
+
+def host_scoped_enabled(mapping: dict[str, Any], key: str, host: str) -> bool:
+    if mapping.get(key) is True:
+        return True
+    if mapping.get(key) is False:
+        return False
+    values = mapping.get(f"{key}_hosts")
+    return isinstance(values, list) and host in [str(value) for value in values]
+
+
+def host_scoped_value(mapping: dict[str, Any], key: str, host: str) -> str:
+    value = mapping.get(f"{key}_{host}")
+    if value not in (None, ""):
+        return str(value)
+    value = mapping.get(key)
+    return "" if value in (None, "") else str(value)
+
+
+def manifest_value(mapping: dict[str, Any], key: str) -> str:
+    value = mapping.get(key)
+    return "" if value in (None, "") else str(value)
+
+
+def dashboard_visible(mapping: dict[str, Any]) -> bool:
+    value = mapping.get("dashboard_visible")
+    if value is True:
+        return True
+    if value is False:
+        return False
+    return bool(mapping.get("dashboard_group"))
+
+
+def parse_host_services(path: pathlib.Path) -> dict[str, dict[str, Any]]:
+    services: dict[str, dict[str, Any]] = {}
+    in_services = False
+    current: str | None = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if line == "services:":
+            in_services = True
+            continue
+        if not in_services:
+            continue
+        if line and not line.startswith(" "):
+            break
+        match = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if match:
+            current = match.group(1)
+            services[current] = {"path": "", "enabled": True}
+            continue
+        if current is None:
+            continue
+        match = re.match(r"^    path:\s*(.+)\s*$", line)
+        if match:
+            services[current]["path"] = str(clean_scalar(match.group(1)))
+            continue
+        match = re.match(r"^    enabled:\s*(.+)\s*$", line)
+        if match:
+            services[current]["enabled"] = clean_scalar(match.group(1)) is not False
+            continue
+    return services
+
+
+def parse_compose(path: pathlib.Path) -> dict[str, list[str]]:
+    containers: list[str] = []
+    images: list[str] = []
+    if not path.exists():
+        return {"containers": containers, "images": images}
+    current = ""
+    in_services = False
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if line == "services:":
+            in_services = True
+            continue
+        if not in_services:
+            continue
+        match = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if match:
+            current = match.group(1)
+            containers.append(current)
+            continue
+        if not current:
+            continue
+        match = re.match(r"^    image:\s*(.+)\s*$", line)
+        if match:
+            images.append(str(clean_scalar(match.group(1))))
+            continue
+        match = re.match(r"^    container_name:\s*(.+)\s*$", line)
+        if match:
+            containers[-1] = str(clean_scalar(match.group(1)))
+    return {
+        "containers": sorted(dict.fromkeys(containers)),
+        "images": sorted(dict.fromkeys(images)),
+    }
+
+
+def parse_prometheus_services(path: pathlib.Path) -> set[str]:
+    services: set[str] = set()
+    if not path.exists():
+        return services
+    for raw in path.read_text().splitlines():
+        match = re.match(r"^\s+service:\s*(.+)\s*$", raw.rstrip())
+        if match:
+            services.add(str(clean_scalar(match.group(1))))
+    return services
+
+
+def parse_sre(path: pathlib.Path) -> dict[str, dict[str, Any]]:
+    services: dict[str, dict[str, Any]] = {}
+    if not path.exists():
+        return services
+    in_services = False
+    current = ""
+    section = ""
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if line == "services:":
+            in_services = True
+            continue
+        if not in_services:
+            continue
+        match = re.match(r"^  ([^:\s][^:]*):\s*$", line)
+        if match:
+            current = match.group(1)
+            services[current] = {"source_repo": "", "sre_enabled": False}
+            section = ""
+            continue
+        if not current:
+            continue
+        match = re.match(r"^    ([A-Za-z_]+):\s*$", line)
+        if match:
+            section = match.group(1)
+            continue
+        if section == "source":
+            match = re.match(r"^      repo:\s*(.+)\s*$", line)
+            if match:
+                services[current]["source_repo"] = str(clean_scalar(match.group(1)))
+                continue
+        if section == "sre":
+            match = re.match(r"^      enabled:\s*(.+)\s*$", line)
+            if match:
+                services[current]["sre_enabled"] = clean_scalar(match.group(1)) is True
+    return services
+
+
+def service_manifests(base_dir: pathlib.Path) -> dict[str, dict[str, Any]]:
+    manifests: dict[str, dict[str, Any]] = {}
+    for path in sorted((base_dir / "services").glob("*/ops.yaml")):
+        manifest = parse_simple_yaml(path)
+        service = str(manifest.get("service") or path.parent.name)
+        manifests[service] = manifest
+    return manifests
+
+
+def host_names(base_dir: pathlib.Path) -> list[str]:
+    return sorted(path.name for path in (base_dir / "hosts").iterdir() if path.is_dir())
+
+
+def display_name(service: str) -> str:
+    """Fallback only. Preferred display names live in ops.yaml dashboard_name."""
+    return service.replace("-", " ").title()
+
+
+def build_catalog(base_dir: pathlib.Path) -> dict[str, Any]:
+    manifests = service_manifests(base_dir)
+    monitored = parse_prometheus_services(base_dir / "services/homelab-monitor/prometheus/prometheus.yml")
+    sre = parse_sre(base_dir / "services/homelab-sre-agent/services.yaml")
+    rows: list[dict[str, Any]] = []
+
+    for host in host_names(base_dir):
+        services_file = base_dir / "hosts" / host / "services.yaml"
+        if not services_file.exists():
+            continue
+        for service, entry in parse_host_services(services_file).items():
+            path = str(entry.get("path") or f"services/{service}")
+            manifest = manifests.get(service, {})
+            compose = parse_compose(base_dir / path / "docker-compose.yml")
+            images = as_list(manifest, "image", "images") or compose["images"]
+            containers = as_list(manifest, "container", "containers") or compose["containers"]
+            source_repo = str(manifest.get("source_repo") or sre.get(service, {}).get("source_repo") or "")
+            http_port = manifest.get("http_port")
+            homepage_url = homepage_url_for(service, host, manifest)
+            monitoring = host_scoped_enabled(manifest, "monitoring", host) or service in monitored
+            sre_enabled = host_scoped_enabled(manifest, "sre", host) or bool(sre.get(service, {}).get("sre_enabled"))
+            dashboard_url = manifest_value(manifest, "dashboard_url")
+            docs_path = manifest_value(manifest, "docs_path")
+            rows.append(
+                {
+                    "service": service,
+                    "name": manifest_value(manifest, "dashboard_name") or display_name(service),
+                    "dashboard_name": manifest_value(manifest, "dashboard_name") or display_name(service),
+                    "dashboard_group": manifest_value(manifest, "dashboard_group"),
+                    "dashboard_description": manifest_value(manifest, "dashboard_description"),
+                    "dashboard_icon": manifest_value(manifest, "dashboard_icon"),
+                    "dashboard_url": dashboard_url,
+                    "docs_path": docs_path,
+                    "docs_url": service_docs_url(service, host, manifest),
+                    "openapi_path": manifest_value(manifest, "openapi_path"),
+                    "api_framework": manifest_value(manifest, "api_framework"),
+                    "dashboard_visible": dashboard_visible(manifest),
+                    "host": host,
+                    "enabled": bool(entry.get("enabled", True)),
+                    "path": path,
+                    "kind": str(manifest.get("kind") or ""),
+                    "source_repo": source_repo,
+                    "images": images,
+                    "containers": containers,
+                    "http_port": http_port,
+                    "health_path": str(manifest.get("health_path") or ""),
+                    "homepage_url": homepage_url,
+                    "route_hostname": manifest_value(manifest, "route_hostname"),
+                    "route_https": manifest.get("route_https") is True,
+                    "route_dns": manifest_value(manifest, "route_dns"),
+                    "route_target_port": manifest.get("route_target_port"),
+                    "route_tailscale_service": manifest_value(manifest, "route_tailscale_service"),
+                    "monitoring": monitoring,
+                    "monitored": monitoring,
+                    "sre_metadata": service in sre,
+                    "sre_enabled": sre_enabled,
+                    "tailnet": host_scoped_enabled(manifest, "tailnet", host),
+                    "live_base_url": host_scoped_value(manifest, "live_base_url", host),
+                }
+            )
+
+    rows.sort(key=lambda row: (row["host"], row["service"]))
+    return {
+        "schema": "homelab-catalog.v1",
+        "generated_by": "scripts/generate-service-catalog",
+        "services": rows,
+    }
+
+
+def homepage_url_for(service: str, host: str, manifest: dict[str, Any]) -> str:
+    # URLs derive only from declared intent (route_* / live_base_url), never
+    # from the generated Caddyfile: generated output must not feed the catalog.
+    route_hostname = manifest_value(manifest, "route_hostname")
+    route_hosts = manifest.get("route_hosts")
+    route_applies = not isinstance(route_hosts, list) or host in [str(value) for value in route_hosts]
+    if route_hostname and route_applies:
+        scheme = "https" if manifest.get("route_https") is True else "http"
+        return f"{scheme}://{route_hostname.rstrip('/')}/"
+    if service == "homepage":
+        return "http://home.arpa/"
+    live = host_scoped_value(manifest, "live_base_url", host)
+    if live:
+        return live.rstrip("/") + "/"
+    return ""
+
+
+def append_url_path(base_url: str, path: str) -> str:
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    return base_url.rstrip("/") + normalized_path
+
+
+def health_url_for(row: dict[str, Any]) -> str:
+    health_path = str(row.get("health_path") or "")
+    if not health_path:
+        return ""
+    base_url = str(row.get("homepage_url") or row.get("live_base_url") or "")
+    if not base_url:
+        port = row.get("http_port")
+        if row.get("host") == "macmini" and isinstance(port, int):
+            base_url = f"http://maclabs-mac-mini.taildf3445.ts.net:{port}"
+    if not base_url:
+        return ""
+    return append_url_path(base_url, health_path)
+
+
+def service_docs_url(service: str, host: str, manifest: dict[str, Any]) -> str:
+    docs_path = manifest_value(manifest, "docs_path")
+    if not docs_path:
+        return ""
+    homepage_url = homepage_url_for(service, host, manifest)
+    if homepage_url:
+        return append_url_path(homepage_url, docs_path)
+    live = host_scoped_value(manifest, "live_base_url", host)
+    if live:
+        return append_url_path(live, docs_path)
+    return ""
+
+
+def route_entries(base_dir: pathlib.Path, host: str | None = None) -> list[dict[str, Any]]:
+    manifests = service_manifests(base_dir)
+    entries: list[dict[str, Any]] = []
+    for current_host in host_names(base_dir):
+        if host and current_host != host:
+            continue
+        services_file = base_dir / "hosts" / current_host / "services.yaml"
+        if not services_file.exists():
+            continue
+        for service, entry in parse_host_services(services_file).items():
+            if entry.get("enabled") is False:
+                continue
+            manifest = manifests.get(service, {})
+            hostname = manifest_value(manifest, "route_hostname")
+            if not hostname:
+                continue
+            route_hosts = manifest.get("route_hosts")
+            if isinstance(route_hosts, list) and current_host not in [str(value) for value in route_hosts]:
+                continue
+            target_port = manifest.get("route_target_port") or manifest.get("http_port")
+            entries.append(
+                {
+                    "service": service,
+                    "host": current_host,
+                    "hostname": hostname,
+                    "target_port": target_port,
+                    "https": manifest.get("route_https") is True,
+                    "dns": manifest_value(manifest, "route_dns"),
+                    "aliases": [str(value) for value in manifest.get("route_aliases", []) if str(value)],
+                    "redirect_to": manifest_value(manifest, "route_redirect_to"),
+                    "tailscale_service": manifest_value(manifest, "route_tailscale_service"),
+                }
+            )
+    return sorted(entries, key=lambda row: (str(row["hostname"]), str(row["service"])))
+
+
+def caddy_retired_redirects(base_dir: pathlib.Path) -> list[dict[str, str]]:
+    path = base_dir / "services" / "caddy" / "retired-routes.yaml"
+    if not path.exists():
+        return []
+    redirects: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        item_match = re.match(r"^  - hostname:\s*(.+)\s*$", line)
+        if item_match:
+            current = {"hostname": str(clean_scalar(item_match.group(1)))}
+            redirects.append(current)
+            continue
+        if current is None:
+            continue
+        field_match = re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.+)\s*$", line)
+        if field_match:
+            key, value = field_match.groups()
+            current[key] = str(clean_scalar(value))
+    return [item for item in redirects if item.get("hostname") and item.get("to")]
+
+
+def caddy_config(base_dir: pathlib.Path, host: str | None = None) -> str:
+    entries = route_entries(base_dir, host)
+    entry_hostnames = {str(entry["hostname"]) for entry in entries}
+    lines = [
+        "{",
+        "\temail {$CADDY_ACME_EMAIL}",
+        "}",
+        "",
+        "*.{$CADDY_HOME_DOMAIN} {",
+        "\ttls {",
+        "\t\tdns cloudflare {env.CLOUDFLARE_API_TOKEN}",
+        "\t}",
+        "\trespond \"No homelab route configured for {host}\" 404",
+        "}",
+        "",
+    ]
+    for entry in entries:
+        hostname = str(entry["hostname"])
+        target_port = entry["target_port"]
+        redirect_to = str(entry.get("redirect_to") or "")
+        route_action = (
+            f"\tredir {redirect_to.rstrip('/')}{{uri}} 308"
+            if redirect_to
+            else f"\treverse_proxy host.docker.internal:{target_port}"
+        )
+        lines.extend(
+            [
+                f"{hostname} {{",
+                "\ttls {",
+                "\t\tdns cloudflare {env.CLOUDFLARE_API_TOKEN}",
+                "\t}",
+                route_action,
+                "}",
+                "",
+            ]
+        )
+        for alias in entry["aliases"]:
+            lines.extend(
+                [
+                    f"http://{alias} {{",
+                    f"\tredir {redirect_to.rstrip('/') if redirect_to else f'https://{hostname}'}{{uri}} 308",
+                    "}",
+                    "",
+                ]
+            )
+    for redirect in caddy_retired_redirects(base_dir):
+        hostname = redirect["hostname"]
+        if hostname in entry_hostnames:
+            continue
+        target = redirect["to"].rstrip("/")
+        lines.extend(
+            [
+                f"{hostname} {{",
+                "\ttls {",
+                "\t\tdns cloudflare {env.CLOUDFLARE_API_TOKEN}",
+                "\t}",
+                f"\tredir {target}{{uri}} 308",
+                "}",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def yaml_scalar(value: Any) -> str:
+    text = str(value)
+    if text == "":
+        return "''"
+    if re.fullmatch(r"[A-Za-z0-9_./:@-]+", text):
+        return text
+    return json.dumps(text)
+
+
+def homepage_site_monitor(row: dict[str, Any]) -> str:
+    port = row.get("http_port")
+    health_path = str(row.get("health_path") or "")
+    if row.get("host") != "macmini" or row.get("enabled") is not True:
+        return ""
+    if not isinstance(port, int) or not health_path:
+        return ""
+    path = health_path if health_path.startswith("/") else f"/{health_path}"
+    return f"http://host.docker.internal:{port}{path}"
+
+
+def homepage_item(name: str, href: str, description: str, icon: str, site_monitor: str = "") -> list[str]:
+    lines = [f"    - {yaml_scalar(name)}:"]
+    lines.append(f"        href: {yaml_scalar(href)}")
+    if description:
+        lines.append(f"        description: {yaml_scalar(description)}")
+    if icon:
+        lines.append(f"        icon: {yaml_scalar(icon)}")
+    if site_monitor:
+        lines.append(f"        siteMonitor: {yaml_scalar(site_monitor)}")
+    return lines
+
+
+GROUP_ORDER = [
+    "Daily Ops",
+    "Infrastructure",
+    "Sources of Truth",
+    "Remote Access",
+    "Runtime Services",
+    "Monitoring & Cost",
+    "Cloud & External",
+    "Disabled / Legacy",
+]
+
+
+def homepage_services(catalog: dict[str, Any], manual_links: list[dict[str, str]]) -> str:
+    rows = catalog["services"]
+    grouped: dict[str, list[list[str]]] = {group: [] for group in GROUP_ORDER}
+    lines: list[str] = []
+
+    def group(title: str, items: list[list[str]]) -> None:
+        if not items:
+            return
+        lines.append(f"- {title}:")
+        for item in items:
+            lines.extend(item)
+        lines.append("")
+
+    for link in manual_links:
+        target_group = link.get("group") or "Cloud & External"
+        grouped.setdefault(target_group, [])
+        grouped[target_group].append(
+            homepage_item(
+                link.get("name", ""),
+                link.get("href", ""),
+                link.get("description", ""),
+                link.get("icon", ""),
+            )
+        )
+
+    seen_services: set[str] = set()
+    for row in rows:
+        if not row["dashboard_visible"] or row["service"] in seen_services:
+            continue
+        if not row["enabled"] and row["dashboard_group"] != "Disabled / Legacy":
+            continue
+        seen_services.add(row["service"])
+        href = (
+            row["dashboard_url"]
+            or row["docs_url"]
+            or row["homepage_url"]
+            or row["live_base_url"]
+            or (f"https://github.com/{row['source_repo']}" if row["source_repo"] else "")
+        )
+        if not href:
+            continue
+        target_group = row["dashboard_group"] or "Runtime Services"
+        grouped.setdefault(target_group, [])
+        grouped[target_group].append(
+            homepage_item(
+                row["dashboard_name"],
+                href,
+                row["dashboard_description"],
+                row["dashboard_icon"],
+                homepage_site_monitor(row),
+            )
+        )
+
+    for title in GROUP_ORDER:
+        group(title, grouped.get(title, []))
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def homepage_settings() -> str:
+    return """---
+title: Homelab
+description: Generated from homelab-config
+statusStyle: dot
+layout:
+  Daily Ops:
+    style: row
+    columns: 4
+  Infrastructure:
+    style: row
+    columns: 5
+  Sources of Truth:
+    style: row
+    columns: 4
+  Runtime Services:
+    style: row
+    columns: 4
+  Monitoring & Cost:
+    style: row
+    columns: 3
+  Cloud & External:
+    style: row
+    columns: 5
+  Disabled / Legacy:
+    style: row
+    columns: 3
+"""
+
+
+def homepage_bookmarks() -> str:
+    return """---
+- Repositories:
+    - homelab-config:
+        - abbr: HC
+          href: https://github.com/feocco/homelab-config
+    - Actions:
+        - abbr: GA
+          href: https://github.com/feocco/homelab-config/actions
+"""
+
+
+def homepage_widgets() -> str:
+    return """---
+- search:
+    provider: duckduckgo
+    target: _blank
+"""
+
+
+def write_homepage_config(base_dir: pathlib.Path, output_dir: pathlib.Path) -> None:
+    catalog = build_catalog(base_dir)
+    manual_links = parse_manual_links(base_dir / "services/homepage/manual-links.yaml")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "service-catalog.json").write_text(json.dumps(catalog, indent=2, sort_keys=True) + "\n")
+    (output_dir / "settings.yaml").write_text(homepage_settings())
+    (output_dir / "services.yaml").write_text(homepage_services(catalog, manual_links))
+    (output_dir / "bookmarks.yaml").write_text(homepage_bookmarks())
+    (output_dir / "widgets.yaml").write_text(homepage_widgets())
+
+
+def smoke_signal_target(name: str, url: str, service: str) -> dict[str, str]:
+    return {
+        "name": name,
+        "url": url,
+        "service": service,
+    }
+
+
+def smoke_signal_config(catalog: dict[str, Any]) -> dict[str, Any]:
+    rows = [
+        row
+        for row in catalog["services"]
+        if row["host"] == "macmini" and row["enabled"] is True
+    ]
+    by_service = {str(row["service"]): row for row in rows}
+    critical_services = [
+        ("Grafana", "homelab-monitor"),
+        ("Homepage", "homepage"),
+        ("homelab-functions", "homelab-functions"),
+    ]
+    critical_canaries: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for name, service in critical_services:
+        row = by_service.get(service)
+        if not row:
+            continue
+        url = health_url_for(row)
+        if url and url not in seen_urls:
+            critical_canaries.append(smoke_signal_target(name, url, service))
+            seen_urls.add(url)
+
+    runtime_services: list[dict[str, str]] = []
+    for row in sorted(rows, key=lambda item: str(item["service"])):
+        if row["service"] in {"caddy", "homelab-monitor", "homepage"}:
+            continue
+        if row["kind"] not in {"app", "multi-container"}:
+            continue
+        if row["monitored"] is not True:
+            continue
+        url = health_url_for(row)
+        if not url or url in seen_urls:
+            continue
+        runtime_services.append(smoke_signal_target(str(row["dashboard_name"] or row["service"]), url, str(row["service"])))
+        seen_urls.add(url)
+
+    return {
+        "schema": "homelab-smoke-signal-targets.v1",
+        "critical_canary_failures": 3,
+        "runtime_failure_ratio": 0.5,
+        "critical_canaries": critical_canaries,
+        "runtime_services": runtime_services,
+    }
+
+
+def write_smoke_signal_config(base_dir: pathlib.Path, output_dir: pathlib.Path) -> None:
+    config = smoke_signal_config(build_catalog(base_dir))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "smoke-signal-targets.json").write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+
+
+def table_text(rows: list[dict[str, Any]]) -> str:
+    columns = [
+        "service",
+        "host",
+        "enabled",
+        "path",
+        "containers",
+        "images",
+        "monitored",
+        "sre_metadata",
+        "sre_enabled",
+        "source_repo",
+    ]
+
+    def text(value: Any) -> str:
+        if isinstance(value, bool):
+            return "yes" if value else "no"
+        if isinstance(value, list):
+            return ",".join(str(item) for item in value)
+        return str(value)
+
+    widths = {
+        column: max(len(column), *(len(text(row[column])) for row in rows))
+        for column in columns
+    }
+    lines = [
+        "  ".join(column.ljust(widths[column]) for column in columns),
+        "  ".join("-" * widths[column] for column in columns),
+    ]
+    for row in rows:
+        lines.append("  ".join(text(row[column]).ljust(widths[column]) for column in columns))
+    return "\n".join(lines) + "\n"
+
+
+def list_rows(catalog: dict[str, Any], host: str) -> list[dict[str, Any]]:
+    rows = catalog["services"]
+    if host != "all":
+        rows = [row for row in rows if row["host"] == host]
+    return [
+        {
+            "service": row["service"],
+            "host": row["host"],
+            "enabled": row["enabled"],
+            "path": row["path"],
+            "containers": row["containers"],
+            "images": row["images"],
+            "monitored": row["monitored"],
+            "sre_metadata": row["sre_metadata"],
+            "sre_enabled": row["sre_enabled"],
+            "source_repo": row["source_repo"],
+        }
+        for row in rows
+    ]
+
+
+def main_list(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[2]))
+    parser.add_argument("--host", choices=["all", "macmini", "nasfeo"], default="all")
+    parser.add_argument("--format", choices=["table", "json"], default="table")
+    args = parser.parse_args(argv)
+
+    rows = list_rows(build_catalog(pathlib.Path(args.base_dir)), args.host)
+    if args.format == "json":
+        print(json.dumps(rows, indent=2, sort_keys=True))
+    else:
+        print(table_text(rows), end="")
+    return 0
+
+
+def main_catalog(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[2]))
+    parser.add_argument("--format", choices=["json"], default="json")
+    parser.add_argument("--output")
+    args = parser.parse_args(argv)
+
+    base_dir = pathlib.Path(args.base_dir)
+    catalog = build_catalog(base_dir)
+    payload = json.dumps(catalog, indent=2, sort_keys=True) + "\n"
+    if args.output:
+        path = pathlib.Path(args.output)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(payload)
+    else:
+        print(payload, end="")
+    return 0
+
+
+def main_homepage(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[2]))
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args(argv)
+    write_homepage_config(pathlib.Path(args.base_dir), pathlib.Path(args.output))
+    return 0
+
+
+def main_smoke_signal(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[2]))
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args(argv)
+    write_smoke_signal_config(pathlib.Path(args.base_dir), pathlib.Path(args.output))
+    return 0
+
+
+def main_caddy(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[2]))
+    parser.add_argument("--host", default=None)
+    parser.add_argument("--output", default="-")
+    args = parser.parse_args(argv)
+
+    payload = caddy_config(pathlib.Path(args.base_dir), args.host)
+    if args.output == "-":
+        print(payload, end="")
+    else:
+        output = pathlib.Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(payload)
+    return 0

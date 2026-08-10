@@ -1,0 +1,58 @@
+site_name: Homelab Docs
+site_description: Read-only architecture showcase for a two-host Docker homelab. Not a public install guide.
+site_url: https://docs.home.feocco.com/
+repo_url: https://github.com/feocco/homelab-config
+repo_name: feocco/homelab-config
+docs_dir: .local/mkdocs-src
+site_dir: .site
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Start Here:
+      - Home: index.md
+      - Overview: docs/overview.md
+      - Source Of Truth: docs/source-of-truth.md
+      - How To Navigate: docs/how-to-navigate.md
+      - Docs Site: docs/docs-site.md
+      - Service API Conventions: docs/service-api-conventions.md
+      - Service Docs Migration: docs/service-docs-migration.md
+  - Domains:
+      - Services: docs/generated/service-index.md
+      - Networking: services/caddy/README.md
+      - Authentication And Identity: docs/authentication.md
+      - Observability: services/homelab-monitor/README.md
+      - Gaps And Roadmap: docs/gaps-roadmap.md
+  - Operations:
+      - Owner Runbook: docs/operator-runbook.md
+      - Deployment Source Of Truth: docs/deployment-source-of-truth.md
+      - Deployment Validation: docs/deployment-validation.md
+      - HTTPS Route Rollout: docs/https-route-rollout-goal.md
+      - GitHub Runner: docs/github-runner.md
+      - GHCR And Synology: docs/ghcr-and-synology.md
+      - Mac Mini Bootstrap: docs/macmini-bootstrap.md
+  - Working Reports:
+      - Overview: docs/reports/index.md
+      - Service Docs Migration Review: docs/reports/service-docs-migration-review.md
+      - Setup Status (historical): docs/reports/setup-status.md

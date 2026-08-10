@@ -1,0 +1,31 @@
+// Template ACL for friend-facing Tailscale Services.
+// Keep the live policy in the Tailscale admin console; do not commit real
+// friend emails or grants that map people to services.
+//
+// Replace placeholders below when applying in
+// https://login.tailscale.com/admin/acls
+{
+  "groups": {
+    "group:friends": [
+      "friend@example.com",
+    ],
+  },
+
+  // Tailscale Services require every serving device to use a tag identity.
+  "tagOwners": {
+    "tag:homelab-service-host": ["autogroup:admin"],
+  },
+
+  "grants": [
+    {
+      "src": ["owner@example.com", "tag:homelab-service-host"],
+      "dst": ["*"],
+      "ip": ["*"],
+    },
+    {
+      "src": ["group:friends"],
+      "dst": ["svc:authentik", "svc:pirate-radio"],
+      "ip": ["tcp:443"],
+    },
+  ],
+}

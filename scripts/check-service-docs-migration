@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""Check whether one service satisfies the homelab service-docs migration."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import tempfile
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass, field
+from typing import Any
+
+
+SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
+BASE_DIR = SCRIPT_DIR.parent
+sys.path.insert(0, str(SCRIPT_DIR / "lib"))
+
+from homelab_catalog import parse_simple_yaml  # noqa: E402
+
+
+PASS = "pass"
+FAIL = "fail"
+SKIP = "skip"
+
+
+@dataclass
+class CheckResult:
+    name: str
+    status: str
+    detail: str
+
+    @property
+    def success(self) -> bool:
+        return self.status != FAIL
+
+    def to_dict(self) -> dict[str, str]:
+        return {"name": self.name, "status": self.status, "detail": self.detail}
+
+
+@dataclass
+class StageResult:
+    name: str
+    checks: list[CheckResult] = field(default_factory=list)
+    docs_status: str = ""
+
+    @property
+    def success(self) -> bool:
+        return all(check.success for check in self.checks)
+
+    def add(self, name: str, status: str, detail: str) -> None:
+        self.checks.append(CheckResult(name=name, status=status, detail=detail))
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "name": self.name,
+            "success": self.success,
+            "checks": [check.to_dict() for check in self.checks],
+        }
+        if self.docs_status:
+            payload["docs_status"] = self.docs_status
+        return payload
+
+
+def run_command(command: list[str], cwd: pathlib.Path, timeout: int = 120) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["LC_ALL"] = "C"
+    return subprocess.run(
+        command,
+        cwd=cwd,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def manifest_path(base_dir: pathlib.Path, service: str) -> pathlib.Path:
+    return base_dir / "services" / service / "ops.yaml"
+
+
+def load_manifest(base_dir: pathlib.Path, service: str) -> dict[str, Any]:
+    path = manifest_path(base_dir, service)
+    if not path.exists():
+        raise FileNotFoundError(f"missing service manifest: {path}")
+    return parse_simple_yaml(path)
+
+
+def append_url_path(base_url: str, path: str) -> str:
+    return urllib.parse.urljoin(base_url.rstrip("/") + "/", path.lstrip("/"))
+
+
+def fetch_text(url: str, timeout: float) -> tuple[int, str, str]:
+    request = urllib.request.Request(url, headers={"User-Agent": "service-docs-migration-check/1.0"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.status, response.headers.get("Content-Type", ""), response.read(1_000_000).decode("utf-8", errors="replace")
+
+
+def validate_docs_endpoints(stage: StageResult, base_url: str, docs_path: str, openapi_path: str, timeout: float) -> None:
+    docs_url = append_url_path(base_url, docs_path)
+    try:
+        status, content_type, _body = fetch_text(docs_url, timeout)
+        if status < 400 and "text/html" in content_type.lower():
+            stage.add("local docs html", PASS, f"{docs_url} returned HTML")
+        else:
+            stage.add("local docs html", FAIL, f"{docs_url} returned HTTP {status} with {content_type!r}")
+    except Exception as exc:
+        stage.add("local docs html", FAIL, f"{docs_url} failed: {exc}")
+
+    openapi_url = append_url_path(base_url, openapi_path)
+    try:
+        status, content_type, body = fetch_text(openapi_url, timeout)
+        payload = json.loads(body)
+        if status >= 400:
+            stage.add("local openapi json", FAIL, f"{openapi_url} returned HTTP {status}")
+        elif "json" not in content_type.lower():
+            stage.add("local openapi json", FAIL, f"{openapi_url} returned {content_type!r}")
+        elif not isinstance(payload, dict) or not payload.get("openapi") or not isinstance(payload.get("paths"), dict):
+            stage.add("local openapi json", FAIL, f"{openapi_url} is not valid OpenAPI JSON")
+        else:
+            stage.add("local openapi json", PASS, f"{openapi_url} returned OpenAPI JSON")
+    except Exception as exc:
+        stage.add("local openapi json", FAIL, f"{openapi_url} failed: {exc}")
+
+
+def check_app(args: argparse.Namespace, manifest: dict[str, Any]) -> StageResult:
+    stage = StageResult(name="app")
+    app_repo = pathlib.Path(args.app_repo).expanduser().resolve()
+    if app_repo.exists() and app_repo.is_dir():
+        stage.add("app repo", PASS, f"{app_repo} exists")
+    else:
+        stage.add("app repo", FAIL, f"{app_repo} does not exist")
+        return stage
+
+    if args.app_test_command:
+        completed = subprocess.run(
+            args.app_test_command,
+            cwd=app_repo,
+            shell=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=args.command_timeout,
+            check=False,
+        )
+        detail = completed.stdout.strip().splitlines()[-1] if completed.stdout.strip() else args.app_test_command
+        stage.add("app tests", PASS if completed.returncode == 0 else FAIL, detail)
+    else:
+        stage.add("app tests", SKIP, "no --app-test-command supplied")
+
+    if args.local_base_url:
+        docs_path = str(manifest.get("docs_path") or "/docs")
+        openapi_path = str(manifest.get("openapi_path") or "/openapi.json")
+        validate_docs_endpoints(stage, args.local_base_url, docs_path, openapi_path, args.http_timeout)
+    else:
+        stage.add("local endpoint proof", SKIP, "no --local-base-url supplied")
+    return stage
+
+
+def check_manifest(args: argparse.Namespace, manifest: dict[str, Any]) -> StageResult:
+    stage = StageResult(name="manifest")
+    for key in ("docs_path", "openapi_path", "api_framework"):
+        value = str(manifest.get(key) or "")
+        if value:
+            stage.add(key, PASS, f"{key} is declared: {value}")
+        else:
+            stage.add(key, FAIL, f"{key} is not declared")
+
+    completed = run_command(
+        [
+            str(args.base_dir / "scripts" / "validate-service-rollout"),
+            "--service",
+            args.service,
+            "--host",
+            args.host,
+            "--check",
+            "config",
+            "--mode",
+            "strict",
+            "--base-dir",
+            str(args.base_dir),
+        ],
+        cwd=args.base_dir,
+        timeout=args.command_timeout,
+    )
+    detail = "strict config rollout validation passed" if completed.returncode == 0 else completed.stdout.strip()
+    stage.add("rollout config validation", PASS if completed.returncode == 0 else FAIL, detail)
+    return stage
+
+
+def check_live(args: argparse.Namespace, _manifest: dict[str, Any]) -> StageResult:
+    stage = StageResult(name="live")
+    completed = run_command(
+        [
+            str(args.base_dir / "scripts" / "validate-service-rollout"),
+            "--service",
+            args.service,
+            "--host",
+            args.host,
+            "--check",
+            "live",
+            "--mode",
+            "strict",
+            "--base-dir",
+            str(args.base_dir),
+        ],
+        cwd=args.base_dir,
+        timeout=args.command_timeout,
+    )
+    detail = "strict live rollout validation passed" if completed.returncode == 0 else completed.stdout.strip()
+    stage.add("rollout live validation", PASS if completed.returncode == 0 else FAIL, detail)
+    return stage
+
+
+def extract_docs_status(page: pathlib.Path) -> str:
+    if not page.exists():
+        return ""
+    match = re.search(r"^- Status: \*\*(.+?)\*\*", page.read_text(encoding="utf-8"), re.MULTILINE)
+    return match.group(1) if match else ""
+
+
+def check_docs_site(args: argparse.Namespace, _manifest: dict[str, Any]) -> StageResult:
+    stage = StageResult(name="docs-site")
+    with tempfile.TemporaryDirectory() as raw_tmpdir:
+        tmpdir = pathlib.Path(raw_tmpdir)
+        completed = run_command(
+            [
+                str(args.base_dir / "scripts" / "generate-docs-service-index"),
+                "--base-dir",
+                str(args.base_dir),
+                "--output",
+                str(tmpdir / "service-index.md"),
+                "--services-dir",
+                str(tmpdir / "services"),
+                "--nav-output",
+                str(tmpdir / "services-nav.yaml"),
+            ],
+            cwd=args.base_dir,
+            timeout=args.command_timeout,
+        )
+        if completed.returncode != 0:
+            stage.add("generate docs service pages", FAIL, completed.stdout.strip())
+            return stage
+        stage.add("generate docs service pages", PASS, "service wrapper pages generated")
+
+        page = tmpdir / "services" / f"{args.service}.md"
+        if page.exists():
+            stage.add("service wrapper page", PASS, f"{page.name} exists")
+        else:
+            stage.add("service wrapper page", FAIL, f"{page.name} was not generated")
+            return stage
+
+        status = extract_docs_status(page)
+        stage.docs_status = status or "unknown"
+        if status == "Live docs available":
+            stage.add("docs status", PASS, status)
+        elif status:
+            stage.add("docs status", FAIL, status)
+        else:
+            stage.add("docs status", FAIL, "status not found")
+    return stage
+
+
+def selected_stages(stage: str) -> list[str]:
+    if stage == "all":
+        return ["app", "manifest", "live", "docs-site"]
+    return [stage]
+
+
+def result_payload(args: argparse.Namespace, stages: list[StageResult]) -> dict[str, Any]:
+    return {
+        "service": args.service,
+        "host": args.host,
+        "stage": args.stage,
+        "success": all(stage.success for stage in stages),
+        "stages": [stage.to_dict() for stage in stages],
+    }
+
+
+def print_text(payload: dict[str, Any]) -> None:
+    print(f"service={payload['service']} host={payload['host']} stage={payload['stage']} success={str(payload['success']).lower()}")
+    for stage in payload["stages"]:
+        suffix = f" docs_status={stage['docs_status']}" if stage.get("docs_status") else ""
+        print(f"[{stage['name']}] success={str(stage['success']).lower()}{suffix}")
+        for check in stage["checks"]:
+            print(f"  {check['status']:<4} {check['name']}: {check['detail']}")
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--service", required=True)
+    parser.add_argument("--host", required=True)
+    parser.add_argument("--stage", choices=["app", "manifest", "live", "docs-site", "all"], default="all")
+    parser.add_argument("--format", choices=["text", "json"], default="text")
+    parser.add_argument("--app-repo", default="")
+    parser.add_argument("--app-test-command", default="")
+    parser.add_argument("--local-base-url", default="")
+    parser.add_argument("--base-dir", default=str(BASE_DIR))
+    parser.add_argument("--command-timeout", type=int, default=120)
+    parser.add_argument("--http-timeout", type=float, default=5.0)
+    args = parser.parse_args(argv)
+    args.base_dir = pathlib.Path(args.base_dir).resolve()
+
+    if "app" in selected_stages(args.stage):
+        if not args.app_repo:
+            parser.error("app stage requires --app-repo")
+        if not args.app_test_command and not args.local_base_url:
+            parser.error("app stage requires --app-test-command or --local-base-url")
+    return args
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+    try:
+        manifest = load_manifest(args.base_dir, args.service)
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    runners = {
+        "app": check_app,
+        "manifest": check_manifest,
+        "live": check_live,
+        "docs-site": check_docs_site,
+    }
+    stages: list[StageResult] = []
+    for stage_name in selected_stages(args.stage):
+        stage = runners[stage_name](args, manifest)
+        stages.append(stage)
+        if not stage.success and args.stage == "all":
+            break
+
+    payload = result_payload(args, stages)
+    if args.format == "json":
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print_text(payload)
+    return 0 if payload["success"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

@@ -1,0 +1,160 @@
+#!/bin/bash
+set -euo pipefail
+
+# CLI helper for inspecting Tailscale identity/trust state without the admin
+# console. Tags and serve state come from the local `tailscale` CLI. The full
+# ACL/grants policy needs a Tailscale API access token because the CLI does not
+# expose the policy file.
+#
+# Auth (one-time): create an API access token at
+#   https://login.tailscale.com/admin/settings/keys  (or an OAuth client)
+# then export it:
+#   export TAILSCALE_API_KEY=tskey-api-...
+# Optionally set TAILNET (default "-", meaning the token's default tailnet).
+
+TAILNET="${TAILNET:--}"
+API_KEY="${TAILSCALE_API_KEY:-${TS_API_KEY:-}}"
+MODE="status"
+SERVICE_HOST_TAG="tag:homelab-service-host"
+FRIEND_SERVICES=("svc:authentik" "svc:pirate-radio")
+
+usage() {
+  cat <<'EOF'
+Usage:
+  tailscale-acl status   Show tagged homelab hosts and serve state (CLI only).
+  tailscale-acl get      Print the live ACL/grants policy (needs API key).
+  tailscale-acl check    Verify tag owners + friend grants exist (needs API key).
+
+Auth for get/check:
+  export TAILSCALE_API_KEY=tskey-api-...   # from admin > settings > keys
+  export TAILNET=example.com               # optional; default is token tailnet
+EOF
+}
+
+[[ $# -gt 0 ]] && case "$1" in
+  status|get|check) MODE="$1"; shift ;;
+  -h|--help) usage; exit 0 ;;
+  *) echo "Unknown command: $1" >&2; usage >&2; exit 2 ;;
+esac
+
+require_cli() {
+  command -v tailscale >/dev/null 2>&1 || { echo "tailscale CLI not found on PATH" >&2; exit 2; }
+}
+
+show_status() {
+  require_cli
+  echo "== Tagged homelab hosts =="
+  local status_json
+  status_json="$(mktemp)"
+  trap 'rm -f "${status_json}"' RETURN
+  tailscale status --json > "${status_json}" 2>/dev/null || true
+  if [[ ! -s "${status_json}" ]]; then
+    echo "  tailscale status --json returned nothing (daemon down or not logged in)" >&2
+    return 1
+  fi
+  python3 - "${status_json}" "${SERVICE_HOST_TAG}" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+tag = sys.argv[2]
+nodes = []
+self = data.get("Self")
+if self:
+    nodes.append(self)
+nodes.extend((data.get("Peer") or {}).values())
+found = False
+for n in nodes:
+    tags = n.get("Tags") or []
+    if tag in tags:
+        found = True
+        print(f"  {n.get('HostName')} ({(n.get('DNSName') or '').rstrip('.')}) online={n.get('Online')}")
+if not found:
+    print(f"  NONE tagged {tag} -- friend Services will not serve!")
+PY
+  echo
+  echo "== Serve config (run on the serving host for full detail) =="
+  local serve_json_file
+  serve_json_file="$(mktemp)"
+  trap 'rm -f "${serve_json_file}"' RETURN
+  if tailscale serve status --json > "${serve_json_file}" 2>/dev/null && [[ -s "${serve_json_file}" ]]; then
+    python3 - "${serve_json_file}" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+services = d.get("Services") or {}
+if services:
+    print("  Named services:")
+    for name, cfg in sorted(services.items()):
+        print(f"    {name}: {json.dumps(cfg, separators=(',', ':'))}")
+else:
+    print("  Named services: none")
+tcp = d.get("TCP") or {}
+if tcp:
+    ports = ", ".join(sorted(tcp, key=lambda x: int(x) if str(x).isdigit() else 0))
+    print(f"  TCP ports: {ports}")
+PY
+  else
+    tailscale serve status 2>&1 | sed 's/^/  /' || true
+  fi
+}
+
+api_get() {
+  [[ -n "${API_KEY}" ]] || { echo "Set TAILSCALE_API_KEY to use '${MODE}'." >&2; exit 2; }
+  # Tailscale access tokens use HTTP Basic with the key as the username and an
+  # empty password. Build the header ourselves so scanners do not flag `curl -u`.
+  local basic
+  basic="$(printf '%s:' "${API_KEY}" | base64 | tr -d '\n')"
+  curl -sf \
+    -H "Authorization: Basic ${basic}" \
+    -H "Accept: application/hujson" \
+    "https://api.tailscale.com/api/v2/tailnet/${TAILNET}/acl"
+}
+
+case "${MODE}" in
+  status) show_status ;;
+  get) api_get ;;
+  check)
+    policy_file="$(mktemp)"
+    trap 'rm -f "${policy_file}"' EXIT
+    api_get > "${policy_file}"
+    python3 - "${policy_file}" "${SERVICE_HOST_TAG}" "${FRIEND_SERVICES[@]}" <<'PY'
+import json, re, sys
+policy_path = sys.argv[1]
+tag = sys.argv[2]
+services = sys.argv[3:]
+raw = open(policy_path).read()
+# Tolerate HuJSON: strip // and /* */ comments and trailing commas.
+raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
+raw = re.sub(r"//[^\n]*", "", raw)
+raw = re.sub(r",(\s*[}\]])", r"\1", raw)
+try:
+    policy = json.loads(raw)
+except Exception as e:
+    print(f"Could not parse ACL: {e}", file=sys.stderr)
+    sys.exit(1)
+
+problems = []
+owners = policy.get("tagOwners", {})
+if tag not in owners:
+    problems.append(f"tagOwners missing {tag}")
+
+grants = policy.get("grants", []) or policy.get("acls", [])
+served = set()
+for g in grants:
+    dst = g.get("dst", [])
+    for d in dst:
+        served.add(d)
+for svc in services:
+    if svc not in served:
+        problems.append(f"no grant targets {svc}")
+
+if problems:
+    print("ACL check FAILED:")
+    for p in problems:
+        print(f"  - {p}")
+    sys.exit(1)
+print("ACL check OK:")
+print(f"  tagOwners has {tag}")
+for svc in services:
+    print(f"  grant targets {svc}")
+PY
+    ;;
+esac

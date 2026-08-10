@@ -1,0 +1,49 @@
+services:
+  pirate-radio:
+    image: ghcr.io/feocco/pirate-radio:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
+    container_name: pirate-radio
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://pirate_radio:${POSTGRES_PASSWORD}@pirate-radio-postgres:5432/pirate_radio
+      PIRATE_RADIO_OIDC_CLIENT_ID: ${PIRATE_RADIO_OIDC_CLIENT_ID}
+      PIRATE_RADIO_OIDC_CLIENT_SECRET: ${PIRATE_RADIO_OIDC_CLIENT_SECRET}
+    ports:
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${SERVICE_PORT:-8103}:${SERVICE_PORT:-8103}"
+    extra_hosts:
+      - "auth.home.feocco.com:host-gateway"
+    volumes:
+      - ./data:/data
+    depends_on:
+      pirate-radio-postgres:
+        condition: service_healthy
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"
+
+  pirate-radio-postgres:
+    image: postgres:17-alpine
+    container_name: pirate-radio-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pirate_radio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: pirate_radio
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d pirate_radio -U pirate_radio"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"

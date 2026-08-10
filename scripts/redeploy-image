@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="${HOMELAB_CONFIG_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+HOST=""
+SERVICE=""
+PRINT="false"
+WATCH="false"
+ALL_HOSTS="false"
+
+source "${SCRIPT_DIR}/lib-service-secrets"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  redeploy-image --host HOST <service> [--print] [--watch] [--all-hosts]
+
+Examples:
+  redeploy-image --host macmini plant-monitor
+  redeploy-image --host macmini plant-monitor --print
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host)
+      HOST="${2:?--host requires a value}"
+      shift 2
+      ;;
+    --print)
+      PRINT="true"
+      shift
+      ;;
+    --watch)
+      WATCH="true"
+      shift
+      ;;
+    --all-hosts)
+      ALL_HOSTS="true"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      if [[ -n "${SERVICE}" ]]; then
+        echo "Unexpected argument: $1" >&2
+        usage >&2
+        exit 2
+      fi
+      SERVICE="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "${HOST}" || -z "${SERVICE}" ]]; then
+  usage >&2
+  exit 2
+fi
+
+case "${HOST}" in
+  nasfeo|macmini)
+    services_file="$(service_secret_services_file "${BASE_DIR}" "${HOST}")"
+    if [[ ! -f "${services_file}" ]]; then
+      echo "Missing host services file: ${services_file}" >&2
+      exit 2
+    fi
+    if ! service_secret_enabled_service_names "${services_file}" | grep -qx "${SERVICE}"; then
+      echo "Unsupported or disabled service on ${HOST}: ${SERVICE}" >&2
+      exit 2
+    fi
+    ;;
+  all)
+    if [[ "${ALL_HOSTS}" != "true" ]]; then
+      echo "Refusing --host all without --all-hosts for image redeploy." >&2
+      exit 2
+    fi
+    missing_hosts=()
+    while IFS= read -r host; do
+      services_file="$(service_secret_services_file "${BASE_DIR}" "${host}")"
+      if [[ ! -f "${services_file}" ]] || ! service_secret_enabled_service_names "${services_file}" | grep -qx "${SERVICE}"; then
+        missing_hosts+=("${host}")
+      fi
+    done < <(service_secret_host_names "${BASE_DIR}")
+    if [[ "${#missing_hosts[@]}" -gt 0 ]]; then
+      echo "Unsupported or disabled service on host(s): ${missing_hosts[*]}" >&2
+      exit 2
+    fi
+    ;;
+  *)
+    echo "Unsupported host: ${HOST}" >&2
+    exit 2
+    ;;
+esac
+
+cmd=(
+  gh workflow run deploy.yml
+  --repo feocco/homelab-config
+  --ref main
+  -f "host=${HOST}"
+  -f "service=${SERVICE}"
+  -f force_recreate=true
+  -f canary=false
+)
+
+printf_command() {
+  printf '%q ' "${cmd[@]}"
+  printf '\n'
+}
+
+if [[ "${PRINT}" == "true" ]]; then
+  printf_command
+  exit 0
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "gh is required to trigger the deploy workflow." >&2
+  exit 2
+fi
+
+"${cmd[@]}"
+
+if [[ "${WATCH}" == "true" ]]; then
+  sleep 2
+  run_id="$(gh run list \
+    --repo feocco/homelab-config \
+    --workflow deploy.yml \
+    --branch main \
+    --limit 1 \
+    --json databaseId \
+    --jq '.[0].databaseId')"
+  if [[ -z "${run_id}" || "${run_id}" == "null" ]]; then
+    echo "Could not find the workflow run to watch." >&2
+    exit 1
+  fi
+  gh run watch "${run_id}" --repo feocco/homelab-config --exit-status
+fi

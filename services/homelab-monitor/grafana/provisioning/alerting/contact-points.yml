@@ -1,0 +1,17 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: homelab-phone
+    receivers:
+      - uid: homelab-phone-webhook
+        type: webhook
+        settings:
+          url: $__env{HOMELAB_FUNCTIONS_NOTIFY_URL}
+          httpMethod: POST
+          authorization_scheme: Bearer
+          authorization_credentials: $__env{HOMELAB_FUNCTIONS_TOKEN}
+          title: '{{ template "homelab.phone.title" . }}'
+          message: '{{ template "homelab.phone.message" . }}'
+          maxAlerts: 5
+        disableResolveMessage: true

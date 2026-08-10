@@ -1,0 +1,109 @@
+plants:
+  - id: golden_pothos_office_shelf
+    plant_entity: plant.golden_pothos_office_shelf
+    name: Golden Pothos
+    location: Office shelf
+    species: golden_pothos
+    sensors:
+      moisture: sensor.soil_sensor_pothos_office_humidity
+      temperature: sensor.soil_sensor_pothos_office_temperature
+      battery: sensor.soil_sensor_pothos_office_battery
+      brightness: sensor.hue_motion_sensor_1_illuminance
+    watering:
+      switch: switch.watering_kit
+      max_seconds: 8
+      cooldown_hours: 48
+
+  - id: ficus_altissma_sun_room
+    plant_entity: plant.ficus_altissma_sun_room
+    name: Ficus Altissima
+    location: Sun room
+    species: ficus_altissima
+    sensors:
+      moisture: sensor.soil_sensor_rubber_plant_humidity
+      temperature: sensor.soil_sensor_rubber_plant_temperature
+      battery: sensor.soil_sensor_rubber_plant_battery
+      brightness: sensor.back_sun_room_illuminance
+    watering:
+      switch: switch.back_sun_room_watering_kit
+      max_seconds: 10
+      cooldown_hours: 72
+
+  - id: hanging_boston_fern
+    plant_entity: plant.hanging_boston_fern
+    name: Boston Fern
+    location: Hanging planter
+    species: boston_fern
+    sensors:
+      moisture: sensor.hanging_fern_humidity
+      temperature: sensor.hanging_fern_temperature
+      battery: sensor.hanging_fern_battery
+
+  - id: golden_pothos_office_hanging
+    plant_entity: plant.golden_pothos_office_hanging
+    name: Golden Pothos
+    location: Office hanging
+    species: golden_pothos
+    sensors:
+      moisture: sensor.soil_sensor_hanging_pothos_humidity
+      temperature: sensor.soil_sensor_hanging_pothos_temperature
+      battery: sensor.soil_sensor_hanging_pothos_battery
+      brightness: sensor.hue_motion_sensor_1_illuminance
+
+  - id: office_peperomia_jelly
+    plant_entity: plant.office_peperomia_jelly
+    name: Peperomia Jelly
+    location: Office
+    species: peperomia_jelly
+    sensors:
+      moisture: sensor.office_plant_humidity
+      temperature: sensor.office_plant_temperature
+      battery: sensor.office_plant_battery
+      brightness: sensor.hue_motion_sensor_1_illuminance
+
+  - id: front_porch_garden_box
+    plant_entity:
+    name: Front Porch Garden Box
+    location: Front porch
+    species: outdoor_mixed_vegetable_container
+    sensors:
+      moisture: sensor.porch_garden_1_soil_moisture
+      battery: sensor.porch_garden_1_battery
+
+  - id: front_porch_hanging_basket
+    plant_entity:
+    name: Front Porch Hanging Basket
+    location: Front porch
+    species: outdoor_mixed_annual_hanging_basket
+    sensors:
+      moisture: sensor.soil_5_soil_moisture
+      battery: sensor.soil_5_battery
+
+  - id: back_porch_fuchsia_hanging_basket
+    plant_entity:
+    name: Back Porch Fuchsia Hanging Basket
+    location: Back porch
+    species: fuchsia_hanging_basket
+    sensors:
+      moisture: sensor.soil_6_soil_moisture
+      battery: sensor.soil_6_battery
+
+  - id: back_sun_room_tinker_wandering_dude
+    plant_entity:
+    name: Tinker Wandering Dude
+    location: Back sun room
+    species: wandering_dude
+    sensors:
+      moisture: sensor.back_sun_room_tinker_wandering_dude_soil_sensor_soil_moisture
+      temperature: sensor.back_sun_room_tinker_wandering_dude_soil_sensor_temperature
+      battery: sensor.back_sun_room_tinker_wandering_dude_soil_sensor_battery
+
+  - id: golden_pothos_office_hanging_2
+    plant_entity:
+    name: Golden Pothos
+    location: Office hanging 2
+    species: golden_pothos
+    sensors:
+      moisture: sensor.hanging_golden_pothos_office_soil_moisture
+      temperature: sensor.hanging_golden_pothos_office_temperature
+      battery: sensor.hanging_golden_pothos_office_battery

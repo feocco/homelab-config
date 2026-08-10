@@ -1,0 +1,21 @@
+**/.env
+**/.break-glass-password.txt
+**/.google-oauth-client.json
+**/.initial-local-accounts.json
+# Host-private identity overlays used by render-service-env. Keep these on the
+# runners under $HOME/homelab-private-config/; never commit them.
+hosts/*/private/
+**/homelab-private-config/
+**/__pycache__/
+.local/
+**/data/*
+!**/data/.gitkeep
+services/homepage/config/*
+!services/homepage/config/.gitkeep
+services/homelab-functions/config/*
+!services/homelab-functions/config/.gitkeep
+docs/generated/*
+!docs/generated/.gitkeep
+.site/
+services/caddy/Caddyfile
+.homelab-deploy-state/

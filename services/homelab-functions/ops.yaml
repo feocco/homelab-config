@@ -1,0 +1,33 @@
+service: homelab-functions
+kind: app
+host: macmini
+source_repo: feocco/homelab-functions
+image: ghcr.io/feocco/homelab-functions:latest
+public_image: true
+container: homelab-functions
+http_port: 8091
+port_env: SERVICE_PORT
+health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: aiohttp
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8091
+tailnet: true
+monitoring: true
+sre: true
+route_hostname: homelab-functions.home.feocco.com
+route_target_port: 8091
+route_https: true
+route_dns: unifi
+dashboard_name: homelab-functions
+dashboard_group: Runtime Services
+dashboard_description: Notification and homelab API service
+dashboard_icon: python.png
+redeploy_on:
+  - ^scripts/(generate-smoke-signal-config|generate-service-catalog|lib/homelab_catalog.py)$
+  - ^services/[^/]+/ops.yaml$
+  - ^hosts/[^/]+/services.yaml$
+secrets:
+  - HA_URL
+  - HA_LONG_LIVED_TOKEN
+  - HOMELAB_FUNCTIONS_TOKEN

@@ -1,0 +1,431 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      host:
+        description: Host to deploy, or "all"
+        required: true
+        type: choice
+        default: nasfeo
+        options:
+          - all
+          - nasfeo
+          - macmini
+      service:
+        description: Service to deploy, or "all"
+        required: true
+        type: choice
+        default: plant-monitor
+        options:
+          - all
+          - authentik
+          - bedtime
+          - caddy
+          - dashy
+          - dashy-redirect
+          - dog-bowl-monitor
+          - hass-janitor
+          - hello-nas
+          - homarr
+          - homepage
+          - homelab-docs
+          - homelab-functions
+          - homelab-log-watcher
+          - homelab-monitor
+          - homelab-smoke-signal
+          - homelab-sre-agent
+          - instacart-history-service
+          - laundry-monitor
+          - mealie
+          - mealie-planner
+          - netalertx
+          - pirate-radio
+          - plant-monitor
+          - portainer
+          - streaming-sessions
+          - streaming-sessions-kafka
+          - streaming-sessions-postgres
+      force_recreate:
+        description: Force recreate containers
+        required: false
+        type: boolean
+        default: false
+      canary:
+        description: Allow temporary deployment from a non-main branch
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy-nasfeo:
+    name: Deploy nasfeo
+    runs-on: [self-hosted, nasfeo]
+    # Never run untrusted/fork work on self-hosted runners. Keep this repo-only
+    # guard even if PR triggers are added later by mistake.
+    if: github.repository == 'feocco/homelab-config' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.host == 'nasfeo' || inputs.host == 'all')))
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Sync checkout to runtime path
+        run: |
+          mkdir -p /volume1/docker/homelab-config
+          tar \
+            --exclude './.git' \
+            --exclude './services/*/.env' \
+            --exclude './services/*/data' \
+            -cf - . | tar -C /volume1/docker/homelab-config -xf -
+          find . -path './services/*/data/.gitkeep' -type f | while read -r keep_file; do
+            data_dir="${keep_file#./}"
+            mkdir -p "/volume1/docker/homelab-config/${data_dir%/.gitkeep}"
+          done
+          ./scripts/migrate-host-runtime-layout /volume1/docker/homelab-config
+
+      - name: Render service environments
+        env:
+          # BEGIN GENERATED SERVICE SECRETS
+          HOMELAB_LOG_WATCHER__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__HOMELAB_FUNCTIONS_TOKEN }}
+          HOMELAB_LOG_WATCHER__LOG_WATCHER_ACTION_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__LOG_WATCHER_ACTION_TOKEN }}
+          HOMELAB_LOG_WATCHER__LOG_WATCHER_INCIDENT_WEBHOOK_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__LOG_WATCHER_INCIDENT_WEBHOOK_TOKEN }}
+          HOMELAB_SMOKE_SIGNAL__HA_LONG_LIVED_TOKEN: ${{ secrets.HOMELAB_SMOKE_SIGNAL__HA_LONG_LIVED_TOKEN }}
+          HOMELAB_SMOKE_SIGNAL__HA_NOTIFY_JOE_SERVICE: ${{ secrets.HOMELAB_SMOKE_SIGNAL__HA_NOTIFY_JOE_SERVICE }}
+          HOMELAB_SMOKE_SIGNAL__HA_URL: ${{ secrets.HOMELAB_SMOKE_SIGNAL__HA_URL }}
+          HOMELAB_SMOKE_SIGNAL__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_SMOKE_SIGNAL__HOMELAB_FUNCTIONS_TOKEN }}
+          # END GENERATED SERVICE SECRETS
+        run: |
+          ./scripts/render-service-env --host nasfeo --all \
+            --base-dir "${{ github.workspace }}" \
+            --deploy-base-dir /volume1/docker/homelab-config
+
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "${DOCKERHUB_USERNAME}" ] && [ -n "${DOCKERHUB_TOKEN}" ]; then
+            DOCKER_CONFIG_DIR="${DOCKER_CONFIG:-${RUNNER_TEMP:-/tmp}/docker-config}"
+            mkdir -p "${DOCKER_CONFIG_DIR}"
+            auth="$(printf '%s:%s' "${DOCKERHUB_USERNAME}" "${DOCKERHUB_TOKEN}" | base64 | tr -d '\n')"
+            printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}\n' "${auth}" > "${DOCKER_CONFIG_DIR}/config.json"
+            echo "DOCKER_CONFIG=${DOCKER_CONFIG_DIR}" >> "${GITHUB_ENV}"
+          else
+            echo "Skipping Docker Hub login; DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not configured."
+          fi
+
+      - name: Log in to GHCR
+        env:
+          GHCR_USERNAME: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${GHCR_TOKEN}" ]; then
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
+          fi
+
+      - name: Deploy changed services
+        if: github.event_name == 'push'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          ./scripts/homelab-deploy --host nasfeo --changed \
+            --base-dir "${{ github.workspace }}" \
+            --deploy-base-dir /volume1/docker/homelab-config
+
+      - name: Deploy requested service
+        if: github.event_name == 'workflow_dispatch' && inputs.service != 'all'
+        env:
+          SERVICE_INPUT: ${{ inputs.service }}
+          FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
+          CANARY_INPUT: ${{ inputs.canary }}
+        run: |
+          case "${SERVICE_INPUT}" in
+            authentik|bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
+              ;;
+            *)
+              echo "Unsupported service: ${SERVICE_INPUT}" >&2
+              exit 2
+              ;;
+          esac
+          args=()
+          if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
+            args+=(--force-recreate)
+          fi
+          if [ "${CANARY_INPUT}" = "true" ]; then
+            args+=(--canary)
+          fi
+          ./scripts/homelab-deploy --host nasfeo "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
+
+      - name: Deploy all services
+        if: github.event_name == 'workflow_dispatch' && inputs.service == 'all'
+        env:
+          FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
+          CANARY_INPUT: ${{ inputs.canary }}
+        run: |
+          args=()
+          if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
+            args+=(--force-recreate)
+          fi
+          if [ "${CANARY_INPUT}" = "true" ]; then
+            args+=(--canary)
+          fi
+          ./scripts/homelab-deploy --host nasfeo --all "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
+
+  deploy-macmini:
+    name: Deploy macmini
+    runs-on: [self-hosted, macmini]
+    if: github.repository == 'feocco/homelab-config' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.host == 'macmini' || inputs.host == 'all')))
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Ensure native node exporter
+        run: |
+          ./scripts/ensure-macmini-node-exporter
+
+      - name: Sync checkout to runtime path
+        run: |
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          mkdir -p "${MACMINI_RUNTIME_DIR}"
+          tar \
+            --exclude './.git' \
+            --exclude './services/*/.env' \
+            --exclude './services/*/data' \
+            -cf - . | tar -C "${MACMINI_RUNTIME_DIR}" -xf -
+          find . -path './services/*/data/.gitkeep' -type f | while read -r keep_file; do
+            data_dir="${keep_file#./}"
+            mkdir -p "${MACMINI_RUNTIME_DIR}/${data_dir%/.gitkeep}"
+          done
+          ./scripts/migrate-host-runtime-layout "${MACMINI_RUNTIME_DIR}"
+
+      - name: Render service environments
+        env:
+          # BEGIN GENERATED SERVICE SECRETS
+          AUTHENTIK__AUTHENTIK_BOOTSTRAP_PASSWORD_HASH: ${{ secrets.AUTHENTIK__AUTHENTIK_BOOTSTRAP_PASSWORD_HASH }}
+          AUTHENTIK__AUTHENTIK_EMAIL__FROM: ${{ secrets.AUTHENTIK__AUTHENTIK_EMAIL__FROM }}
+          AUTHENTIK__AUTHENTIK_EMAIL__PASSWORD: ${{ secrets.AUTHENTIK__AUTHENTIK_EMAIL__PASSWORD }}
+          AUTHENTIK__AUTHENTIK_EMAIL__USERNAME: ${{ secrets.AUTHENTIK__AUTHENTIK_EMAIL__USERNAME }}
+          AUTHENTIK__AUTHENTIK_SECRET_KEY: ${{ secrets.AUTHENTIK__AUTHENTIK_SECRET_KEY }}
+          AUTHENTIK__GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.AUTHENTIK__GOOGLE_OAUTH_CLIENT_ID }}
+          AUTHENTIK__GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.AUTHENTIK__GOOGLE_OAUTH_CLIENT_SECRET }}
+          AUTHENTIK__PIRATE_RADIO_OIDC_CLIENT_ID: ${{ secrets.AUTHENTIK__PIRATE_RADIO_OIDC_CLIENT_ID }}
+          AUTHENTIK__PIRATE_RADIO_OIDC_CLIENT_SECRET: ${{ secrets.AUTHENTIK__PIRATE_RADIO_OIDC_CLIENT_SECRET }}
+          AUTHENTIK__POSTGRES_PASSWORD: ${{ secrets.AUTHENTIK__POSTGRES_PASSWORD }}
+          BEDTIME__HA_LONG_LIVED_TOKEN: ${{ secrets.BEDTIME__HA_LONG_LIVED_TOKEN }}
+          BEDTIME__HA_URL: ${{ secrets.BEDTIME__HA_URL }}
+          BEDTIME__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.BEDTIME__HOMELAB_FUNCTIONS_TOKEN }}
+          CADDY__CLOUDFLARE_API_TOKEN: ${{ secrets.CADDY__CLOUDFLARE_API_TOKEN }}
+          HASS_JANITOR__HASS_JANITOR_API_TOKEN: ${{ secrets.HASS_JANITOR__HASS_JANITOR_API_TOKEN }}
+          HASS_JANITOR__HA_BASE_URL: ${{ secrets.HASS_JANITOR__HA_BASE_URL }}
+          HASS_JANITOR__HA_TOKEN: ${{ secrets.HASS_JANITOR__HA_TOKEN }}
+          HASS_JANITOR__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HASS_JANITOR__HOMELAB_FUNCTIONS_TOKEN }}
+          HOMELAB_FUNCTIONS__HA_LONG_LIVED_TOKEN: ${{ secrets.HOMELAB_FUNCTIONS__HA_LONG_LIVED_TOKEN }}
+          HOMELAB_FUNCTIONS__HA_URL: ${{ secrets.HOMELAB_FUNCTIONS__HA_URL }}
+          HOMELAB_FUNCTIONS__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_FUNCTIONS__HOMELAB_FUNCTIONS_TOKEN }}
+          HOMELAB_LOG_WATCHER__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__HOMELAB_FUNCTIONS_TOKEN }}
+          HOMELAB_LOG_WATCHER__LOG_WATCHER_ACTION_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__LOG_WATCHER_ACTION_TOKEN }}
+          HOMELAB_LOG_WATCHER__LOG_WATCHER_INCIDENT_WEBHOOK_TOKEN: ${{ secrets.HOMELAB_LOG_WATCHER__LOG_WATCHER_INCIDENT_WEBHOOK_TOKEN }}
+          HOMELAB_MONITOR__GRAFANA_ADMIN_PASSWORD: ${{ secrets.HOMELAB_MONITOR__GRAFANA_ADMIN_PASSWORD }}
+          HOMELAB_MONITOR__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_MONITOR__HOMELAB_FUNCTIONS_TOKEN }}
+          HOMELAB_MONITOR__OPENAI_ADMIN_KEY: ${{ secrets.HOMELAB_MONITOR__OPENAI_ADMIN_KEY }}
+          HOMELAB_SRE_AGENT__AWS_ACCESS_KEY_ID: ${{ secrets.HOMELAB_SRE_AGENT__AWS_ACCESS_KEY_ID }}
+          HOMELAB_SRE_AGENT__AWS_SECRET_ACCESS_KEY: ${{ secrets.HOMELAB_SRE_AGENT__AWS_SECRET_ACCESS_KEY }}
+          HOMELAB_SRE_AGENT__GITHUB_APP_PRIVATE_KEY_B64: ${{ secrets.HOMELAB_SRE_AGENT__GITHUB_APP_PRIVATE_KEY_B64 }}
+          HOMELAB_SRE_AGENT__GITHUB_TOKEN: ${{ secrets.HOMELAB_SRE_AGENT__GITHUB_TOKEN }}
+          HOMELAB_SRE_AGENT__HA_LONG_LIVED_TOKEN: ${{ secrets.HOMELAB_SRE_AGENT__HA_LONG_LIVED_TOKEN }}
+          HOMELAB_SRE_AGENT__HA_URL: ${{ secrets.HOMELAB_SRE_AGENT__HA_URL }}
+          HOMELAB_SRE_AGENT__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_SRE_AGENT__HOMELAB_FUNCTIONS_TOKEN }}
+          HOMELAB_SRE_AGENT__SRE_INCIDENT_TOKEN: ${{ secrets.HOMELAB_SRE_AGENT__SRE_INCIDENT_TOKEN }}
+          INSTACART_HISTORY_SERVICE__OPENAI_API_KEY: ${{ secrets.INSTACART_HISTORY_SERVICE__OPENAI_API_KEY }}
+          LAUNDRY_MONITOR__HA_LONG_LIVED_TOKEN: ${{ secrets.LAUNDRY_MONITOR__HA_LONG_LIVED_TOKEN }}
+          LAUNDRY_MONITOR__HA_NOTIFY_JESS_SERVICE: ${{ secrets.LAUNDRY_MONITOR__HA_NOTIFY_JESS_SERVICE }}
+          LAUNDRY_MONITOR__HA_NOTIFY_JOE_SERVICE: ${{ secrets.LAUNDRY_MONITOR__HA_NOTIFY_JOE_SERVICE }}
+          LAUNDRY_MONITOR__HA_URL: ${{ secrets.LAUNDRY_MONITOR__HA_URL }}
+          MEALIE_PLANNER__HA_LONG_LIVED_TOKEN: ${{ secrets.MEALIE_PLANNER__HA_LONG_LIVED_TOKEN }}
+          MEALIE_PLANNER__HA_URL: ${{ secrets.MEALIE_PLANNER__HA_URL }}
+          MEALIE_PLANNER__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.MEALIE_PLANNER__HOMELAB_FUNCTIONS_TOKEN }}
+          MEALIE_PLANNER__MEALIE_API_TOKEN: ${{ secrets.MEALIE_PLANNER__MEALIE_API_TOKEN }}
+          MEALIE_PLANNER__OPENAI_API_KEY: ${{ secrets.MEALIE_PLANNER__OPENAI_API_KEY }}
+          MEALIE__CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.MEALIE__CLOUDFLARE_TUNNEL_TOKEN }}
+          MEALIE__OPENAI_API_KEY: ${{ secrets.MEALIE__OPENAI_API_KEY }}
+          MEALIE__POSTGRES_PASSWORD: ${{ secrets.MEALIE__POSTGRES_PASSWORD }}
+          MEALIE__SMTP_FROM_EMAIL: ${{ secrets.MEALIE__SMTP_FROM_EMAIL }}
+          MEALIE__SMTP_PASSWORD: ${{ secrets.MEALIE__SMTP_PASSWORD }}
+          MEALIE__SMTP_USER: ${{ secrets.MEALIE__SMTP_USER }}
+          PIRATE_RADIO__HA_LONG_LIVED_TOKEN: ${{ secrets.PIRATE_RADIO__HA_LONG_LIVED_TOKEN }}
+          PIRATE_RADIO__HA_URL: ${{ secrets.PIRATE_RADIO__HA_URL }}
+          PIRATE_RADIO__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.PIRATE_RADIO__HOMELAB_FUNCTIONS_TOKEN }}
+          PIRATE_RADIO__OPENAI_API_KEY: ${{ secrets.PIRATE_RADIO__OPENAI_API_KEY }}
+          PIRATE_RADIO__PIRATE_RADIO_OIDC_CLIENT_ID: ${{ secrets.PIRATE_RADIO__PIRATE_RADIO_OIDC_CLIENT_ID }}
+          PIRATE_RADIO__PIRATE_RADIO_OIDC_CLIENT_SECRET: ${{ secrets.PIRATE_RADIO__PIRATE_RADIO_OIDC_CLIENT_SECRET }}
+          PIRATE_RADIO__POSTGRES_PASSWORD: ${{ secrets.PIRATE_RADIO__POSTGRES_PASSWORD }}
+          PIRATE_RADIO__X_API_BEARER_TOKEN: ${{ secrets.PIRATE_RADIO__X_API_BEARER_TOKEN }}
+          PLANT_MONITOR__HA_LONG_LIVED_TOKEN: ${{ secrets.PLANT_MONITOR__HA_LONG_LIVED_TOKEN }}
+          PLANT_MONITOR__HA_URL: ${{ secrets.PLANT_MONITOR__HA_URL }}
+          PLANT_MONITOR__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.PLANT_MONITOR__HOMELAB_FUNCTIONS_TOKEN }}
+          PLANT_MONITOR__SERVICE_CALLBACK_TOKEN: ${{ secrets.PLANT_MONITOR__SERVICE_CALLBACK_TOKEN }}
+          STREAMING_SESSIONS_POSTGRES__POSTGRES_PASSWORD: ${{ secrets.STREAMING_SESSIONS_POSTGRES__POSTGRES_PASSWORD }}
+          STREAMING_SESSIONS__DATABASE_URL: ${{ secrets.STREAMING_SESSIONS__DATABASE_URL }}
+          STREAMING_SESSIONS__STREAMING_SESSIONS_API_TOKEN: ${{ secrets.STREAMING_SESSIONS__STREAMING_SESSIONS_API_TOKEN }}
+          # END GENERATED SERVICE SECRETS
+        run: |
+          MACMINI_RUNTIME_DIR="${HOME}/homelab-config-runtime"
+          ./scripts/render-service-env --host macmini --all \
+            --base-dir "${{ github.workspace }}" \
+            --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
+
+      - name: Use noninteractive Docker config
+        run: |
+          DOCKER_CONFIG_DIR="${RUNNER_TEMP:-/tmp}/docker-config"
+          mkdir -p "${DOCKER_CONFIG_DIR}"
+          printf '{}\n' > "${DOCKER_CONFIG_DIR}/config.json"
+          echo "DOCKER_CONFIG=${DOCKER_CONFIG_DIR}" >> "${GITHUB_ENV}"
+
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "${DOCKERHUB_USERNAME}" ] && [ -n "${DOCKERHUB_TOKEN}" ]; then
+            DOCKER_CONFIG_DIR="${DOCKER_CONFIG:-${RUNNER_TEMP:-/tmp}/docker-config}"
+            mkdir -p "${DOCKER_CONFIG_DIR}"
+            auth="$(printf '%s:%s' "${DOCKERHUB_USERNAME}" "${DOCKERHUB_TOKEN}" | base64 | tr -d '\n')"
+            printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}\n' "${auth}" > "${DOCKER_CONFIG_DIR}/config.json"
+            echo "DOCKER_CONFIG=${DOCKER_CONFIG_DIR}" >> "${GITHUB_ENV}"
+          else
+            echo "Skipping Docker Hub login; DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not configured."
+          fi
+
+      - name: Log in to GHCR
+        env:
+          GHCR_USERNAME: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${GHCR_TOKEN}" ]; then
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
+          fi
+
+      - name: Load Caddy image metadata
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.service == 'caddy' || inputs.service == 'all'))
+        run: |
+          ./scripts/caddy-image-env >> "${GITHUB_ENV}"
+
+      - name: Build local Caddy image
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.service == 'caddy' || inputs.service == 'all'))
+        run: |
+          docker build \
+            --build-arg CADDY_VERSION="${CADDY_VERSION}" \
+            -t "${CADDY_IMAGE_REF}" \
+            services/caddy
+          docker run --rm "${CADDY_IMAGE_REF}" \
+            caddy list-modules | grep -qx 'dns.providers.cloudflare'
+
+      - name: Deploy changed services
+        if: github.event_name == 'push'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          RUNNER_HOME="${HOME}"
+          export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
+          mkdir -p "${HOME}/.docker"
+          printf '{}\n' > "${HOME}/.docker/config.json"
+          MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
+          ./scripts/homelab-deploy --host macmini --changed \
+            --base-dir "${{ github.workspace }}" \
+            --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
+
+      - name: Deploy requested service
+        if: github.event_name == 'workflow_dispatch' && inputs.service != 'all'
+        env:
+          SERVICE_INPUT: ${{ inputs.service }}
+          FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
+          CANARY_INPUT: ${{ inputs.canary }}
+        run: |
+          case "${SERVICE_INPUT}" in
+            authentik|bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
+              ;;
+            *)
+              echo "Unsupported service: ${SERVICE_INPUT}" >&2
+              exit 2
+              ;;
+          esac
+          args=()
+          if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
+            args+=(--force-recreate)
+          fi
+          if [ "${CANARY_INPUT}" = "true" ]; then
+            args+=(--canary)
+          fi
+          RUNNER_HOME="${HOME}"
+          export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
+          mkdir -p "${HOME}/.docker"
+          printf '{}\n' > "${HOME}/.docker/config.json"
+          MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
+          ./scripts/homelab-deploy --host macmini "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
+
+      - name: Verify Caddy listener
+        if: github.event_name == 'workflow_dispatch' && inputs.host == 'macmini' && inputs.service == 'caddy'
+        run: |
+          docker ps -a --filter name=caddy
+          docker inspect caddy --format '{{.State.Status}} {{.State.ExitCode}} {{.State.Error}}'
+          lsof -nP -iTCP:80 -sTCP:LISTEN || true
+          lsof -nP -iTCP:443 -sTCP:LISTEN || true
+          curl -I --max-time 5 http://192.168.1.43/
+          for attempt in $(seq 1 12); do
+            if curl -I --max-time 5 https://home.feocco.com/; then
+              exit 0
+            fi
+            sleep 5
+          done
+          curl -I --max-time 5 https://home.feocco.com/
+          curl -I --max-time 5 http://127.0.0.1/ || true
+
+      - name: Deploy all services
+        if: github.event_name == 'workflow_dispatch' && inputs.service == 'all'
+        env:
+          FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
+          CANARY_INPUT: ${{ inputs.canary }}
+        run: |
+          args=()
+          if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
+            args+=(--force-recreate)
+          fi
+          if [ "${CANARY_INPUT}" = "true" ]; then
+            args+=(--canary)
+          fi
+          RUNNER_HOME="${HOME}"
+          export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
+          mkdir -p "${HOME}/.docker"
+          printf '{}\n' > "${HOME}/.docker/config.json"
+          MACMINI_RUNTIME_DIR="${RUNNER_HOME}/homelab-config-runtime"
+          ./scripts/homelab-deploy --host macmini --all "${args[@]}" --deploy-base-dir "${MACMINI_RUNTIME_DIR}"
+
+      - name: Apply Tailscale Serve config
+        env:
+          AFTER_SHA: ${{ github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          SERVICE_INPUT: ${{ inputs.service }}
+        run: |
+          if [ "${EVENT_NAME}" = "push" ] &&
+            git diff --quiet "${BEFORE_SHA}" "${AFTER_SHA}" -- \
+              hosts/macmini/tailscale-serve.yaml scripts/apply-tailscale-serve; then
+            echo "Skipping unchanged Tailscale Serve config."
+            exit 0
+          fi
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ "${SERVICE_INPUT}" != "all" ]; then
+            echo "Skipping Tailscale Serve config for service-only deployment."
+            exit 0
+          fi
+          ./scripts/apply-tailscale-serve --host macmini --base-dir "${{ github.workspace }}"

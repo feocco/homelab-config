@@ -1,0 +1,26 @@
+services:
+  github-runner-homelab:
+    image: ghcr.io/myoung34/docker-github-actions-runner:2.336.0
+    container_name: github-runner-homelab
+    restart: unless-stopped
+    env_file:
+      - /volume1/docker/homelab-secrets/github-runner.env
+    environment:
+      REPO_URL: https://github.com/feocco/homelab-config
+      RUNNER_SCOPE: repo
+      RUNNER_NAME: nasfeo-homelab
+      RUNNER_WORKDIR: /tmp/github-runner
+      LABELS: nasfeo,docker,homelab
+      CONFIGURED_ACTIONS_RUNNER_FILES_DIR: /runner/data
+      DISABLE_AUTOMATIC_DEREGISTRATION: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /volume1/docker/homelab-config:/volume1/docker/homelab-config
+      - /volume1/docker/homelab-runner/data:/runner/data
+      - /volume1/docker/homelab-runner/work:/tmp/github-runner
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+redeploy_print="$("${REPO_DIR}/scripts/redeploy-image" --host macmini plant-monitor --print)"
+printf '%s\n' "${redeploy_print}" | grep -q 'gh workflow run deploy.yml'
+printf '%s\n' "${redeploy_print}" | grep -q -- '--repo feocco/homelab-config'
+printf '%s\n' "${redeploy_print}" | grep -q -- '-f host=macmini'
+printf '%s\n' "${redeploy_print}" | grep -q -- '-f service=plant-monitor'
+printf '%s\n' "${redeploy_print}" | grep -q -- '-f force_recreate=true'
+
+invalid_host_out="$(mktemp)"
+assert_fails "${invalid_host_out}" "${REPO_DIR}/scripts/redeploy-image" --host invalid plant-monitor --print
+assert_contains "${invalid_host_out}" 'Unsupported host'
+rm -f "${invalid_host_out}"
+
+invalid_service_out="$(mktemp)"
+assert_fails "${invalid_service_out}" "${REPO_DIR}/scripts/redeploy-image" --host macmini not-a-service --print
+assert_contains "${invalid_service_out}" 'Unsupported or disabled service'
+rm -f "${invalid_service_out}"
+
+all_hosts_out="$(mktemp)"
+assert_fails "${all_hosts_out}" "${REPO_DIR}/scripts/redeploy-image" --host all plant-monitor --all-hosts --print
+assert_contains "${all_hosts_out}" 'Unsupported or disabled service on host'
+rm -f "${all_hosts_out}"
