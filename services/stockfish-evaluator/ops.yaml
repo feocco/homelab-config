@@ -8,6 +8,7 @@ container: stockfish-evaluator
 http_port: 8096
 port_env: SERVICE_PORT
 health_path: /health
+live_base_url: http://127.0.0.1:8096
 monitoring: false
 sre: true
 route_exempt_reason: LAN Dartsnut board API; no browser-facing HTTPS route
