@@ -90,3 +90,7 @@ services:
   streaming-sessions:
     path: services/streaming-sessions
     enabled: true
+
+  stockfish-evaluator:
+    path: services/stockfish-evaluator
+    enabled: true

@@ -1,0 +1,13 @@
+service: stockfish-evaluator
+kind: app
+host: macmini
+source_repo: feocco/dartsnut-widget-tools
+image: ghcr.io/feocco/dartsnut-widgets-stockfish-evaluator:19c649ae1af9046d8c28b394ae8d7ea049e29b5a
+public_image: true
+container: stockfish-evaluator
+http_port: 8096
+port_env: SERVICE_PORT
+health_path: /health
+monitoring: false
+sre: true
+route_exempt_reason: LAN Dartsnut board API; no browser-facing HTTPS route

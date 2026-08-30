@@ -1,0 +1,16 @@
+services:
+  stockfish-evaluator:
+    image: ghcr.io/feocco/dartsnut-widgets-stockfish-evaluator:19c649ae1af9046d8c28b394ae8d7ea049e29b5a
+    platform: ${SERVICE_PLATFORM:-linux/arm64}
+    container_name: stockfish-evaluator
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${HOST_BIND_ADDR:-0.0.0.0}:${SERVICE_PORT:-8096}:${SERVICE_PORT:-8096}"
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"

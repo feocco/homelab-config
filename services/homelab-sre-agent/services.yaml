@@ -431,3 +431,22 @@ services:
     sre:
       enabled: false
       autofix: false
+
+  stockfish-evaluator:
+    containers:
+      - stockfish-evaluator
+    images:
+      - ghcr.io/feocco/dartsnut-widgets-stockfish-evaluator:19c649ae1af9046d8c28b394ae8d7ea049e29b5a
+    source:
+      repo: feocco/dartsnut-widget-tools
+      path_hint: /Users/feocco/code/dartsnut-widget-tools
+    issue_repo: feocco/dartsnut-widget-tools
+    deploy:
+      path: services/stockfish-evaluator
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/stockfish-evaluator
+    labels:
+      - homelab-sre
+      - stockfish-evaluator
+    sre:
+      enabled: true
+      autofix: false
