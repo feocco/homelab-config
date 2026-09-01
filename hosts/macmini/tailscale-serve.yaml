@@ -49,6 +49,11 @@ services:
     target: http://127.0.0.1:8102
 
 named_services:
+  stockfish-evaluator:
+    enabled: true
+    service: svc:stockfish-evaluator
+    tcp_port: 8096
+    target: tcp://127.0.0.1:8096
   authentik:
     enabled: true
     service: svc:authentik

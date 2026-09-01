@@ -4,7 +4,7 @@ set -euo pipefail
 # CLI helper for inspecting Tailscale identity/trust state without the admin
 # console. Tags and serve state come from the local `tailscale` CLI. The full
 # ACL/grants policy needs a Tailscale API access token because the CLI does not
-# expose the policy file.
+# expose the live policy file. TAILSCALE_POLICY_FILE supports offline checks.
 #
 # Auth (one-time): create an API access token at
 #   https://login.tailscale.com/admin/settings/keys  (or an OAuth client)
@@ -14,20 +14,26 @@ set -euo pipefail
 
 TAILNET="${TAILNET:--}"
 API_KEY="${TAILSCALE_API_KEY:-${TS_API_KEY:-}}"
+POLICY_FILE="${TAILSCALE_POLICY_FILE:-}"
 MODE="status"
 SERVICE_HOST_TAG="tag:homelab-service-host"
 FRIEND_SERVICES=("svc:authentik" "svc:pirate-radio")
+CURSOR_CLOUD_TAG="tag:cursor-cloud"
+STOCKFISH_SERVICE="svc:stockfish-evaluator"
 
 usage() {
   cat <<'EOF'
 Usage:
   tailscale-acl status   Show tagged homelab hosts and serve state (CLI only).
   tailscale-acl get      Print the live ACL/grants policy (needs API key).
-  tailscale-acl check    Verify tag owners + friend grants exist (needs API key).
+  tailscale-acl check    Verify tag owners and scoped service grants.
 
 Auth for get/check:
   export TAILSCALE_API_KEY=tskey-api-...   # from admin > settings > keys
   export TAILNET=example.com               # optional; default is token tailnet
+
+Offline check:
+  TAILSCALE_POLICY_FILE=path/to/policy.hujson tailscale-acl check
 EOF
 }
 
@@ -108,18 +114,29 @@ api_get() {
     "https://api.tailscale.com/api/v2/tailnet/${TAILNET}/acl"
 }
 
+policy_get() {
+  if [[ -n "${POLICY_FILE}" ]]; then
+    [[ -f "${POLICY_FILE}" ]] || { echo "TAILSCALE_POLICY_FILE does not exist: ${POLICY_FILE}" >&2; exit 2; }
+    command cat "${POLICY_FILE}"
+  else
+    api_get
+  fi
+}
+
 case "${MODE}" in
   status) show_status ;;
   get) api_get ;;
   check)
     policy_file="$(mktemp)"
     trap 'rm -f "${policy_file}"' EXIT
-    api_get > "${policy_file}"
-    python3 - "${policy_file}" "${SERVICE_HOST_TAG}" "${FRIEND_SERVICES[@]}" <<'PY'
+    policy_get > "${policy_file}"
+    python3 - "${policy_file}" "${SERVICE_HOST_TAG}" "${CURSOR_CLOUD_TAG}" "${STOCKFISH_SERVICE}" "${FRIEND_SERVICES[@]}" <<'PY'
 import json, re, sys
 policy_path = sys.argv[1]
-tag = sys.argv[2]
-services = sys.argv[3:]
+service_host_tag = sys.argv[2]
+cursor_cloud_tag = sys.argv[3]
+stockfish_service = sys.argv[4]
+friend_services = sys.argv[5:]
 raw = open(policy_path).read()
 # Tolerate HuJSON: strip // and /* */ comments and trailing commas.
 raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
@@ -133,18 +150,55 @@ except Exception as e:
 
 problems = []
 owners = policy.get("tagOwners", {})
-if tag not in owners:
-    problems.append(f"tagOwners missing {tag}")
+for tag in (service_host_tag, cursor_cloud_tag):
+    if tag not in owners:
+        problems.append(f"tagOwners missing {tag}")
 
 grants = policy.get("grants", []) or policy.get("acls", [])
-served = set()
-for g in grants:
-    dst = g.get("dst", [])
-    for d in dst:
-        served.add(d)
-for svc in services:
-    if svc not in served:
-        problems.append(f"no grant targets {svc}")
+friend_granted = set()
+cursor_grants = []
+for grant in grants:
+    sources = set(grant.get("src", []))
+    destinations = set(grant.get("dst", []))
+    ports = set(grant.get("ip", []))
+    if "group:friends" in sources and "tcp:443" in ports:
+        friend_granted.update(destinations)
+    if cursor_cloud_tag in sources:
+        cursor_grants.append((sources, destinations, ports))
+
+for service in friend_services:
+    if service not in friend_granted:
+        problems.append(f"group:friends has no tcp:443 grant to {service}")
+
+expected_cursor_grant = (
+    {cursor_cloud_tag},
+    {stockfish_service},
+    {"tcp:8096"},
+)
+if cursor_grants != [expected_cursor_grant]:
+    problems.append(
+        f"{cursor_cloud_tag} must have exactly one grant: "
+        f"{stockfish_service} on tcp:8096"
+    )
+
+required_accept = f"{stockfish_service}:8096"
+required_denies = {
+    f"{stockfish_service}:443",
+    "svc:authentik:443",
+    "svc:pirate-radio:443",
+    f"{service_host_tag}:8096",
+}
+test_found = False
+for test in policy.get("tests", []):
+    if test.get("src") != cursor_cloud_tag:
+        continue
+    accepts = set(test.get("accept", []))
+    denies = set(test.get("deny", []))
+    if required_accept in accepts and required_denies <= denies:
+        test_found = True
+        break
+if not test_found:
+    problems.append(f"policy tests do not enforce the {cursor_cloud_tag} boundary")
 
 if problems:
     print("ACL check FAILED:")
@@ -152,9 +206,10 @@ if problems:
         print(f"  - {p}")
     sys.exit(1)
 print("ACL check OK:")
-print(f"  tagOwners has {tag}")
-for svc in services:
-    print(f"  grant targets {svc}")
+print(f"  tagOwners has {service_host_tag} and {cursor_cloud_tag}")
+print(f"  group:friends can reach {', '.join(friend_services)} on tcp:443")
+print(f"  {cursor_cloud_tag} can reach only {stockfish_service} on tcp:8096")
+print(f"  policy tests enforce positive and negative {cursor_cloud_tag} access")
 PY
     ;;
 esac

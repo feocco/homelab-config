@@ -28,6 +28,11 @@ services:
     http_port: 8099
     target: http://127.0.0.1:8099
 named_services:
+  stockfish-evaluator:
+    enabled: true
+    service: svc:stockfish-evaluator
+    tcp_port: 8096
+    target: tcp://127.0.0.1:8096
   demo:
     enabled: true
     service: svc:demo
@@ -62,10 +67,16 @@ if [[ "${dry_run}" != *"Would advertise svc:demo at 100.100.100.100:443 -> tcp:/
   echo "${dry_run}" >&2
   exit 1
 fi
+if [[ "${dry_run}" != *"Would advertise svc:stockfish-evaluator on TCP port 8096 -> tcp://127.0.0.1:8096 (raw TCP)"* ]]; then
+  echo "Non-HTTPS named Tailscale Service dry-run is incomplete" >&2
+  echo "${dry_run}" >&2
+  exit 1
+fi
 
 PATH="${fixture}/bin:$PATH" "${fixture}/repo/scripts/apply-tailscale-serve" --host macmini --base-dir "${fixture}/repo" >/dev/null
 assert_contains "${fixture}/tailscale.log" 'serve --bg --http=8099 http://127.0.0.1:8099'
 assert_contains "${fixture}/tailscale.log" 'serve --service=svc:demo --bg --tcp=443 tcp://127.0.0.1:443'
+assert_contains "${fixture}/tailscale.log" 'serve --service=svc:stockfish-evaluator --bg --tcp=8096 tcp://127.0.0.1:8096'
 
 cloudflare="$("${fixture}/repo/scripts/sync-cloudflare-dns" --host macmini --base-dir "${fixture}/repo" --dry-run)"
 if [[ "${cloudflare}" != *"Would upsert Cloudflare A demo.home.feocco.com -> 100.100.100.100 (DNS only)"* ]]; then
@@ -83,3 +94,6 @@ entry = route_entries(pathlib.Path(sys.argv[1]), "macmini")[0]
 if entry["tailscale_service"] != "svc:demo":
     raise SystemExit("Catalog route entry omitted route_tailscale_service")
 PY
+
+TAILSCALE_POLICY_FILE="${REPO_DIR}/docs/tailscale-friends-policy.hujson" \
+  "${REPO_DIR}/scripts/tailscale-acl" check >/dev/null

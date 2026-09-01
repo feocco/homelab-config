@@ -14,6 +14,7 @@
   // Tailscale Services require every serving device to use a tag identity.
   "tagOwners": {
     "tag:homelab-service-host": ["autogroup:admin"],
+    "tag:cursor-cloud": ["autogroup:admin"],
   },
 
   "grants": [
@@ -26,6 +27,24 @@
       "src": ["group:friends"],
       "dst": ["svc:authentik", "svc:pirate-radio"],
       "ip": ["tcp:443"],
+    },
+    {
+      "src": ["tag:cursor-cloud"],
+      "dst": ["svc:stockfish-evaluator"],
+      "ip": ["tcp:8096"],
+    },
+  ],
+
+  "tests": [
+    {
+      "src": "tag:cursor-cloud",
+      "accept": ["svc:stockfish-evaluator:8096"],
+      "deny": [
+        "svc:stockfish-evaluator:443",
+        "svc:authentik:443",
+        "svc:pirate-radio:443",
+        "tag:homelab-service-host:8096",
+      ],
     },
   ],
 }
