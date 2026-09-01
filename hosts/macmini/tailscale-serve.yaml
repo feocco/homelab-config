@@ -54,6 +54,7 @@ named_services:
     service: svc:stockfish-evaluator
     tcp_port: 8096
     target: tcp://127.0.0.1:8096
+    tailvip: 100.70.157.158
   authentik:
     enabled: true
     service: svc:authentik
