@@ -1,7 +1,7 @@
 # Pirate Radio
 
 Pirate Radio polls configured article RSS feeds, sends Joe a Home Assistant
-mobile notification for new articles, converts approved articles with OpenAI
+mobile notification for new articles, converts approved articles with xAI
 TTS, and serves the generated audio library on the Tailnet.
 
 ## Runtime
@@ -25,7 +25,7 @@ story files, RSS state, and manifests remain filesystem-owned.
 Non-secret values live in `.env.config`. Required secrets are managed through
 GitHub Actions secrets and rendered into the ignored runtime `.env`:
 
-- `OPENAI_API_KEY`
+- `XAI_API_KEY`
 - `X_API_BEARER_TOKEN` for official X Article lookup
 - `HA_URL`
 - `HA_LONG_LIVED_TOKEN`
@@ -35,7 +35,7 @@ GitHub Actions secrets and rendered into the ignored runtime `.env`:
 - `PIRATE_RADIO_OIDC_CLIENT_SECRET`
 
 The Postgres container receives only its explicit database variables, not the
-application's OpenAI, Home Assistant, or OIDC credentials.
+application's xAI, Home Assistant, or OIDC credentials.
 
 The public route uses Authentik issuer
 `https://auth.home.feocco.com/application/o/pirate-radio/`. Friends reach the
