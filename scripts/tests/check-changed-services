@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT
+repo="${tmp}/repo"
+runtime="${tmp}/runtime"
+
+mkdir -p \
+  "${repo}/scripts" \
+  "${repo}/hosts/macmini" \
+  "${repo}/hosts/nasfeo" \
+  "${runtime}"
+
+cp "${REPO_DIR}/scripts/homelab-deploy" "${repo}/scripts/homelab-deploy"
+cp "${REPO_DIR}/scripts/lib-service-secrets" "${repo}/scripts/lib-service-secrets"
+chmod +x "${repo}/scripts/homelab-deploy"
+
+write_service() {
+  local name="$1"
+  local token="${2:-DEMO_TOKEN}"
+  mkdir -p "${repo}/services/${name}" "${runtime}/services/${name}"
+  cat > "${repo}/services/${name}/docker-compose.yml" <<EOF
+services:
+  ${name}:
+    image: ghcr.io/feocco/${name}:latest
+EOF
+  cp "${repo}/services/${name}/docker-compose.yml" "${runtime}/services/${name}/docker-compose.yml"
+  cat > "${repo}/services/${name}/ops.yaml" <<EOF
+service: ${name}
+kind: app
+host: macmini
+secrets:
+  - ${token}
+EOF
+}
+
+write_service demo DEMO_TOKEN
+write_service other OTHER_TOKEN
+cat > "${repo}/services/demo/README.md" <<'EOF'
+Demo converts articles with OpenAI TTS.
+
+- `DEMO_TOKEN`
+EOF
+cat > "${repo}/services/demo/.env.example" <<'EOF'
+DEMO_TOKEN=replace-with-runtime-secret
+EOF
+
+write_service caddy UNUSED
+cat > "${repo}/services/caddy/ops.yaml" <<'EOF'
+service: caddy
+kind: infra
+host: macmini
+redeploy_on:
+  - ^(scripts/generate-caddy-config|scripts/lib/homelab_catalog.py|services/[^/]+/ops.yaml)$
+secrets:
+EOF
+
+write_service homepage UNUSED
+cat > "${repo}/services/homepage/ops.yaml" <<'EOF'
+service: homepage
+kind: app
+host: macmini
+redeploy_on:
+  - ^services/[^/]+/ops\.yaml$
+secrets:
+EOF
+
+write_service homelab-docs UNUSED
+cat > "${repo}/services/homelab-docs/ops.yaml" <<'EOF'
+service: homelab-docs
+kind: infra
+host: macmini
+redeploy_on:
+  - ^(mkdocs.yml|docs/|services/[^/]+/README.md|services/[^/]+/ops.yaml|hosts/[^/]+/services.yaml|scripts/(build-docs-site|generate-docs-service-index|generate-service-catalog|lib/homelab_catalog.py))
+secrets:
+EOF
+
+write_service homelab-functions UNUSED
+cat > "${repo}/services/homelab-functions/ops.yaml" <<'EOF'
+service: homelab-functions
+kind: app
+host: macmini
+redeploy_on:
+  - ^services/[^/]+/ops.yaml$
+secrets:
+EOF
+
+cat > "${repo}/hosts/macmini/services.yaml" <<EOF
+host:
+  name: macmini
+  deploy_base_dir: ${runtime}
+
+services:
+  demo:
+    path: services/demo
+    enabled: true
+  other:
+    path: services/other
+    enabled: true
+  caddy:
+    path: services/caddy
+    enabled: true
+  homepage:
+    path: services/homepage
+    enabled: true
+  homelab-docs:
+    path: services/homelab-docs
+    enabled: true
+  homelab-functions:
+    path: services/homelab-functions
+    enabled: true
+EOF
+
+cat > "${repo}/hosts/nasfeo/services.yaml" <<EOF
+host:
+  name: nasfeo
+  deploy_base_dir: ${runtime}
+
+services:
+  other:
+    path: services/other
+    enabled: true
+EOF
+
+cat > "${repo}/service-secrets.yaml" <<'EOF'
+services:
+  demo:
+    env:
+      - DEMO_TOKEN
+  other:
+    env:
+      - OTHER_TOKEN
+EOF
+
+(
+  cd "${repo}"
+  git init >/dev/null
+  git checkout -b main >/dev/null
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Tooling Test"
+  git add .
+  git commit -m "baseline" >/dev/null
+)
+baseline="$(git -C "${repo}" rev-parse HEAD)"
+
+changed_deploy() {
+  local host="$1"
+  local out="$2"
+  BEFORE_SHA="${baseline}" AFTER_SHA="$(git -C "${repo}" rev-parse HEAD)" \
+    HOMELAB_CONFIG_DIR="${repo}" \
+    "${repo}/scripts/homelab-deploy" --host "${host}" --changed --dry-run \
+    --base-dir "${repo}" --deploy-base-dir "${runtime}" >"${out}" 2>&1
+}
+
+selected_services() {
+  local out="$1"
+  awk '/^Deploying / { print $2 }' "${out}" | sort
+}
+
+expect_selected() {
+  local out="$1"
+  shift
+  local expected actual
+  expected="$(printf '%s\n' "$@" | sort)"
+  actual="$(selected_services "${out}")"
+  if [[ "${actual}" != "${expected}" ]]; then
+    echo "Changed-service selection mismatch." >&2
+    echo "expected:" >&2
+    printf '%s\n' "${expected}" >&2
+    echo "actual:" >&2
+    printf '%s\n' "${actual}" >&2
+    echo "--- deploy output ---" >&2
+    cat "${out}" >&2
+    exit 1
+  fi
+}
+
+# Secrets-only contract change must not bounce generated-config services.
+python3 - "${repo}/services/demo/ops.yaml" <<'PY'
+from pathlib import Path
+path = Path(__import__("sys").argv[1])
+path.write_text(path.read_text().replace("DEMO_TOKEN", "XAI_API_KEY"))
+PY
+cat > "${repo}/services/demo/README.md" <<'EOF'
+Demo converts articles with xAI TTS.
+
+- `XAI_API_KEY`
+EOF
+cat > "${repo}/services/demo/.env.example" <<'EOF'
+XAI_API_KEY=replace-with-runtime-secret
+EOF
+python3 - "${repo}/service-secrets.yaml" <<'PY'
+from pathlib import Path
+path = Path(__import__("sys").argv[1])
+path.write_text(path.read_text().replace("DEMO_TOKEN", "XAI_API_KEY"))
+PY
+mkdir -p "${repo}/.github/workflows"
+cat > "${repo}/.github/workflows/deploy.yml" <<'EOF'
+name: Deploy
+# DEMO__XAI_API_KEY mapping only
+EOF
+
+(
+  cd "${repo}"
+  git add services/demo/ops.yaml services/demo/README.md services/demo/.env.example service-secrets.yaml .github/workflows/deploy.yml
+  git commit -m "secrets-only contract" >/dev/null
+)
+
+secrets_macmini="${tmp}/secrets-macmini.out"
+secrets_nasfeo="${tmp}/secrets-nasfeo.out"
+changed_deploy macmini "${secrets_macmini}"
+changed_deploy nasfeo "${secrets_nasfeo}"
+expect_selected "${secrets_macmini}" demo
+if grep -q '^Deploying ' "${secrets_nasfeo}"; then
+  echo "Secrets-only contract change must not select nasfeo services." >&2
+  cat "${secrets_nasfeo}" >&2
+  exit 1
+fi
+assert_contains "${secrets_nasfeo}" 'No enabled services to deploy on nasfeo.'
+
+# A non-secret ops.yaml field must still fire generated-config redeploy_on.
+git -C "${repo}" reset --hard "${baseline}" >/dev/null
+python3 - "${repo}/services/demo/ops.yaml" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text()
+if "route_hostname:" in text:
+    path.write_text(text + "route_https: true\n")
+else:
+    path.write_text(text + "route_hostname: demo.example.com\n")
+PY
+(
+  cd "${repo}"
+  git add services/demo/ops.yaml
+  git commit -m "route change" >/dev/null
+)
+route_out="${tmp}/route.out"
+changed_deploy macmini "${route_out}"
+expect_selected "${route_out}" caddy demo homelab-docs homelab-functions homepage
+
+# A real README rewrite must still rebuild docs.
+git -C "${repo}" reset --hard "${baseline}" >/dev/null
+printf '%s\n' "Demo now documents a new public route and library layout." >> "${repo}/services/demo/README.md"
+(
+  cd "${repo}"
+  git add services/demo/README.md
+  git commit -m "docs rewrite" >/dev/null
+)
+readme_out="${tmp}/readme.out"
+changed_deploy macmini "${readme_out}"
+expect_selected "${readme_out}" demo homelab-docs
+
+# Changing another service's secret keys still selects that service.
+git -C "${repo}" reset --hard "${baseline}" >/dev/null
+python3 - "${repo}/service-secrets.yaml" <<'PY'
+from pathlib import Path
+path = Path(__import__("sys").argv[1])
+path.write_text(path.read_text().replace("OTHER_TOKEN", "OTHER_TOKEN_V2"))
+PY
+(
+  cd "${repo}"
+  git add service-secrets.yaml
+  git commit -m "other secret rename" >/dev/null
+)
+other_macmini="${tmp}/other-macmini.out"
+other_nasfeo="${tmp}/other-nasfeo.out"
+changed_deploy macmini "${other_macmini}"
+changed_deploy nasfeo "${other_nasfeo}"
+expect_selected "${other_macmini}" other
+expect_selected "${other_nasfeo}" other

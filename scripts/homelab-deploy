@@ -353,6 +353,19 @@ enabled_service_names() {
   service_entries | awk -F'|' '{ print $1 }' | sort
 }
 
+change_before_rev() {
+  local before="${BEFORE_SHA:-}"
+  if [[ -n "${before}" && "${before}" != "0000000000000000000000000000000000000000" ]]; then
+    printf '%s\n' "${before}"
+    return 0
+  fi
+  git -C "${BASE_DIR}" rev-parse --verify HEAD~1 2>/dev/null
+}
+
+change_after_rev() {
+  printf '%s\n' "${AFTER_SHA:-HEAD}"
+}
+
 changed_files() {
   local before="${BEFORE_SHA:-}"
   local after="${AFTER_SHA:-HEAD}"
@@ -361,6 +374,188 @@ changed_files() {
   fi
   git -C "${BASE_DIR}" diff --name-only HEAD~1 "${after}" 2>/dev/null && return 0
   git -C "${BASE_DIR}" show --name-only --format= "${after}"
+}
+
+repo_file_at() {
+  local sha="$1"
+  local path="$2"
+  local dest="$3"
+
+  if [[ -z "${sha}" ]]; then
+    return 1
+  fi
+  if git -C "${BASE_DIR}" cat-file -e "${sha}:${path}" 2>/dev/null; then
+    git -C "${BASE_DIR}" show "${sha}:${path}" > "${dest}"
+    return 0
+  fi
+  return 1
+}
+
+strip_ops_secrets() {
+  awk '
+    /^secrets:[[:space:]]*$/ { in_secrets=1; next }
+    in_secrets && /^  - / { next }
+    in_secrets { in_secrets=0 }
+    { print }
+  '
+}
+
+ops_secret_keys() {
+  awk '
+    /^secrets:[[:space:]]*$/ { in_secrets=1; next }
+    in_secrets && /^  - / { print $2; next }
+    in_secrets { in_secrets=0 }
+  '
+}
+
+service_name_from_service_file() {
+  local file="$1"
+  local rest
+
+  case "${file}" in
+    services/*/*)
+      rest="${file#services/}"
+      printf '%s\n' "${rest%%/*}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+service_secret_keys_changed() {
+  local service="$1"
+  local before after before_file after_file
+
+  before="$(change_before_rev || true)"
+  after="$(change_after_rev)"
+  before_file="$(mktemp)"
+  after_file="$(mktemp)"
+  if ! repo_file_at "${before}" "service-secrets.yaml" "${before_file}"; then
+    : >"${before_file}"
+  fi
+  if ! repo_file_at "${after}" "service-secrets.yaml" "${after_file}"; then
+    rm -f "${before_file}" "${after_file}"
+    return 0
+  fi
+  if ! diff -q \
+    <(service_secret_keys "${before_file}" "${service}" | sort) \
+    <(service_secret_keys "${after_file}" "${service}" | sort) >/dev/null; then
+    rm -f "${before_file}" "${after_file}"
+    return 0
+  fi
+  rm -f "${before_file}" "${after_file}"
+  return 1
+}
+
+ops_yaml_secrets_only() {
+  local path="$1"
+  local before after before_file after_file
+
+  before="$(change_before_rev || true)"
+  after="$(change_after_rev)"
+  before_file="$(mktemp)"
+  after_file="$(mktemp)"
+  if ! repo_file_at "${before}" "${path}" "${before_file}" ||
+    ! repo_file_at "${after}" "${path}" "${after_file}"; then
+    rm -f "${before_file}" "${after_file}"
+    return 1
+  fi
+  if diff -q \
+    <(strip_ops_secrets <"${before_file}") \
+    <(strip_ops_secrets <"${after_file}") >/dev/null; then
+    rm -f "${before_file}" "${after_file}"
+    return 0
+  fi
+  rm -f "${before_file}" "${after_file}"
+  return 1
+}
+
+readme_secrets_contract_only() {
+  local path="$1"
+  local service before after before_file after_file keys_file
+
+  service="$(service_name_from_service_file "${path}" || true)"
+  [[ -n "${service}" ]] || return 1
+  before="$(change_before_rev || true)"
+  after="$(change_after_rev)"
+  before_file="$(mktemp)"
+  after_file="$(mktemp)"
+  keys_file="$(mktemp)"
+  if ! repo_file_at "${before}" "${path}" "${before_file}" ||
+    ! repo_file_at "${after}" "${path}" "${after_file}"; then
+    rm -f "${before_file}" "${after_file}" "${keys_file}"
+    return 1
+  fi
+  {
+    if repo_file_at "${before}" "service-secrets.yaml" "${keys_file}.before-secrets"; then
+      service_secret_keys "${keys_file}.before-secrets" "${service}"
+    fi
+    if repo_file_at "${after}" "service-secrets.yaml" "${keys_file}.after-secrets"; then
+      service_secret_keys "${keys_file}.after-secrets" "${service}"
+    fi
+    if repo_file_at "${before}" "services/${service}/ops.yaml" "${keys_file}.before-ops"; then
+      ops_secret_keys <"${keys_file}.before-ops"
+    fi
+    if repo_file_at "${after}" "services/${service}/ops.yaml" "${keys_file}.after-ops"; then
+      ops_secret_keys <"${keys_file}.after-ops"
+    fi
+  } | sort -u >"${keys_file}"
+  rm -f \
+    "${keys_file}.before-secrets" \
+    "${keys_file}.after-secrets" \
+    "${keys_file}.before-ops" \
+    "${keys_file}.after-ops"
+  if ! command -v python3 >/dev/null 2>&1; then
+    rm -f "${before_file}" "${after_file}" "${keys_file}"
+    return 1
+  fi
+  if python3 - "${before_file}" "${after_file}" "${keys_file}" <<'PY'
+import pathlib
+import re
+import sys
+
+before = pathlib.Path(sys.argv[1]).read_text()
+after = pathlib.Path(sys.argv[2]).read_text()
+keys = [line.strip() for line in pathlib.Path(sys.argv[3]).read_text().splitlines() if line.strip()]
+keys.sort(key=len, reverse=True)
+
+
+def normalize(text: str) -> str:
+    for key in keys:
+        text = text.replace(key, "SECRET_KEY")
+    text = re.sub(r"\bOpenAI\b", "PROVIDER", text)
+    text = re.sub(r"\bxAI\b", "PROVIDER", text)
+    text = re.sub(r"\bXAI\b", "PROVIDER", text)
+    return text
+
+
+raise SystemExit(0 if normalize(before) == normalize(after) else 1)
+PY
+  then
+    rm -f "${before_file}" "${after_file}" "${keys_file}"
+    return 0
+  fi
+  rm -f "${before_file}" "${after_file}" "${keys_file}"
+  return 1
+}
+
+generated_config_trigger_file() {
+  local file="$1"
+
+  case "${file}" in
+    services/*/ops.yaml)
+      if ops_yaml_secrets_only "${file}"; then
+        return 1
+      fi
+      ;;
+    services/*/README.md)
+      if readme_secrets_contract_only "${file}"; then
+        return 1
+      fi
+      ;;
+  esac
+  return 0
 }
 
 manifest_redeploy_patterns() {
@@ -376,12 +571,16 @@ manifest_redeploy_patterns() {
 matches_redeploy_patterns() {
   local files="$1"
   local ops_file="$2"
-  local pattern
+  local pattern file
   while IFS= read -r pattern; do
     [[ -n "${pattern}" ]] || continue
-    if echo "${files}" | grep -Eq "${pattern}"; then
-      return 0
-    fi
+    while IFS= read -r file; do
+      [[ -n "${file}" ]] || continue
+      if printf '%s\n' "${file}" | grep -Eq -- "${pattern}" &&
+        generated_config_trigger_file "${file}"; then
+        return 0
+      fi
+    done <<< "${files}"
   done < <(manifest_redeploy_patterns "${ops_file}")
   return 1
 }
@@ -393,7 +592,7 @@ changed_services() {
     [[ -n "${service}" ]] || continue
     host_config="hosts/${HOST}/${service}.env.config"
     if echo "${files}" | grep -qx "hosts/${HOST}/services.yaml" ||
-      echo "${files}" | grep -qx "service-secrets.yaml" ||
+      { echo "${files}" | grep -qx "service-secrets.yaml" && service_secret_keys_changed "${service}"; } ||
       echo "${files}" | grep -qx "${host_config}" ||
       echo "${files}" | grep -q "^${path}/" ||
       matches_redeploy_patterns "${files}" "${BASE_DIR}/${path}/ops.yaml"; then
