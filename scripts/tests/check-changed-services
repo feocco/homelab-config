@@ -222,6 +222,55 @@ if grep -q '^Deploying ' "${secrets_nasfeo}"; then
 fi
 assert_contains "${secrets_nasfeo}" 'No enabled services to deploy on nasfeo.'
 
+# Adding another secret key must stay service-scoped, including README list items.
+git -C "${repo}" reset --hard HEAD >/dev/null
+python3 - "${repo}/services/demo/ops.yaml" <<'PY'
+from pathlib import Path
+path = Path(__import__("sys").argv[1])
+text = path.read_text()
+path.write_text(text.replace("  - XAI_API_KEY\n", "  - XAI_API_KEY\n  - CURSOR_API_KEY\n"))
+PY
+cat > "${repo}/services/demo/README.md" <<'EOF'
+Demo converts articles with xAI TTS.
+
+- `XAI_API_KEY`
+- `CURSOR_API_KEY`
+EOF
+cat > "${repo}/services/demo/.env.example" <<'EOF'
+XAI_API_KEY=replace-with-runtime-secret
+CURSOR_API_KEY=replace-with-runtime-secret
+EOF
+python3 - "${repo}/service-secrets.yaml" <<'PY'
+from pathlib import Path
+path = Path(__import__("sys").argv[1])
+path.write_text(path.read_text().replace("      - XAI_API_KEY\n", "      - XAI_API_KEY\n      - CURSOR_API_KEY\n"))
+PY
+
+(
+  cd "${repo}"
+  git add services/demo/ops.yaml services/demo/README.md services/demo/.env.example service-secrets.yaml
+  git commit -m "add cursor secret" >/dev/null
+)
+
+add_macmini="${tmp}/add-macmini.out"
+add_nasfeo="${tmp}/add-nasfeo.out"
+# Compare the added-key tip against the original baseline, like a PR vs main.
+BEFORE_SHA="${baseline}" AFTER_SHA="$(git -C "${repo}" rev-parse HEAD)" \
+  HOMELAB_CONFIG_DIR="${repo}" \
+  "${repo}/scripts/homelab-deploy" --host macmini --changed --dry-run \
+  --base-dir "${repo}" --deploy-base-dir "${runtime}" >"${add_macmini}" 2>&1
+BEFORE_SHA="${baseline}" AFTER_SHA="$(git -C "${repo}" rev-parse HEAD)" \
+  HOMELAB_CONFIG_DIR="${repo}" \
+  "${repo}/scripts/homelab-deploy" --host nasfeo --changed --dry-run \
+  --base-dir "${repo}" --deploy-base-dir "${runtime}" >"${add_nasfeo}" 2>&1
+expect_selected "${add_macmini}" demo
+if grep -q '^Deploying ' "${add_nasfeo}"; then
+  echo "Added secret key must not select nasfeo services." >&2
+  cat "${add_nasfeo}" >&2
+  exit 1
+fi
+assert_contains "${add_nasfeo}" 'No enabled services to deploy on nasfeo.'
+
 # A non-secret ops.yaml field must still fire generated-config redeploy_on.
 git -C "${repo}" reset --hard "${baseline}" >/dev/null
 python3 - "${repo}/services/demo/ops.yaml" <<'PY'

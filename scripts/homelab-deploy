@@ -527,6 +527,9 @@ def normalize(text: str) -> str:
     text = re.sub(r"\bOpenAI\b", "PROVIDER", text)
     text = re.sub(r"\bxAI\b", "PROVIDER", text)
     text = re.sub(r"\bXAI\b", "PROVIDER", text)
+    # Adding or removing a secret-key list item stays contract-only.
+    text = re.sub(r"(?m)^[ \t]*-[ \t]*`SECRET_KEY`(?:[ \t].*)?\n?", "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text
 
 

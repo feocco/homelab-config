@@ -31,6 +31,7 @@ dashboard_description: Private multi-source audio reader
 dashboard_icon: mdi-radio-tower
 secrets:
   - XAI_API_KEY
+  - CURSOR_API_KEY
   - POSTGRES_PASSWORD
   - PIRATE_RADIO_OIDC_CLIENT_ID
   - PIRATE_RADIO_OIDC_CLIENT_SECRET
