@@ -89,6 +89,11 @@ scrape_configs:
           service: mealie-planner
           host: macmini
       - targets:
+          - http://host.docker.internal:43127/health
+        labels:
+          service: honeymoon-planner
+          host: macmini
+      - targets:
           - http://host.docker.internal:8104/health
         labels:
           service: bedtime

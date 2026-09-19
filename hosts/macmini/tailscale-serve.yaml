@@ -48,6 +48,11 @@ services:
     http_port: 8102
     target: http://127.0.0.1:8102
 
+  honeymoon-planner:
+    enabled: true
+    http_port: 43127
+    target: http://127.0.0.1:43127
+
 named_services:
   authentik:
     enabled: true

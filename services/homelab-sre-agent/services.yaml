@@ -432,6 +432,26 @@ services:
       enabled: false
       autofix: false
 
+
+  honeymoon-planner:
+    containers:
+      - honeymoon-planner
+    images:
+      - ghcr.io/feocco/honeymoon-planner:*
+    source:
+      repo: feocco/honeymoon-planner
+      path_hint: /Users/feocco/code/honeymoon-planner
+    issue_repo: feocco/honeymoon-planner
+    deploy:
+      path: services/honeymoon-planner
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/honeymoon-planner
+    labels:
+      - homelab-sre
+      - honeymoon-planner
+    sre:
+      enabled: false
+      autofix: false
+
   stockfish-evaluator:
     containers:
       - stockfish-evaluator

@@ -1,0 +1,23 @@
+service: honeymoon-planner
+kind: app
+host: macmini
+source_repo: feocco/honeymoon-planner
+image: ghcr.io/feocco/honeymoon-planner:latest
+public_image: false
+container: honeymoon-planner
+http_port: 43127
+port_env: SERVICE_PORT
+health_path: /health
+live_base_url: https://honeymoon-planner.home.feocco.com
+tailnet: true
+monitoring: true
+sre: false
+route_hostname: honeymoon-planner.home.feocco.com
+route_target_port: 43127
+route_https: true
+route_dns: unifi
+dashboard_name: Honeymoon Planner
+dashboard_group: Runtime Services
+dashboard_description: Personal honeymoon planning UI
+dashboard_icon: docker.png
+secrets:
