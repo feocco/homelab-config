@@ -80,7 +80,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "count(up == 0)",
+          "expr": "count(up == 0) OR on() vector(0)",
           "legendFormat": "targets down",
           "range": false,
           "refId": "A"
