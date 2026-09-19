@@ -91,6 +91,11 @@ services:
     path: services/streaming-sessions
     enabled: true
 
+
+  honeymoon-planner:
+    path: services/honeymoon-planner
+    enabled: true
+
   stockfish-evaluator:
     path: services/stockfish-evaluator
     enabled: true

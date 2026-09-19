@@ -1,0 +1,18 @@
+services:
+  honeymoon-planner:
+    image: ghcr.io/feocco/honeymoon-planner:latest
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
+    container_name: honeymoon-planner
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${HOST_BIND_ADDR:-127.0.0.1}:${SERVICE_PORT:-43127}:${SERVICE_PORT:-43127}"
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "1"
+        compress: "false"
