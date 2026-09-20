@@ -168,3 +168,27 @@ Prefer `route_dns_alias_target` when the public Cloudflare hostname has `AAAA`
 records. A local A record override can still allow public IPv6 answers to leak
 through on some clients. A local CNAME to a local-only hostname, plus a UniFi A
 record for that local-only hostname, keeps LAN resolution on the private path.
+
+## Troubleshooting: iPhone / LAN blank pages
+
+Private `*.home.feocco.com` routes use split-horizon DNS on purpose:
+
+- **UniFi (LAN)** resolves to the Mac mini LAN address (`192.168.1.43`).
+- **Cloudflare (public DNS-only)** resolves to the Mac mini Tailnet address
+  (`100.x`) so off-LAN Tailscale clients can reach the same hostnames.
+
+Caddy and the apps are not Tailscale-only. If a phone on home Wi‑Fi (no
+Tailscale) gets a blank white Safari page for these URLs, it is almost always
+resolving the Cloudflare Tailnet IP instead of UniFi:
+
+1. **iCloud Private Relay** or **Limit IP Address Tracking** on the Wi‑Fi
+   network bypasses UniFi local DNS and uses public resolvers.
+2. Manual DNS such as `1.1.1.1` / `8.8.8.8` on the Wi‑Fi network does the same.
+
+Without Tailscale, `100.x` is not routable, so Safari hangs on a blank page.
+Confirm with `dig @192.168.1.1 <hostname>` (expect LAN IP) vs
+`dig @1.1.1.1 <hostname>` (expect Tailnet IP). Fix the phone: Wi‑Fi DNS →
+Automatic, turn Private Relay / Limit IP Address Tracking off for home Wi‑Fi,
+then reload. Do not point Cloudflare at the LAN IP or publish these services
+on the public internet unless that is an intentional Mealie-style split-horizon
+change.
