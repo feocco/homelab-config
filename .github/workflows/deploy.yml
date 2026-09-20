@@ -37,6 +37,7 @@ on:
           - homelab-monitor
           - homelab-smoke-signal
           - homelab-sre-agent
+          - honeymoon-planner
           - instacart-history-service
           - laundry-monitor
           - mealie
@@ -149,7 +150,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            authentik|bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|stockfish-evaluator|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
+            authentik|bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|honeymoon-planner|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|stockfish-evaluator|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
@@ -354,7 +355,7 @@ jobs:
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
           case "${SERVICE_INPUT}" in
-            authentik|bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|stockfish-evaluator|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
+            authentik|bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|honeymoon-planner|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|stockfish-evaluator|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
               ;;
             *)
               echo "Unsupported service: ${SERVICE_INPUT}" >&2
