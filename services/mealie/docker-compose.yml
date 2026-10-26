@@ -67,7 +67,7 @@ services:
         compress: "false"
 
   mealie-cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.10.4
     container_name: mealie-cloudflared
     restart: unless-stopped
     environment:
