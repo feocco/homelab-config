@@ -226,6 +226,25 @@ services:
       autofix: false
       repo_daily_limit: 1
 
+  homebox:
+    containers:
+      - homebox
+    images:
+      - ghcr.io/sysadminsmedia/homebox:*
+    source:
+      repo: feocco/homelab-config
+      path_hint: /Users/feocco/code/homelab-config/services/homebox
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/homebox
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/homebox
+    labels:
+      - homelab-sre
+      - homebox
+    sre:
+      enabled: false
+      autofix: false
+
   mealie:
     containers:
       - mealie

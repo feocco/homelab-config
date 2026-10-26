@@ -99,6 +99,11 @@ scrape_configs:
           service: bedtime
           host: macmini
       - targets:
+          - http://host.docker.internal:8105/api/v1/status
+        labels:
+          service: homebox
+          host: macmini
+      - targets:
           - http://host.docker.internal:8100/health
         labels:
           service: instacart-history-service

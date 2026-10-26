@@ -20,6 +20,7 @@ for key in [
     ("portainer", "nasfeo"),
     ("homepage", "macmini"),
     ("bedtime", "macmini"),
+    ("homebox", "macmini"),
 ]:
     if key not in services:
         raise SystemExit(f"Missing catalog service: {key}")
@@ -47,6 +48,17 @@ if bedtime["http_port"] != 8104 or bedtime["health_path"] != "/health":
     raise SystemExit("bedtime should declare the standard HTTP health endpoint")
 if bedtime["monitoring"] is not True:
     raise SystemExit("bedtime should have monitoring enabled")
+homebox = services[("homebox", "macmini")]
+if homebox["http_port"] != 8105 or homebox["health_path"] != "/api/v1/status":
+    raise SystemExit("homebox should declare its public status endpoint")
+if homebox["dashboard_group"] != "Daily Ops":
+    raise SystemExit("homebox should appear in Daily Ops")
+if homebox["homepage_url"] != "https://inventory.home.feocco.com/":
+    raise SystemExit("homebox should link to its LAN HTTPS route")
+if homebox["monitoring"] is not True:
+    raise SystemExit("homebox should have monitoring enabled")
+if homebox["sre_metadata"] is not True or homebox["sre_enabled"] is not False:
+    raise SystemExit("homebox should record the disabled SRE decision")
 hello = services[("hello-nas", "macmini")]
 if hello["health_path"] != "/health":
     raise SystemExit("hello-nas should use /health for machine health checks")
@@ -121,6 +133,8 @@ assert_contains "${homepage_tmp}/services.yaml" 'Monitoring & Cost'
 assert_contains "${homepage_tmp}/services.yaml" 'Remote Access'
 assert_contains "${homepage_tmp}/services.yaml" 'Mealie'
 assert_contains "${homepage_tmp}/services.yaml" 'Recipes and meal planning'
+assert_contains "${homepage_tmp}/services.yaml" 'Homebox'
+assert_contains "${homepage_tmp}/services.yaml" 'Home inventory and asset tracking'
 assert_contains "${homepage_tmp}/services.yaml" 'Plant Monitor'
 assert_contains "${homepage_tmp}/services.yaml" 'Home Assistant plant notifications'
 assert_contains "${homepage_tmp}/services.yaml" 'OpenAI Cost / Usage'
@@ -170,6 +184,7 @@ for line in services_yaml:
 expected_monitors = {
     "Bedtime": "http://host.docker.internal:8104/health",
     "Hello NAS": "http://host.docker.internal:8099/health",
+    "Homebox": "http://host.docker.internal:8105/api/v1/status",
     "Homepage": "http://host.docker.internal:7576/",
     "Homelab Docs": "http://host.docker.internal:8112/",
     "homelab-functions": "http://host.docker.internal:8091/health",
@@ -192,6 +207,8 @@ if items.get("Mealie", {}).get("href") != "https://mealie.feocco.com/":
     raise SystemExit("Mealie should link to the canonical HTTPS route")
 if "siteMonitor" in items.get("Mealie", {}):
     raise SystemExit("Mealie should not get a generated status dot without health metadata")
+if items.get("Homebox", {}).get("href") != "https://inventory.home.feocco.com/":
+    raise SystemExit("Homebox should link to its LAN HTTPS route")
 if items.get("Pirate Radio", {}).get("href") != "https://reader.home.feocco.com/docs":
     raise SystemExit("Pirate Radio should link to service docs while siteMonitor checks health")
 
