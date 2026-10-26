@@ -1,0 +1,24 @@
+service: homebox
+kind: app
+host: macmini
+source_repo: sysadminsmedia/homebox
+image: ghcr.io/sysadminsmedia/homebox:latest
+public_image: true
+container: homebox
+http_port: 8105
+port_env: HOMEBOX_HTTP_PORT
+health_path: /api/v1/status
+live_base_url: http://maclabs-mac-mini.taildf3445.ts.net:8105
+tailnet: true
+monitoring: true
+sre: false
+route_hostname: inventory.home.feocco.com
+route_target_port: 8105
+route_https: true
+route_dns: unifi
+dashboard_name: Homebox
+dashboard_group: Daily Ops
+dashboard_description: Home inventory and asset tracking
+dashboard_icon: homebox.png
+secrets:
+  - HBOX_AUTH_API_KEY_PEPPER

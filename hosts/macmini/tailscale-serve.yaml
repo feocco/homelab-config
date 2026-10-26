@@ -35,6 +35,10 @@ services:
     enabled: true
     http_port: 8104
     target: http://127.0.0.1:8104
+  homebox:
+    enabled: true
+    http_port: 8105
+    target: http://127.0.0.1:8105
   instacart-history-service:
     enabled: true
     http_port: 8100

@@ -55,6 +55,10 @@ services:
     path: services/bedtime
     enabled: true
 
+  homebox:
+    path: services/homebox
+    enabled: true
+
   mealie:
     path: services/mealie
     enabled: true
