@@ -1,0 +1,14 @@
+name: Unsafe issue comment runner
+
+on:
+  issue_comment:
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    runs-on: self-hosted
+    if: github.repository == 'feocco/example'
+    steps:
+      - run: "true"

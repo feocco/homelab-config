@@ -1,0 +1,13 @@
+name: Dispatch write default
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"

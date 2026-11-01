@@ -1,0 +1,14 @@
+name: Repository guard with always
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: self-hosted
+    if: github.repository == 'feocco/example' && always()
+    steps:
+      - run: "true"
