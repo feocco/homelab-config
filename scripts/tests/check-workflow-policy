@@ -55,8 +55,8 @@ if fixture_result.returncode != 1:
     )
 
 fixture_output = fixture_result.stdout + fixture_result.stderr
-if "Workflow policy failed with 10 finding(s)." not in fixture_output:
-    raise AssertionError(f"unsafe fixtures should produce exactly 10 findings:\n{fixture_output}")
+if "Workflow policy failed with 16 finding(s)." not in fixture_output:
+    raise AssertionError(f"unsafe fixtures should produce exactly 16 findings:\n{fixture_output}")
 assert_finding(
     fixture_output,
     "unsafe-direct.yml",
@@ -87,6 +87,18 @@ assert_finding(
     "untrusted-runner",
     "issue_comment, pull_request_review, pull_request_review_comment",
 )
+for fixture_name, event_name in (
+    ("unsafe-fork.yml", "fork"),
+    ("unsafe-issue-comment.yml", "issue_comment"),
+    ("unsafe-issues.yml", "issues"),
+    ("unsafe-watch.yml", "watch"),
+):
+    assert_finding(
+        fixture_output,
+        fixture_name,
+        "untrusted-runner",
+        f"reachable from {event_name}",
+    )
 assert_finding(
     fixture_output,
     "missing-guard.yml",
@@ -117,7 +129,23 @@ assert_finding(
     "permissions",
     "elevate per job",
 )
-for passing_fixture in ("call-only-workflow-run.yml", "job-elevation.yml"):
+assert_finding(
+    fixture_output,
+    "dispatch-write-default.yml",
+    "permissions",
+    "grant write permissions per job",
+)
+assert_finding(
+    fixture_output,
+    "unpinned-third-party-action.yml",
+    "action-pin",
+    "someone/action@main",
+)
+for passing_fixture in (
+    "call-only-workflow-run.yml",
+    "guard-with-always.yml",
+    "job-elevation.yml",
+):
     if f"{passing_fixture}:" in fixture_output:
         raise AssertionError(
             f"{passing_fixture} should not produce a finding:\n{fixture_output}"
@@ -144,5 +172,32 @@ if "runs-on: ubuntu-latest" not in gate_text or "runs-on: self-hosted" in gate_t
     raise AssertionError("Workflow Policy must use GitHub-hosted runners only")
 if "--deploy-workflow .github/workflows/deploy.yml" not in gate_text:
     raise AssertionError("Workflow Policy must explicitly identify deploy.yml")
+if (
+    "python -m pip install --require-hashes "
+    "-r scripts/requirements-workflow-policy.txt"
+) not in gate_text:
+    raise AssertionError("Workflow Policy must install PyYAML with --require-hashes")
+
+requirements_text = (
+    REPO_DIR / "scripts" / "requirements-workflow-policy.txt"
+).read_text()
+version_pin = re.search(
+    r"^PyYAML==[0-9]+(?:\.[0-9]+){2}\s*\\$", requirements_text, re.MULTILINE
+)
+if version_pin is None:
+    raise AssertionError("PyYAML must use an exact version pin")
+requirement_hashes = re.findall(r"--hash=sha256:(\S+)", requirements_text)
+if not requirement_hashes or any(
+    re.fullmatch(r"[0-9a-f]{64}", digest) is None for digest in requirement_hashes
+):
+    raise AssertionError("PyYAML must use full SHA-256 package hashes")
+
+codeowners = (REPO_DIR / "CODEOWNERS").read_text().splitlines()
+for protected_path in (
+    "/.github/workflows/ @feocco",
+    "/scripts/check-workflow-policy @feocco",
+):
+    if protected_path not in codeowners:
+        raise AssertionError(f"CODEOWNERS must contain {protected_path!r}")
 
 print("Workflow policy fixture checks passed.")

@@ -1,0 +1,14 @@
+name: Unsafe watch runner
+
+on:
+  watch:
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    runs-on: self-hosted
+    if: github.repository == 'feocco/example'
+    steps:
+      - run: "true"
