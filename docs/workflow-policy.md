@@ -18,17 +18,18 @@ reachable from:
 - a local reusable-workflow call rooted in one of those events; or
 - a transitive `workflow_run` chain rooted in one of those events.
 
-Jobs in a deploy workflow, jobs named for deployment, and jobs using a protected
-runner label must include a literal repository identity guard:
+Jobs in an explicitly configured deploy workflow, jobs using a protected runner
+label, and jobs whose runner expression cannot be proven GitHub-hosted must
+include a literal repository identity guard:
 
 ```yaml
 if: github.repository == 'feocco/example'
 ```
 
-The equality must be the first condition and may only be followed by `&&`;
-placing it in an `||` branch does not guard the job. The identity guard is
-defense in depth. It does not make an untrusted event safe for a self-hosted
-runner.
+The equality must be the first condition and may only be followed by `&&`.
+Parenthesized alternatives after that conjunction are allowed, but a top-level
+`||` could bypass the guard and is rejected. The identity guard is defense in
+depth. It does not make an untrusted event safe for a self-hosted runner.
 
 ## Usage
 
@@ -37,7 +38,9 @@ that must appear in sensitive job guards:
 
 ```sh
 python3 -m pip install -r scripts/requirements-workflow-policy.txt
-scripts/check-workflow-policy --repository feocco/homelab-config
+scripts/check-workflow-policy \
+  --repository feocco/homelab-config \
+  --deploy-workflow .github/workflows/deploy.yml
 scripts/tests/check-workflow-policy
 ```
 
@@ -53,7 +56,9 @@ For a new public `feocco` repository such as Pebble:
 2. Copy `.github/workflows/workflow-policy.yml` and its fixture test, or invoke
    the validator directly if the repository has its own test harness.
 3. Change `--repository` in the test and workflow invocation to the exact
-   `feocco/<repo>` identity. Keep action references pinned to full commit SHAs.
+   `feocco/<repo>` identity. Pass each deployment workflow path with a repeated
+   `--deploy-workflow`; do not rely on naming heuristics. Keep action references
+   pinned to full commit SHAs.
 4. Start the workflow with top-level read-only permissions. Put publishing
    scopes such as `packages: write` on the publishing job only.
 5. Keep pull-request, comment, and review automation on GitHub-hosted runners.
@@ -67,15 +72,17 @@ rules still apply.
 
 ## Static-Analysis Boundaries
 
-Deploy classification matches `deploy` or `deployment` as a word in the
-workflow file name, workflow display name, job ID, or job display name. The
-validator follows local `./.github/workflows/...` reusable calls and resolves
-`workflow_run` sources by their workflow `name`, including transitive chains. It
+The validator resolves `workflow_run` sources by their workflow `name`,
+including transitive chains, then separately follows local
+`./.github/workflows/...` reusable calls. This distinction avoids treating an
+inline reusable call as a standalone run that could trigger `workflow_run`. It
 intentionally treats declared event reachability as reachable even when a job
 has another conditional guard.
 
 It does not fetch or inspect reusable workflows from other repositories.
 Protected runner labels must be literal in `runs-on`, or literal values in a
-referenced matrix; arbitrary expressions and repository or organization runner
-group policy cannot be resolved statically. GitHub Actions still validates
-workflow syntax and unresolved local call or `workflow_run` names.
+referenced matrix. Arbitrary runner expressions and object/group selections fail
+closed because the validator cannot prove they select GitHub-hosted capacity.
+Repository or organization runner-group policy is not resolved statically.
+GitHub Actions still validates workflow syntax and unresolved local call or
+`workflow_run` names.

@@ -197,11 +197,11 @@ App image:
   the image is private or missing.
 - Private images can opt out of that public check; package auth remains a
   deployment concern for the target host.
-- `org.opencontainers.image.revision` is useful provenance supplied by the app
-  repository, but deploy validation should enforce it only when the runtime
-  manifest also declares an expected immutable source revision or digest.
-  Today, image availability is verified without claiming source-revision
-  attestation.
+- Joe-owned app builds should set `org.opencontainers.image.revision` to the app
+  commit SHA. Post-deploy proof can compare the running label and digest with
+  the intended redeploy revision; missing labels should begin as warnings and
+  third-party images should be exempt. App repos own the label, while this repo
+  owns verification evidence; do not add per-release SHAs to `ops.yaml`.
 
 Secrets:
 

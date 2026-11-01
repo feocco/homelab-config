@@ -15,7 +15,9 @@ FIXTURE_DIR = REPO_DIR / "scripts" / "tests" / "fixtures" / "workflow-policy"
 EXPECTED_REPOSITORY = "feocco/example"
 
 
-def run_validator(workflows_dir: Path, repository: str) -> subprocess.CompletedProcess[str]:
+def run_validator(
+    workflows_dir: Path, repository: str, deploy_workflow: str
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             sys.executable,
@@ -24,6 +26,8 @@ def run_validator(workflows_dir: Path, repository: str) -> subprocess.CompletedP
             str(workflows_dir),
             "--repository",
             repository,
+            "--deploy-workflow",
+            deploy_workflow,
         ],
         check=False,
         text=True,
@@ -39,7 +43,11 @@ def assert_finding(output: str, path: str, rule: str, text: str) -> None:
         )
 
 
-fixture_result = run_validator(FIXTURE_DIR / ".github" / "workflows", EXPECTED_REPOSITORY)
+fixture_result = run_validator(
+    FIXTURE_DIR / ".github" / "workflows",
+    EXPECTED_REPOSITORY,
+    ".github/workflows/deploy-no-guard.yml",
+)
 if fixture_result.returncode != 1:
     raise AssertionError(
         f"unsafe fixtures should fail with status 1, got {fixture_result.returncode}:\n"
@@ -47,8 +55,8 @@ if fixture_result.returncode != 1:
     )
 
 fixture_output = fixture_result.stdout + fixture_result.stderr
-if "Workflow policy failed with 9 finding(s)." not in fixture_output:
-    raise AssertionError(f"unsafe fixtures should produce exactly 9 findings:\n{fixture_output}")
+if "Workflow policy failed with 10 finding(s)." not in fixture_output:
+    raise AssertionError(f"unsafe fixtures should produce exactly 10 findings:\n{fixture_output}")
 assert_finding(
     fixture_output,
     "unsafe-direct.yml",
@@ -60,6 +68,12 @@ assert_finding(
     "unsafe-matrix.yml",
     "untrusted-runner",
     "protected runner label(s) self-hosted",
+)
+assert_finding(
+    fixture_output,
+    "unsafe-dynamic.yml",
+    "untrusted-runner",
+    "cannot be proven GitHub-hosted",
 )
 assert_finding(
     fixture_output,
@@ -89,7 +103,7 @@ assert_finding(
     fixture_output,
     "deploy-no-guard.yml",
     "repository-guard",
-    "deploy workflow/job",
+    "explicitly configured deploy workflow",
 )
 assert_finding(
     fixture_output,
@@ -103,11 +117,16 @@ assert_finding(
     "permissions",
     "elevate per job",
 )
-if "job-elevation.yml:" in fixture_output:
-    raise AssertionError(f"job-level permission elevation should pass:\n{fixture_output}")
+for passing_fixture in ("call-only-workflow-run.yml", "job-elevation.yml"):
+    if f"{passing_fixture}:" in fixture_output:
+        raise AssertionError(
+            f"{passing_fixture} should not produce a finding:\n{fixture_output}"
+        )
 
 repo_result = run_validator(
-    REPO_DIR / ".github" / "workflows", "feocco/homelab-config"
+    REPO_DIR / ".github" / "workflows",
+    "feocco/homelab-config",
+    ".github/workflows/deploy.yml",
 )
 if repo_result.returncode != 0:
     raise AssertionError(
@@ -123,5 +142,7 @@ if not action_refs or any(
     raise AssertionError("Workflow Policy actions must be pinned to full commit SHAs")
 if "runs-on: ubuntu-latest" not in gate_text or "runs-on: self-hosted" in gate_text:
     raise AssertionError("Workflow Policy must use GitHub-hosted runners only")
+if "--deploy-workflow .github/workflows/deploy.yml" not in gate_text:
+    raise AssertionError("Workflow Policy must explicitly identify deploy.yml")
 
 print("Workflow policy fixture checks passed.")

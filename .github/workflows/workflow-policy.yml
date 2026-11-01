@@ -26,5 +26,7 @@ jobs:
 
       - name: Validate and test workflow policy
         run: |
-          scripts/check-workflow-policy --repository feocco/homelab-config
+          scripts/check-workflow-policy \
+            --repository feocco/homelab-config \
+            --deploy-workflow .github/workflows/deploy.yml
           scripts/tests/check-workflow-policy

@@ -32,7 +32,7 @@ UNTRUSTED_EVENTS = {
     "pull_request_target",
 }
 PROTECTED_RUNNER_LABELS = {"self-hosted", "nasfeo", "macmini"}
-DEPLOY_NAME = re.compile(r"(^|[^a-z])(deploy|deployment)([^a-z]|$)", re.IGNORECASE)
+MATRIX_REFERENCE = re.compile(r"\bmatrix\.([A-Za-z_][A-Za-z0-9_-]*)")
 
 
 class WorkflowLoader(yaml.SafeLoader):
@@ -147,16 +147,31 @@ def load_workflows(workflows_dir: Path) -> tuple[list[Workflow], list[Finding]]:
 
 
 def reachable_events(workflows: list[Workflow]) -> dict[Path, set[str]]:
-    """Propagate event roots through local workflow_call and workflow_run edges."""
+    """Return event roots that can execute each workflow's jobs."""
 
     by_path = {workflow.path: workflow for workflow in workflows}
     by_name: dict[str, list[Workflow]] = {}
     for workflow in workflows:
         by_name.setdefault(workflow.name, []).append(workflow)
 
-    roots = {
+    standalone_roots = {
         workflow.path: workflow.events - {"workflow_call", "workflow_run"}
         for workflow in workflows
+    }
+    changed = True
+    while changed:
+        changed = False
+        for downstream in workflows:
+            for source_name in downstream.workflow_run_sources:
+                for source in by_name.get(source_name, []):
+                    before = len(standalone_roots[downstream.path])
+                    standalone_roots[downstream.path].update(
+                        standalone_roots[source.path]
+                    )
+                    changed |= len(standalone_roots[downstream.path]) != before
+
+    execution_roots = {
+        path: set(event_roots) for path, event_roots in standalone_roots.items()
     }
     changed = True
     while changed:
@@ -164,15 +179,10 @@ def reachable_events(workflows: list[Workflow]) -> dict[Path, set[str]]:
         for caller in workflows:
             for called_path in caller.local_calls:
                 if called_path in by_path:
-                    before = len(roots[called_path])
-                    roots[called_path].update(roots[caller.path])
-                    changed |= len(roots[called_path]) != before
-            for source_name in caller.workflow_run_sources:
-                for source in by_name.get(source_name, []):
-                    before = len(roots[caller.path])
-                    roots[caller.path].update(roots[source.path])
-                    changed |= len(roots[caller.path]) != before
-    return roots
+                    before = len(execution_roots[called_path])
+                    execution_roots[called_path].update(execution_roots[caller.path])
+                    changed |= len(execution_roots[called_path]) != before
+    return execution_roots
 
 
 def permissions_are_read_only(value: Any) -> bool:
@@ -183,43 +193,123 @@ def permissions_are_read_only(value: Any) -> bool:
     return all(str(access).lower() in {"read", "none"} for access in value.values())
 
 
-def protected_runner_labels(job: dict[str, Any]) -> set[str]:
+def matrix_values(job: dict[str, Any], key: str) -> tuple[list[str], bool, bool]:
+    strategy = job.get("strategy")
+    if not isinstance(strategy, dict):
+        return [], False, False
+    matrix = strategy.get("matrix")
+    if not isinstance(matrix, dict):
+        return [], False, False
+
+    raw_value = matrix.get(key)
+    values = list(scalar_strings(raw_value))
+    structured = isinstance(raw_value, dict) or (
+        isinstance(raw_value, list)
+        and any(not isinstance(item, str) for item in raw_value)
+    )
+    includes = matrix.get("include", [])
+    if isinstance(includes, list):
+        for entry in includes:
+            if isinstance(entry, dict):
+                included_value = entry.get(key)
+                values.extend(scalar_strings(included_value))
+                structured |= included_value is not None and not isinstance(
+                    included_value, str
+                )
+    return values, key in matrix or bool(values), structured
+
+
+def runner_selection(job: dict[str, Any]) -> tuple[set[str], bool]:
     runs_on = job.get("runs-on")
-    labels = {
-        value.strip().lower()
-        for value in scalar_strings(runs_on)
-        if "${{" not in value
-    }
-    expression_text = " ".join(scalar_strings(runs_on)).lower()
-    if "matrix." in expression_text:
-        matrix = job.get("strategy", {})
-        if isinstance(matrix, dict):
-            matrix = matrix.get("matrix", {})
-        labels.update(value.strip().lower() for value in scalar_strings(matrix))
-    return labels & PROTECTED_RUNNER_LABELS
+    labels: set[str] = set()
+    unresolved = isinstance(runs_on, dict)
+    for value in scalar_strings(runs_on):
+        if "${{" not in value:
+            labels.add(value.strip().lower())
+            continue
+        references = MATRIX_REFERENCE.findall(value)
+        if not references:
+            unresolved = True
+            continue
+        for key in references:
+            values, found, structured = matrix_values(job, key)
+            if not found:
+                unresolved = True
+            unresolved |= structured
+            for matrix_value in values:
+                if "${{" in matrix_value:
+                    unresolved = True
+                else:
+                    labels.add(matrix_value.strip().lower())
+    return labels & PROTECTED_RUNNER_LABELS, unresolved
 
 
 def has_repository_guard(job: dict[str, Any], repository: str) -> bool:
     condition = job.get("if")
     if not isinstance(condition, str):
         return False
+    expression = condition.strip()
+    if expression.startswith("${{") and expression.endswith("}}"):
+        expression = expression[3:-2].strip()
+    elif expression.startswith("${{") or expression.endswith("}}"):
+        return False
+
     pattern = re.compile(
-        r"^\s*(?:\$\{\{\s*)?github\s*\.\s*repository\s*==\s*(['\"])"
+        r"^github\s*\.\s*repository\s*==\s*(['\"])"
         + re.escape(repository)
-        + r"\1(?=\s*(?:&&|(?:\}\})?\s*$))"
+        + r"\1"
     )
-    return pattern.search(condition) is not None
+    match = pattern.match(expression)
+    if match is None:
+        return False
+    remainder = expression[match.end() :].strip()
+    if not remainder:
+        return True
+    if not remainder.startswith("&&") or not remainder[2:].strip():
+        return False
+
+    depth = 0
+    quote = ""
+    escaped = False
+    remainder = remainder[2:]
+    for index, character in enumerate(remainder):
+        if escaped:
+            escaped = False
+            continue
+        if quote:
+            if character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = ""
+            continue
+        if character in {"'", '"'}:
+            quote = character
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+        elif character == "|" and index + 1 < len(remainder):
+            if remainder[index + 1] == "|" and depth == 0:
+                return False
+    return depth == 0 and not quote
 
 
-def is_deploy_workflow(workflow: Workflow) -> bool:
-    return bool(
-        DEPLOY_NAME.search(workflow.name) or DEPLOY_NAME.search(workflow.path.stem)
-    )
-
-
-def validate(workflows_dir: Path, repository: str) -> list[Finding]:
+def validate(
+    workflows_dir: Path, repository: str, deploy_workflows: set[str]
+) -> list[Finding]:
     workflows, findings = load_workflows(workflows_dir)
     roots = reachable_events(workflows)
+    workflow_paths = {workflow.relative_path for workflow in workflows}
+    for deploy_path in sorted(deploy_workflows - workflow_paths):
+        findings.append(
+            Finding(
+                deploy_path,
+                "deploy-workflow",
+                "configured deploy workflow does not exist",
+            )
+        )
 
     for workflow in workflows:
         if "permissions" not in workflow.document:
@@ -242,35 +332,40 @@ def validate(workflows_dir: Path, repository: str) -> list[Finding]:
         jobs = workflow.document.get("jobs", {})
         if not isinstance(jobs, dict):
             continue
-        workflow_is_deploy = is_deploy_workflow(workflow)
+        workflow_is_deploy = workflow.relative_path in deploy_workflows
         untrusted_roots = sorted(roots[workflow.path] & UNTRUSTED_EVENTS)
         for job_id, job in jobs.items():
             if not isinstance(job, dict):
                 continue
-            protected_labels = protected_runner_labels(job)
-            job_name = str(job.get("name") or job_id)
-            deploy_job = workflow_is_deploy or bool(
-                DEPLOY_NAME.search(str(job_id)) or DEPLOY_NAME.search(job_name)
-            )
+            protected_labels, unresolved_runner = runner_selection(job)
+            sensitive_runner = bool(protected_labels) or unresolved_runner
 
-            if protected_labels and untrusted_roots:
+            if sensitive_runner and untrusted_roots:
+                runner_reason = (
+                    f"protected runner label(s) {', '.join(sorted(protected_labels))}"
+                    if protected_labels
+                    else "a runner selection that cannot be proven GitHub-hosted"
+                )
                 findings.append(
                     Finding(
                         workflow.relative_path,
                         "untrusted-runner",
-                        f"job {job_id!r} uses protected runner label(s) "
-                        f"{', '.join(sorted(protected_labels))} and is reachable from "
+                        f"job {job_id!r} uses {runner_reason} and is reachable from "
                         f"{', '.join(untrusted_roots)}",
                     )
                 )
 
-            if (protected_labels or deploy_job) and not has_repository_guard(
+            if (sensitive_runner or workflow_is_deploy) and not has_repository_guard(
                 job, repository
             ):
                 reason = (
                     f"protected runner label(s) {', '.join(sorted(protected_labels))}"
                     if protected_labels
-                    else "deploy workflow/job"
+                    else (
+                        "a runner selection that cannot be proven GitHub-hosted"
+                        if unresolved_runner
+                        else "an explicitly configured deploy workflow"
+                    )
                 )
                 findings.append(
                     Finding(
@@ -297,6 +392,12 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="expected owner/name in deploy and protected-runner identity guards",
     )
+    parser.add_argument(
+        "--deploy-workflow",
+        action="append",
+        default=[],
+        help="repo-relative deploy workflow path; repeat for multiple workflows",
+    )
     return parser.parse_args()
 
 
@@ -305,7 +406,10 @@ def main() -> int:
     if not args.workflows_dir.is_dir():
         print(f"workflow directory not found: {args.workflows_dir}", file=sys.stderr)
         return 2
-    findings = validate(args.workflows_dir.resolve(), args.repository)
+    deploy_workflows = {path.removeprefix("./") for path in args.deploy_workflow}
+    findings = validate(
+        args.workflows_dir.resolve(), args.repository, deploy_workflows
+    )
     for finding in findings:
         print(f"{finding.path}: [{finding.rule}] {finding.message}", file=sys.stderr)
     if findings:
