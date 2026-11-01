@@ -1,0 +1,16 @@
+name: Workflow run after call-only workflow
+
+on:
+  workflow_run:
+    workflows: [Called protected runner]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: self-hosted
+    if: github.repository == 'feocco/example'
+    steps:
+      - run: "true"

@@ -1,0 +1,13 @@
+name: Write default
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"

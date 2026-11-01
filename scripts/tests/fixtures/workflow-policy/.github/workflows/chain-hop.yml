@@ -1,0 +1,15 @@
+name: Workflow run hop
+
+on:
+  workflow_run:
+    workflows: [Untrusted root]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"

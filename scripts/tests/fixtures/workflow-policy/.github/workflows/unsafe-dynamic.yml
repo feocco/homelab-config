@@ -1,0 +1,14 @@
+name: Unsafe dynamic runner
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ vars.RUNNER }}
+    if: github.repository == 'feocco/example'
+    steps:
+      - run: "true"

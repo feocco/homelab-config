@@ -1,0 +1,16 @@
+name: Job elevation
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - run: "true"

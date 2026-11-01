@@ -1,0 +1,14 @@
+name: Trusted protected runner
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - run: "true"

@@ -1,0 +1,14 @@
+name: Guard bypass
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: self-hosted
+    if: github.repository == 'feocco/example' && github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - run: "true"
