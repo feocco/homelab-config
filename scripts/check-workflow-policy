@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""Check GitHub Actions workflows for repository runner-safety policy."""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import re
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Iterable
+
+try:
+    import yaml
+except ImportError:
+    print(
+        "PyYAML is required; install scripts/requirements-workflow-policy.txt",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+
+
+UNTRUSTED_EVENTS = {
+    "commit_comment",
+    "discussion",
+    "discussion_comment",
+    "issue_comment",
+    "pull_request",
+    "pull_request_review",
+    "pull_request_review_comment",
+    "pull_request_target",
+}
+PROTECTED_RUNNER_LABELS = {"self-hosted", "nasfeo", "macmini"}
+DEPLOY_NAME = re.compile(r"(^|[^a-z])(deploy|deployment)([^a-z]|$)", re.IGNORECASE)
+
+
+class WorkflowLoader(yaml.SafeLoader):
+    """YAML loader that keeps GitHub's `on` key from becoming boolean True."""
+
+
+WorkflowLoader.yaml_implicit_resolvers = copy.deepcopy(
+    yaml.SafeLoader.yaml_implicit_resolvers
+)
+for first_character, resolvers in WorkflowLoader.yaml_implicit_resolvers.items():
+    WorkflowLoader.yaml_implicit_resolvers[first_character] = [
+        resolver
+        for resolver in resolvers
+        if resolver[0] != "tag:yaml.org,2002:bool"
+    ]
+
+
+@dataclass
+class Workflow:
+    path: Path
+    relative_path: str
+    name: str
+    document: dict[str, Any]
+    events: set[str]
+    workflow_run_sources: set[str]
+    local_calls: set[Path]
+
+
+@dataclass(frozen=True)
+class Finding:
+    path: str
+    rule: str
+    message: str
+
+
+def scalar_strings(value: Any) -> Iterable[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for item in value:
+            yield from scalar_strings(item)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from scalar_strings(item)
+
+
+def event_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, str):
+        return {value: None}
+    if isinstance(value, list):
+        return {str(item): None for item in value}
+    if isinstance(value, dict):
+        return {str(key): item for key, item in value.items()}
+    return {}
+
+
+def resolve_local_call(workflows_dir: Path, uses: str) -> Path | None:
+    if not uses.startswith("./"):
+        return None
+    repo_root = workflows_dir.parent.parent
+    candidate = (repo_root / uses[2:]).resolve()
+    try:
+        candidate.relative_to(workflows_dir.resolve())
+    except ValueError:
+        return None
+    return candidate
+
+
+def load_workflows(workflows_dir: Path) -> tuple[list[Workflow], list[Finding]]:
+    workflows: list[Workflow] = []
+    findings: list[Finding] = []
+    for path in sorted((*workflows_dir.glob("*.yml"), *workflows_dir.glob("*.yaml"))):
+        relative_path = path.relative_to(workflows_dir.parent.parent).as_posix()
+        try:
+            loaded = yaml.load(path.read_text(), Loader=WorkflowLoader)
+        except (OSError, yaml.YAMLError) as error:
+            findings.append(Finding(relative_path, "syntax", f"cannot parse YAML: {error}"))
+            continue
+        if not isinstance(loaded, dict):
+            findings.append(
+                Finding(relative_path, "syntax", "workflow must be a YAML mapping")
+            )
+            continue
+
+        events = event_mapping(loaded.get("on"))
+        workflow_run = events.get("workflow_run")
+        workflow_run_sources: set[str] = set()
+        if isinstance(workflow_run, dict):
+            workflow_run_sources.update(scalar_strings(workflow_run.get("workflows", [])))
+
+        local_calls: set[Path] = set()
+        jobs = loaded.get("jobs", {})
+        if isinstance(jobs, dict):
+            for job in jobs.values():
+                if isinstance(job, dict) and isinstance(job.get("uses"), str):
+                    call = resolve_local_call(workflows_dir, job["uses"])
+                    if call is not None:
+                        local_calls.add(call)
+
+        workflows.append(
+            Workflow(
+                path=path.resolve(),
+                relative_path=relative_path,
+                name=str(loaded.get("name") or path.stem),
+                document=loaded,
+                events=set(events),
+                workflow_run_sources=workflow_run_sources,
+                local_calls=local_calls,
+            )
+        )
+    return workflows, findings
+
+
+def reachable_events(workflows: list[Workflow]) -> dict[Path, set[str]]:
+    """Propagate event roots through local workflow_call and workflow_run edges."""
+
+    by_path = {workflow.path: workflow for workflow in workflows}
+    by_name: dict[str, list[Workflow]] = {}
+    for workflow in workflows:
+        by_name.setdefault(workflow.name, []).append(workflow)
+
+    roots = {
+        workflow.path: workflow.events - {"workflow_call", "workflow_run"}
+        for workflow in workflows
+    }
+    changed = True
+    while changed:
+        changed = False
+        for caller in workflows:
+            for called_path in caller.local_calls:
+                if called_path in by_path:
+                    before = len(roots[called_path])
+                    roots[called_path].update(roots[caller.path])
+                    changed |= len(roots[called_path]) != before
+            for source_name in caller.workflow_run_sources:
+                for source in by_name.get(source_name, []):
+                    before = len(roots[caller.path])
+                    roots[caller.path].update(roots[source.path])
+                    changed |= len(roots[caller.path]) != before
+    return roots
+
+
+def permissions_are_read_only(value: Any) -> bool:
+    if value == "read-all":
+        return True
+    if not isinstance(value, dict):
+        return False
+    return all(str(access).lower() in {"read", "none"} for access in value.values())
+
+
+def protected_runner_labels(job: dict[str, Any]) -> set[str]:
+    runs_on = job.get("runs-on")
+    labels = {
+        value.strip().lower()
+        for value in scalar_strings(runs_on)
+        if "${{" not in value
+    }
+    expression_text = " ".join(scalar_strings(runs_on)).lower()
+    if "matrix." in expression_text:
+        matrix = job.get("strategy", {})
+        if isinstance(matrix, dict):
+            matrix = matrix.get("matrix", {})
+        labels.update(value.strip().lower() for value in scalar_strings(matrix))
+    return labels & PROTECTED_RUNNER_LABELS
+
+
+def has_repository_guard(job: dict[str, Any], repository: str) -> bool:
+    condition = job.get("if")
+    if not isinstance(condition, str):
+        return False
+    pattern = re.compile(
+        r"^\s*(?:\$\{\{\s*)?github\s*\.\s*repository\s*==\s*(['\"])"
+        + re.escape(repository)
+        + r"\1(?=\s*(?:&&|(?:\}\})?\s*$))"
+    )
+    return pattern.search(condition) is not None
+
+
+def is_deploy_workflow(workflow: Workflow) -> bool:
+    return bool(
+        DEPLOY_NAME.search(workflow.name) or DEPLOY_NAME.search(workflow.path.stem)
+    )
+
+
+def validate(workflows_dir: Path, repository: str) -> list[Finding]:
+    workflows, findings = load_workflows(workflows_dir)
+    roots = reachable_events(workflows)
+
+    for workflow in workflows:
+        if "permissions" not in workflow.document:
+            findings.append(
+                Finding(
+                    workflow.relative_path,
+                    "permissions",
+                    "top-level permissions must declare read-only defaults",
+                )
+            )
+        elif not permissions_are_read_only(workflow.document["permissions"]):
+            findings.append(
+                Finding(
+                    workflow.relative_path,
+                    "permissions",
+                    "top-level permissions may only use read or none; elevate per job",
+                )
+            )
+
+        jobs = workflow.document.get("jobs", {})
+        if not isinstance(jobs, dict):
+            continue
+        workflow_is_deploy = is_deploy_workflow(workflow)
+        untrusted_roots = sorted(roots[workflow.path] & UNTRUSTED_EVENTS)
+        for job_id, job in jobs.items():
+            if not isinstance(job, dict):
+                continue
+            protected_labels = protected_runner_labels(job)
+            job_name = str(job.get("name") or job_id)
+            deploy_job = workflow_is_deploy or bool(
+                DEPLOY_NAME.search(str(job_id)) or DEPLOY_NAME.search(job_name)
+            )
+
+            if protected_labels and untrusted_roots:
+                findings.append(
+                    Finding(
+                        workflow.relative_path,
+                        "untrusted-runner",
+                        f"job {job_id!r} uses protected runner label(s) "
+                        f"{', '.join(sorted(protected_labels))} and is reachable from "
+                        f"{', '.join(untrusted_roots)}",
+                    )
+                )
+
+            if (protected_labels or deploy_job) and not has_repository_guard(
+                job, repository
+            ):
+                reason = (
+                    f"protected runner label(s) {', '.join(sorted(protected_labels))}"
+                    if protected_labels
+                    else "deploy workflow/job"
+                )
+                findings.append(
+                    Finding(
+                        workflow.relative_path,
+                        "repository-guard",
+                        f"job {job_id!r} uses {reason} without "
+                        f"github.repository == '{repository}'",
+                    )
+                )
+
+    return sorted(findings, key=lambda finding: (finding.path, finding.rule, finding.message))
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--workflows-dir",
+        type=Path,
+        default=Path(".github/workflows"),
+        help="workflow directory (default: .github/workflows)",
+    )
+    parser.add_argument(
+        "--repository",
+        required=True,
+        help="expected owner/name in deploy and protected-runner identity guards",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    if not args.workflows_dir.is_dir():
+        print(f"workflow directory not found: {args.workflows_dir}", file=sys.stderr)
+        return 2
+    findings = validate(args.workflows_dir.resolve(), args.repository)
+    for finding in findings:
+        print(f"{finding.path}: [{finding.rule}] {finding.message}", file=sys.stderr)
+    if findings:
+        print(f"Workflow policy failed with {len(findings)} finding(s).", file=sys.stderr)
+        return 1
+    workflow_count = len(load_workflows(args.workflows_dir.resolve())[0])
+    print(f"Workflow policy passed for {workflow_count} workflow(s).")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

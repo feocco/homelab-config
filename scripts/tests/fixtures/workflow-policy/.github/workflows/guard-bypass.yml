@@ -1,0 +1,14 @@
+name: Guard bypass
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: self-hosted
+    if: github.repository == 'feocco/example' || always()
+    steps:
+      - run: "true"

@@ -197,6 +197,11 @@ App image:
   the image is private or missing.
 - Private images can opt out of that public check; package auth remains a
   deployment concern for the target host.
+- `org.opencontainers.image.revision` is useful provenance supplied by the app
+  repository, but deploy validation should enforce it only when the runtime
+  manifest also declares an expected immutable source revision or digest.
+  Today, image availability is verified without claiming source-revision
+  attestation.
 
 Secrets:
 

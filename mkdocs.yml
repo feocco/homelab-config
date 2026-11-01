@@ -48,6 +48,7 @@ nav:
       - Owner Runbook: docs/operator-runbook.md
       - Deployment Source Of Truth: docs/deployment-source-of-truth.md
       - Deployment Validation: docs/deployment-validation.md
+      - GitHub Actions Workflow Policy: docs/workflow-policy.md
       - HTTPS Route Rollout: docs/https-route-rollout-goal.md
       - GitHub Runner: docs/github-runner.md
       - GHCR And Synology: docs/ghcr-and-synology.md
