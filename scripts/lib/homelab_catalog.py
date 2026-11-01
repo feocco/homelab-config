@@ -387,19 +387,26 @@ def route_entries(base_dir: pathlib.Path, host: str | None = None) -> list[dict[
             if isinstance(route_hosts, list) and current_host not in [str(value) for value in route_hosts]:
                 continue
             target_port = manifest.get("route_target_port") or manifest.get("http_port")
-            entries.append(
-                {
-                    "service": service,
-                    "host": current_host,
-                    "hostname": hostname,
-                    "target_port": target_port,
-                    "https": manifest.get("route_https") is True,
-                    "dns": manifest_value(manifest, "route_dns"),
-                    "aliases": [str(value) for value in manifest.get("route_aliases", []) if str(value)],
-                    "redirect_to": manifest_value(manifest, "route_redirect_to"),
-                    "tailscale_service": manifest_value(manifest, "route_tailscale_service"),
-                }
-            )
+            extra_hostnames = manifest.get("route_extra_hostnames")
+            extra = [str(value) for value in extra_hostnames if str(value)] if isinstance(extra_hostnames, list) else []
+            for route_name in [hostname, *extra]:
+                entries.append(
+                    {
+                        "service": service,
+                        "host": current_host,
+                        "hostname": route_name,
+                        "target_port": target_port,
+                        "https": manifest.get("route_https") is True,
+                        "dns": manifest_value(manifest, "route_dns"),
+                        "aliases": (
+                            [str(value) for value in manifest.get("route_aliases", []) if str(value)]
+                            if route_name == hostname
+                            else []
+                        ),
+                        "redirect_to": manifest_value(manifest, "route_redirect_to"),
+                        "tailscale_service": manifest_value(manifest, "route_tailscale_service"),
+                    }
+                )
     return sorted(entries, key=lambda row: (str(row["hostname"]), str(row["service"])))
 
 

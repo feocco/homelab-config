@@ -35,6 +35,33 @@ Homepage is the first HTTPS route:
 - `http://home.arpa` and `http://homepage.home.arpa` redirect to
   `https://home.feocco.com` while the legacy records exist.
 
+## Default route convention
+
+This is the one path for user-facing homelab services (Homepage, docs, Reader,
+homelab-functions, the waiting-on-me dashboard, and anything new). Change it
+centrally here, in `scripts/lib/homelab_catalog.py` (Caddy), and in
+`scripts/sync-unifi-dns` / `scripts/sync-cloudflare-dns`; never per service.
+
+- Hostname: `<name>.home.feocco.com`, declared only in the service `ops.yaml`.
+- `route_https: true`: Caddy terminates TLS (Cloudflare DNS-01) and proxies to
+  `host.docker.internal:<route_target_port>`.
+- `route_dns: unifi`: LAN A record to `host.bind_addr`.
+- Off-LAN: Cloudflare DNS-only A record to `host.tailnet_addr` (default
+  `route_public_dns`), so it resolves publicly but is reachable only over
+  Tailscale.
+- A second hostname for the same service and port goes in
+  `route_extra_hostnames:` (example: homelab-functions serves
+  `waiting.home.feocco.com`). It gets the same Caddy, UniFi, and Cloudflare
+  treatment as `route_hostname`.
+- After merge, publish records with
+  `./scripts/dispatch-route-dns --mode apply --watch` and deploy Caddy.
+
+`scripts/tests/check-route-convention` fails CI if a `*.home.feocco.com`
+hostname skips HTTPS, skips UniFi DNS, uses a different public DNS mode, or is
+claimed by two services. Exceptions (Mealie-style public tunnel, friend-facing
+`route_tailscale_service`) use their own documented fields and hostnames
+outside `home.feocco.com`.
+
 ## TLS
 
 Caddy uses Automatic HTTPS with the Cloudflare DNS-01 provider module. This
