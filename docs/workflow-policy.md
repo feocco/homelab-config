@@ -8,12 +8,20 @@ pull requests and comments.
 
 Every workflow must declare top-level `permissions` with only `read` or `none`
 access (or `read-all`). A job may elevate its own permissions when needed.
+Write access at the workflow level fails policy unless every reachable event
+root is `workflow_dispatch` or `repository_dispatch`; dispatch-only workflows
+emit a warning instead.
+
+Third-party `uses:` references must pin an exact 40-character commit SHA.
+References under `actions/*` and `github/*`, local actions and reusable
+workflows are exempt.
 
 Jobs using the `self-hosted`, `nasfeo`, or `macmini` runner labels must not be
 reachable from:
 
 - `pull_request` or `pull_request_target`;
 - issue, commit, discussion, or pull-request comment events;
+- issue creation or updates, forks, or watches;
 - pull-request review events;
 - a local reusable-workflow call rooted in one of those events; or
 - a transitive `workflow_run` chain rooted in one of those events.
@@ -37,7 +45,7 @@ Install the pinned parser and run the validator with the repository identity
 that must appear in sensitive job guards:
 
 ```sh
-python3 -m pip install -r scripts/requirements-workflow-policy.txt
+python3 -m pip install --require-hashes -r scripts/requirements-workflow-policy.txt
 scripts/check-workflow-policy \
   --repository feocco/homelab-config \
   --deploy-workflow .github/workflows/deploy.yml

@@ -12,23 +12,27 @@ from pathlib import Path
 REPO_DIR = Path(__file__).resolve().parents[2]
 VALIDATOR = REPO_DIR / "scripts" / "check-workflow-policy"
 FIXTURE_DIR = REPO_DIR / "scripts" / "tests" / "fixtures" / "workflow-policy"
+DISPATCH_FIXTURE_DIR = (
+    REPO_DIR / "scripts" / "tests" / "fixtures" / "workflow-policy-dispatch"
+)
 EXPECTED_REPOSITORY = "feocco/example"
 
 
 def run_validator(
-    workflows_dir: Path, repository: str, deploy_workflow: str
+    workflows_dir: Path, repository: str, deploy_workflow: str | None = None
 ) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        str(VALIDATOR),
+        "--workflows-dir",
+        str(workflows_dir),
+        "--repository",
+        repository,
+    ]
+    if deploy_workflow is not None:
+        command.extend(["--deploy-workflow", deploy_workflow])
     return subprocess.run(
-        [
-            sys.executable,
-            str(VALIDATOR),
-            "--workflows-dir",
-            str(workflows_dir),
-            "--repository",
-            repository,
-            "--deploy-workflow",
-            deploy_workflow,
-        ],
+        command,
         check=False,
         text=True,
         capture_output=True,
@@ -40,6 +44,14 @@ def assert_finding(output: str, path: str, rule: str, text: str) -> None:
     if expected not in output or text not in output:
         raise AssertionError(
             f"missing fixture finding {expected!r} containing {text!r}:\n{output}"
+        )
+
+
+def assert_warning(output: str, path: str, rule: str, text: str) -> None:
+    expected = f".github/workflows/{path}: warning: [{rule}]"
+    if expected not in output or text not in output:
+        raise AssertionError(
+            f"missing fixture warning {expected!r} containing {text!r}:\n{output}"
         )
 
 
@@ -55,8 +67,8 @@ if fixture_result.returncode != 1:
     )
 
 fixture_output = fixture_result.stdout + fixture_result.stderr
-if "Workflow policy failed with 10 finding(s)." not in fixture_output:
-    raise AssertionError(f"unsafe fixtures should produce exactly 10 findings:\n{fixture_output}")
+if "Workflow policy failed with 15 finding(s)." not in fixture_output:
+    raise AssertionError(f"unsafe fixtures should produce exactly 15 findings:\n{fixture_output}")
 assert_finding(
     fixture_output,
     "unsafe-direct.yml",
@@ -89,6 +101,30 @@ assert_finding(
 )
 assert_finding(
     fixture_output,
+    "unsafe-fork.yml",
+    "untrusted-runner",
+    "reachable from fork",
+)
+assert_finding(
+    fixture_output,
+    "unsafe-issues-opened.yml",
+    "untrusted-runner",
+    "reachable from issues",
+)
+assert_finding(
+    fixture_output,
+    "unsafe-watch.yml",
+    "untrusted-runner",
+    "reachable from watch",
+)
+assert_finding(
+    fixture_output,
+    "unsafe-unpinned-action.yml",
+    "action-pin",
+    "someone/action@main",
+)
+assert_finding(
+    fixture_output,
     "missing-guard.yml",
     "repository-guard",
     "protected runner label(s) self-hosted",
@@ -117,11 +153,52 @@ assert_finding(
     "permissions",
     "elevate per job",
 )
-for passing_fixture in ("call-only-workflow-run.yml", "job-elevation.yml"):
+assert_finding(
+    fixture_output,
+    "write-mixed-dispatch.yml",
+    "permissions",
+    "elevate per job",
+)
+for passing_fixture in (
+    "action-pin-exemptions.yml",
+    "call-only-workflow-run.yml",
+    "job-elevation.yml",
+):
     if f"{passing_fixture}:" in fixture_output:
         raise AssertionError(
             f"{passing_fixture} should not produce a finding:\n{fixture_output}"
         )
+
+issues_fixture = (
+    FIXTURE_DIR / ".github" / "workflows" / "unsafe-issues-opened.yml"
+).read_text()
+if "types: [opened]" not in issues_fixture:
+    raise AssertionError("issues fixture must exercise the issues: opened trigger")
+
+dispatch_result = run_validator(
+    DISPATCH_FIXTURE_DIR / ".github" / "workflows",
+    EXPECTED_REPOSITORY,
+)
+if dispatch_result.returncode != 0:
+    raise AssertionError(
+        f"dispatch-only write permissions should warn without failing:\n"
+        f"{dispatch_result.stdout}{dispatch_result.stderr}"
+    )
+dispatch_output = dispatch_result.stdout + dispatch_result.stderr
+for dispatch_fixture in (
+    "write-repository-dispatch.yml",
+    "write-workflow-dispatch.yml",
+):
+    assert_warning(
+        dispatch_output,
+        dispatch_fixture,
+        "permissions",
+        "elevate per job",
+    )
+if "Workflow policy passed for 2 workflow(s) with 2 warning(s)." not in dispatch_output:
+    raise AssertionError(
+        f"dispatch-only fixtures should produce exactly two warnings:\n{dispatch_output}"
+    )
 
 repo_result = run_validator(
     REPO_DIR / ".github" / "workflows",
@@ -144,5 +221,22 @@ if "runs-on: ubuntu-latest" not in gate_text or "runs-on: self-hosted" in gate_t
     raise AssertionError("Workflow Policy must use GitHub-hosted runners only")
 if "--deploy-workflow .github/workflows/deploy.yml" not in gate_text:
     raise AssertionError("Workflow Policy must explicitly identify deploy.yml")
+if "pip install --require-hashes -r scripts/requirements-workflow-policy.txt" not in gate_text:
+    raise AssertionError("Workflow Policy must require hashes when installing PyYAML")
+
+requirements_text = (REPO_DIR / "scripts" / "requirements-workflow-policy.txt").read_text()
+if (
+    "PyYAML==6.0.3" not in requirements_text
+    or requirements_text.count("--hash=sha256:") < 2
+):
+    raise AssertionError("PyYAML must be pinned with hashes for supported Python wheels")
+
+codeowners_text = (REPO_DIR / "CODEOWNERS").read_text().splitlines()
+for required_entry in (
+    "/.github/workflows/ @feocco",
+    "/scripts/check-workflow-policy @feocco",
+):
+    if required_entry not in codeowners_text:
+        raise AssertionError(f"CODEOWNERS must include {required_entry!r}")
 
 print("Workflow policy fixture checks passed.")

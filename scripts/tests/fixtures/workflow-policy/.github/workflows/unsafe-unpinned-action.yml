@@ -1,0 +1,13 @@
+name: Unsafe unpinned third-party action
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: someone/action@main

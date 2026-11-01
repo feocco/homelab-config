@@ -25,14 +25,20 @@ UNTRUSTED_EVENTS = {
     "commit_comment",
     "discussion",
     "discussion_comment",
+    "fork",
     "issue_comment",
+    "issues",
     "pull_request",
     "pull_request_review",
     "pull_request_review_comment",
     "pull_request_target",
+    "watch",
 }
+DISPATCH_EVENTS = {"repository_dispatch", "workflow_dispatch"}
 PROTECTED_RUNNER_LABELS = {"self-hosted", "nasfeo", "macmini"}
 MATRIX_REFERENCE = re.compile(r"\bmatrix\.([A-Za-z_][A-Za-z0-9_-]*)")
+FULL_COMMIT_SHA = re.compile(r"[0-9a-fA-F]{40}")
+TRUSTED_ACTION_OWNERS = {"actions", "github"}
 
 
 class WorkflowLoader(yaml.SafeLoader):
@@ -193,6 +199,16 @@ def permissions_are_read_only(value: Any) -> bool:
     return all(str(access).lower() in {"read", "none"} for access in value.values())
 
 
+def is_unpinned_third_party_action(uses: str) -> bool:
+    if uses.startswith("./"):
+        return False
+    action, separator, revision = uses.rpartition("@")
+    owner = action.split("/", 1)[0].lower()
+    if owner in TRUSTED_ACTION_OWNERS:
+        return False
+    return not separator or FULL_COMMIT_SHA.fullmatch(revision) is None
+
+
 def matrix_values(job: dict[str, Any], key: str) -> tuple[list[str], bool, bool]:
     strategy = job.get("strategy")
     if not isinstance(strategy, dict):
@@ -298,8 +314,9 @@ def has_repository_guard(job: dict[str, Any], repository: str) -> bool:
 
 def validate(
     workflows_dir: Path, repository: str, deploy_workflows: set[str]
-) -> list[Finding]:
+) -> tuple[list[Finding], list[Finding]]:
     workflows, findings = load_workflows(workflows_dir)
+    warnings: list[Finding] = []
     roots = reachable_events(workflows)
     workflow_paths = {workflow.relative_path for workflow in workflows}
     for deploy_path in sorted(deploy_workflows - workflow_paths):
@@ -321,13 +338,16 @@ def validate(
                 )
             )
         elif not permissions_are_read_only(workflow.document["permissions"]):
-            findings.append(
-                Finding(
-                    workflow.relative_path,
-                    "permissions",
-                    "top-level permissions may only use read or none; elevate per job",
-                )
+            permission_finding = Finding(
+                workflow.relative_path,
+                "permissions",
+                "top-level permissions may only use read or none; elevate per job",
             )
+            execution_roots = roots[workflow.path]
+            if execution_roots and execution_roots <= DISPATCH_EVENTS:
+                warnings.append(permission_finding)
+            else:
+                findings.append(permission_finding)
 
         jobs = workflow.document.get("jobs", {})
         if not isinstance(jobs, dict):
@@ -337,6 +357,36 @@ def validate(
         for job_id, job in jobs.items():
             if not isinstance(job, dict):
                 continue
+            job_uses = job.get("uses")
+            if isinstance(job_uses, str) and is_unpinned_third_party_action(job_uses):
+                findings.append(
+                    Finding(
+                        workflow.relative_path,
+                        "action-pin",
+                        f"job {job_id!r} uses third-party action {job_uses!r} "
+                        "without a full 40-character commit SHA",
+                    )
+                )
+            steps = job.get("steps", [])
+            if isinstance(steps, list):
+                for step_index, step in enumerate(steps, start=1):
+                    if not isinstance(step, dict):
+                        continue
+                    step_uses = step.get("uses")
+                    if not isinstance(step_uses, str) or not (
+                        is_unpinned_third_party_action(step_uses)
+                    ):
+                        continue
+                    step_name = step.get("name") or f"step {step_index}"
+                    findings.append(
+                        Finding(
+                            workflow.relative_path,
+                            "action-pin",
+                            f"job {job_id!r} {step_name!r} uses third-party action "
+                            f"{step_uses!r} without a full 40-character commit SHA",
+                        )
+                    )
+
             protected_labels, unresolved_runner = runner_selection(job)
             sensitive_runner = bool(protected_labels) or unresolved_runner
 
@@ -376,7 +426,8 @@ def validate(
                     )
                 )
 
-    return sorted(findings, key=lambda finding: (finding.path, finding.rule, finding.message))
+    sort_key = lambda finding: (finding.path, finding.rule, finding.message)
+    return sorted(findings, key=sort_key), sorted(warnings, key=sort_key)
 
 
 def parse_args() -> argparse.Namespace:
@@ -407,16 +458,32 @@ def main() -> int:
         print(f"workflow directory not found: {args.workflows_dir}", file=sys.stderr)
         return 2
     deploy_workflows = {path.removeprefix("./") for path in args.deploy_workflow}
-    findings = validate(
+    findings, warnings = validate(
         args.workflows_dir.resolve(), args.repository, deploy_workflows
     )
+    for warning in warnings:
+        print(
+            f"{warning.path}: warning: [{warning.rule}] {warning.message}",
+            file=sys.stderr,
+        )
     for finding in findings:
         print(f"{finding.path}: [{finding.rule}] {finding.message}", file=sys.stderr)
     if findings:
-        print(f"Workflow policy failed with {len(findings)} finding(s).", file=sys.stderr)
+        warning_summary = (
+            f" and {len(warnings)} warning(s)" if warnings else ""
+        )
+        print(
+            f"Workflow policy failed with {len(findings)} finding(s)"
+            f"{warning_summary}.",
+            file=sys.stderr,
+        )
         return 1
     workflow_count = len(load_workflows(args.workflows_dir.resolve())[0])
-    print(f"Workflow policy passed for {workflow_count} workflow(s).")
+    warning_summary = f" with {len(warnings)} warning(s)" if warnings else ""
+    print(
+        f"Workflow policy passed for {workflow_count} workflow(s)"
+        f"{warning_summary}."
+    )
     return 0
 
 

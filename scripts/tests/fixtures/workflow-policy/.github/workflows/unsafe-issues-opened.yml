@@ -1,0 +1,15 @@
+name: Unsafe issues runner
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    runs-on: self-hosted
+    if: github.repository == 'feocco/example'
+    steps:
+      - run: "true"
