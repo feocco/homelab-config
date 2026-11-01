@@ -18,7 +18,9 @@ notification:
   message: It looks like bedtime. Turn off the lights?
 
 morning_prompt:
+  # Joe asked to stop the 08:30 "why didn't you use it" follow-up. Requires feocco/bedtime with morning_prompt.enabled support.
   title: Bedtime follow-up
   message: You did not use the bedtime lights alert last night. Why?
   reply_button_title: Send
   reply_placeholder: Why didn't you use it?
+  enabled: false
