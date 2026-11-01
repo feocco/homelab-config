@@ -64,6 +64,18 @@ def parse_host_file(path: pathlib.Path) -> tuple[str, dict[str, dict[str, Any]]]
     return bind_addr, services
 
 
+def route_hostnames(manifest: dict[str, Any]) -> list[str]:
+    """Primary route_hostname plus optional route_extra_hostnames (same target)."""
+    primary = str(manifest.get("route_hostname") or "")
+    if not primary:
+        return []
+    extra = manifest.get("route_extra_hostnames")
+    names = [primary]
+    if isinstance(extra, list):
+        names.extend(str(value) for value in extra if str(value))
+    return names
+
+
 def parse_ops(path: pathlib.Path) -> dict[str, Any]:
     data: dict[str, Any] = {}
     current_list: str | None = None
@@ -126,15 +138,13 @@ def desired_records(base_dir: pathlib.Path, host: str) -> list[dict[str, str]]:
         manifest = parse_ops(base_dir / str(entry["path"]) / "ops.yaml")
         if manifest.get("route_dns") != "unifi":
             continue
-        hostname = str(manifest.get("route_hostname") or "")
-        if not hostname:
-            continue
-        active_hostnames.add(hostname)
-        alias_target = str(manifest.get("route_dns_alias_target") or "")
-        if alias_target:
-            records.append({"service": service, "type": "CNAME", "name": hostname, "value": alias_target})
-        else:
-            records.append({"service": service, "type": "A", "name": hostname, "value": bind_addr})
+        for index, hostname in enumerate(route_hostnames(manifest)):
+            active_hostnames.add(hostname)
+            alias_target = str(manifest.get("route_dns_alias_target") or "") if index == 0 else ""
+            if alias_target:
+                records.append({"service": service, "type": "CNAME", "name": hostname, "value": alias_target})
+            else:
+                records.append({"service": service, "type": "A", "name": hostname, "value": bind_addr})
     if services.get("caddy", {}).get("enabled") is not False:
         for route in parse_retired_routes(base_dir / "services" / "caddy" / "retired-routes.yaml"):
             hostname = route["hostname"]

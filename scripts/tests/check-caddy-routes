@@ -22,6 +22,8 @@ assert_contains "${caddy_tmp}/Caddyfile" 'mealie.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:9925'
 assert_contains "${caddy_tmp}/Caddyfile" 'mealie.home.feocco.com {'
 assert_contains "${caddy_tmp}/Caddyfile" 'redir https://mealie.feocco.com{uri} 308'
+assert_contains "${caddy_tmp}/Caddyfile" 'waiting.home.feocco.com {'
+assert_contains "${caddy_tmp}/Caddyfile" 'reverse_proxy host.docker.internal:8091'
 assert_contains "${caddy_tmp}/Caddyfile" 'tls {'
 assert_contains "${caddy_tmp}/Caddyfile" 'dns cloudflare {env.CLOUDFLARE_API_TOKEN}'
 assert_contains "${caddy_tmp}/Caddyfile" 'http://home.arpa {'
@@ -45,6 +47,11 @@ if [[ "${dns_dry_run}" != *"Would upsert A docs.home.feocco.com -> 192.168.1.43"
 fi
 if [[ "${dns_dry_run}" != *"Would upsert A streaming-sessions.home.feocco.com -> 192.168.1.43"* ]]; then
   echo "UniFi DNS dry-run should show Streaming Sessions A record upsert" >&2
+  echo "${dns_dry_run}" >&2
+  exit 1
+fi
+if [[ "${dns_dry_run}" != *"Would upsert A waiting.home.feocco.com -> 192.168.1.43"* ]]; then
+  echo "UniFi DNS dry-run should show waiting dashboard extra hostname A record" >&2
   echo "${dns_dry_run}" >&2
   exit 1
 fi

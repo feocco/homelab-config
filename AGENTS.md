@@ -50,6 +50,16 @@
   `route_public_dns: cloudflare-tunnel`, use UniFi DNS for LAN access, and use
   `route_dns_alias_target` if public Cloudflare AAAA records would otherwise
   leak through locally.
+- Default route convention for every user-facing service: a
+  `*.home.feocco.com` hostname with `route_https: true` and `route_dns: unifi`
+  (Caddy + UniFi LAN DNS + Cloudflare DNS-only tailnet A record). Extra
+  hostnames for the same service use `route_extra_hostnames:`. Do not invent
+  new networking paths; the convention is defined once in
+  `services/caddy/README.md` and enforced by
+  `scripts/tests/check-route-convention`.
+- Secrets a service will need but does not use yet go under `optional_env:` in
+  `service-secrets.yaml` (not rendered, so deploys don't fail on unset values).
+  Move them to `env:` and deploy.yml only when code requires them.
 - For new Mac mini user-facing HTTP services, default to a LAN HTTPS route
   under `home.feocco.com` unless the service is a worker, disabled, not
   user-facing, or has incompatible base-URL assumptions. Use

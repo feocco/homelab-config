@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""Enforce the default *.home.feocco.com route convention.
+
+Every hostname under home.feocco.com (route_hostname or route_extra_hostnames)
+must use the central path: Caddy HTTPS (route_https: true) + UniFi LAN DNS
+(route_dns: unifi) + Cloudflare DNS-only A record to the host tailnet address
+(route_public_dns unset or cloudflare-dns-only). See services/caddy/README.md "Default route convention".
+"""
+import pathlib
+import re
+import sys
+
+REPO = pathlib.Path(__file__).resolve().parents[2]
+DOMAIN = "home.feocco.com"
+errors: list[str] = []
+seen: dict[str, str] = {}
+
+for ops in sorted(REPO.glob("services/*/ops.yaml")):
+    text = ops.read_text()
+    service = ops.parent.name
+    def scalar(key: str) -> str:
+        m = re.search(rf"^{key}:\s*(\S+)", text, re.M)
+        return m.group(1).strip("\"'") if m else ""
+    names = [scalar("route_hostname")] if scalar("route_hostname") else []
+    block = re.search(r"^route_extra_hostnames:\s*\n((?:  - .*\n?)+)", text, re.M)
+    if block:
+        if not names:
+            errors.append(f"{service}: route_extra_hostnames requires route_hostname")
+        names += [line[4:].strip().strip("\"'") for line in block.group(1).splitlines()]
+    for name in names:
+        if name in seen:
+            errors.append(f"{name} routed by both {seen[name]} and {service}")
+        seen[name] = service
+        if not (name == DOMAIN or name.endswith("." + DOMAIN)):
+            continue
+        if scalar("route_https") != "true":
+            errors.append(f"{service}: {name} must set route_https: true")
+        if scalar("route_dns") != "unifi":
+            errors.append(f"{service}: {name} must set route_dns: unifi")
+        if scalar("route_public_dns") not in ("", "cloudflare-dns-only"):
+            errors.append(f"{service}: {name} under {DOMAIN} must not use route_public_dns={scalar('route_public_dns')}")
+
+if errors:
+    print("Route convention violations:", *errors, sep="\n  ", file=sys.stderr)
+    sys.exit(1)
+print(f"route convention OK ({len(seen)} hostnames)")

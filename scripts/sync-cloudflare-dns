@@ -68,6 +68,18 @@ def parse_host_file(path: pathlib.Path) -> tuple[dict[str, str], dict[str, dict[
     return host, services
 
 
+def route_hostnames(manifest: dict[str, Any]) -> list[str]:
+    """Primary route_hostname plus optional route_extra_hostnames (same target)."""
+    primary = str(manifest.get("route_hostname") or "")
+    if not primary:
+        return []
+    extra = manifest.get("route_extra_hostnames")
+    names = [primary]
+    if isinstance(extra, list):
+        names.extend(str(value) for value in extra if str(value))
+    return names
+
+
 def parse_ops(path: pathlib.Path) -> dict[str, Any]:
     data: dict[str, Any] = {}
     current_list: str | None = None
@@ -171,10 +183,10 @@ def desired_records(base_dir: pathlib.Path, host_name: str) -> list[dict[str, st
         if entry.get("enabled") is False:
             continue
         manifest = parse_ops(base_dir / str(entry["path"]) / "ops.yaml")
-        hostname = str(manifest.get("route_hostname") or "")
-        if not hostname or manifest.get("route_https") is not True:
+        hostnames = route_hostnames(manifest)
+        if not hostnames or manifest.get("route_https") is not True:
             continue
-        active_hostnames.add(hostname)
+        active_hostnames.update(hostnames)
         if str(manifest.get("route_public_dns") or "cloudflare-dns-only") == "cloudflare-tunnel":
             continue
         tailscale_service = str(manifest.get("route_tailscale_service") or "")
@@ -184,7 +196,8 @@ def desired_records(base_dir: pathlib.Path, host_name: str) -> list[dict[str, st
             value = named_services[tailscale_service]
         else:
             value = tailnet_addr
-        records.append({"service": service, "type": "A", "name": hostname, "value": value})
+        for hostname in hostnames:
+            records.append({"service": service, "type": "A", "name": hostname, "value": value})
     if services.get("caddy", {}).get("enabled") is not False:
         for route in parse_retired_routes(base_dir / "services" / "caddy" / "retired-routes.yaml"):
             hostname = route["hostname"]
