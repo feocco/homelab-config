@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+source "${REPO_DIR}/scripts/tests/lib-docs-fixture"
 
 assert_json_value() {
   local json_file="$1"
@@ -25,12 +26,29 @@ PY
 test -x "${REPO_DIR}/scripts/check-service-docs-migration"
 
 tmpdir="$(mktemp -d)"
-trap 'rm -rf "${tmpdir}"' EXIT
+cleanup() {
+  stop_local_docs_fixture
+  rm -rf "${tmpdir}"
+}
+trap cleanup EXIT
+
+docs_fixture="${tmpdir}/repo"
+start_local_docs_fixture "${REPO_DIR}" "${tmpdir}" "${docs_fixture}"
+manifest_fixture="${tmpdir}/manifest-repo"
+copy_local_docs_fixture "${REPO_DIR}" "${manifest_fixture}"
+python3 - "${manifest_fixture}/services/hello-nas/ops.yaml" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+path.write_text(path.read_text().replace("public_image: true\n", "public_image: false\n", 1))
+PY
 
 "${REPO_DIR}/scripts/check-service-docs-migration" \
   --service hello-nas \
   --host macmini \
   --stage manifest \
+  --base-dir "${manifest_fixture}" \
   --format json >"${tmpdir}/hello-manifest.json"
 assert_json_field "${tmpdir}/hello-manifest.json" "success" "true"
 assert_json_value "${tmpdir}/hello-manifest.json" "payload['stages'][0]['name']" "manifest"
@@ -40,6 +58,7 @@ assert_json_value "${tmpdir}/hello-manifest.json" "payload['stages'][0]['success
   --service hello-nas \
   --host macmini \
   --stage docs-site \
+  --base-dir "${docs_fixture}" \
   --format json >"${tmpdir}/hello-docs-site.json"
 assert_json_field "${tmpdir}/hello-docs-site.json" "success" "true"
 assert_json_value "${tmpdir}/hello-docs-site.json" "payload['stages'][0]['docs_status']" "Live docs available"
@@ -48,6 +67,7 @@ assert_json_value "${tmpdir}/hello-docs-site.json" "payload['stages'][0]['docs_s
   --service homelab-functions \
   --host macmini \
   --stage docs-site \
+  --base-dir "${docs_fixture}" \
   --format json >"${tmpdir}/functions-docs-site.json"
 assert_json_field "${tmpdir}/functions-docs-site.json" "success" "true"
 assert_json_value "${tmpdir}/functions-docs-site.json" "payload['stages'][0]['docs_status']" "Live docs available"
@@ -57,6 +77,7 @@ assert_fails "${tmpdir}/caddy-docs-site.out" \
     --service caddy \
     --host macmini \
     --stage docs-site \
+    --base-dir "${docs_fixture}" \
     --format json
 assert_json_field "${tmpdir}/caddy-docs-site.out" "success" "false"
 assert_json_value "${tmpdir}/caddy-docs-site.out" "payload['stages'][0]['docs_status']" "Not migrated"

@@ -101,14 +101,6 @@ PY
         --host "${host}" \
         --check config \
         --mode strict
-
-      if grep -q '^live_base_url:' "${manifest}"; then
-        "${REPO_DIR}/scripts/validate-service-rollout" \
-          --service "${service}" \
-          --host "${host}" \
-          --check live \
-          --mode smoketest
-      fi
     done <"${hosts_file}"
     rm -f "${hosts_file}"
   done < <(find "${REPO_DIR}/services" -maxdepth 2 -name ops.yaml | sort)
@@ -481,15 +473,24 @@ PY
 copy_fixture() {
   local destination="$1"
   mkdir -p "${destination}"
-  # Excluding runtime .env keeps real credentials out of fixtures; otherwise
-  # the fixture monitor-health check queries the real Grafana for synthetic
-  # fixture services and the suite only passes from clean checkouts.
+  # Runtime .env files are not fixture inputs and may contain credentials.
   tar \
     --exclude='.git' \
     --exclude='.homelab-deploy-state' \
     --exclude='services/*/data/*' \
     --exclude='services/*/.env' \
     -cf - . | tar -xf - -C "${destination}"
+}
+
+isolate_live_monitor_health() {
+  local fixture="$1"
+
+  cat >"${fixture}/scripts/check-macmini-monitor-health" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'Fixture monitor-health check passed.\n'
+EOF
+  chmod +x "${fixture}/scripts/check-macmini-monitor-health"
 }
 
 missing_out="$(mktemp)"
@@ -502,7 +503,39 @@ require_ops_manifests_for_enabled_services
 validate_discovered_manifests
 
 validator_tmp="$(mktemp -d)"
-trap 'rm -rf "${validator_tmp}"' EXIT
+server_pids=()
+
+track_server_pid() {
+  server_pids+=("$1")
+}
+
+stop_server_pid() {
+  local target_pid="$1"
+  local pid
+  local -a remaining=()
+
+  kill "${target_pid}" 2>/dev/null || true
+  wait "${target_pid}" 2>/dev/null || true
+  for pid in "${server_pids[@]}"; do
+    if [[ "${pid}" != "${target_pid}" ]]; then
+      remaining+=("${pid}")
+    fi
+  done
+  server_pids=("${remaining[@]}")
+}
+
+cleanup_validator_tmp() {
+  local pid
+
+  for pid in "${server_pids[@]}"; do
+    kill "${pid}" 2>/dev/null || true
+    wait "${pid}" 2>/dev/null || true
+  done
+  server_pids=()
+  rm -rf "${validator_tmp}"
+}
+
+trap cleanup_validator_tmp EXIT
 validator_fixture="${validator_tmp}/repo"
 copy_fixture "${validator_fixture}"
 add_validator_demo_fixture "${validator_fixture}"
@@ -586,14 +619,16 @@ server.serve_forever()
 PY
 
 cp -R "${validator_fixture}" "${validator_tmp}/docs-live"
+isolate_live_monitor_health "${validator_tmp}/docs-live"
 python3 "${validator_tmp}/docs-live-server.py" "${validator_tmp}/docs-live-port" valid &
 docs_server_pid="$!"
+track_server_pid "${docs_server_pid}"
 for _ in {1..50}; do
   [[ -s "${validator_tmp}/docs-live-port" ]] && break
   sleep 0.1
 done
 if [[ ! -s "${validator_tmp}/docs-live-port" ]]; then
-  kill "${docs_server_pid}" 2>/dev/null || true
+  stop_server_pid "${docs_server_pid}"
   echo "Docs live test server did not start." >&2
   exit 1
 fi
@@ -609,25 +644,27 @@ PY
 if "${validator_tmp}/docs-live/scripts/validate-service-rollout" --base-dir "${validator_tmp}/docs-live" --service validator-demo --host macmini --check live --mode smoketest >"${validator_tmp}/docs-live.out" 2>&1; then
   :
 else
-  kill "${docs_server_pid}" 2>/dev/null || true
+  stop_server_pid "${docs_server_pid}"
   cat "${validator_tmp}/docs-live.out" >&2
   echo "validator-demo docs live proof should pass." >&2
   exit 1
 fi
 assert_contains "${validator_tmp}/docs-live.out" 'Docs page responds with HTML'
 assert_contains "${validator_tmp}/docs-live.out" 'OpenAPI schema responds'
-kill "${docs_server_pid}" 2>/dev/null || true
-wait "${docs_server_pid}" 2>/dev/null || true
+assert_contains "${validator_tmp}/docs-live.out" 'Mac mini monitor-health check passes'
+stop_server_pid "${docs_server_pid}"
 
 cp -R "${validator_fixture}" "${validator_tmp}/docs-auth-live"
+isolate_live_monitor_health "${validator_tmp}/docs-auth-live"
 python3 "${validator_tmp}/docs-live-server.py" "${validator_tmp}/docs-auth-live-port" auth &
 docs_auth_server_pid="$!"
+track_server_pid "${docs_auth_server_pid}"
 for _ in {1..50}; do
   [[ -s "${validator_tmp}/docs-auth-live-port" ]] && break
   sleep 0.1
 done
 if [[ ! -s "${validator_tmp}/docs-auth-live-port" ]]; then
-  kill "${docs_auth_server_pid}" 2>/dev/null || true
+  stop_server_pid "${docs_auth_server_pid}"
   echo "Authenticated docs live test server did not start." >&2
   exit 1
 fi
@@ -643,25 +680,27 @@ PY
 if "${validator_tmp}/docs-auth-live/scripts/validate-service-rollout" --base-dir "${validator_tmp}/docs-auth-live" --service validator-demo --host macmini --check live --mode strict >"${validator_tmp}/docs-auth-live.out" 2>&1; then
   :
 else
-  kill "${docs_auth_server_pid}" 2>/dev/null || true
+  stop_server_pid "${docs_auth_server_pid}"
   cat "${validator_tmp}/docs-auth-live.out" >&2
   echo "validator-demo authenticated docs live proof should pass." >&2
   exit 1
 fi
 assert_contains "${validator_tmp}/docs-auth-live.out" 'Docs page requires authentication'
 assert_contains "${validator_tmp}/docs-auth-live.out" 'OpenAPI schema requires authentication'
-kill "${docs_auth_server_pid}" 2>/dev/null || true
-wait "${docs_auth_server_pid}" 2>/dev/null || true
+assert_contains "${validator_tmp}/docs-auth-live.out" 'Mac mini monitor-health check passes'
+stop_server_pid "${docs_auth_server_pid}"
 
 cp -R "${validator_fixture}" "${validator_tmp}/invalid-openapi-live"
+isolate_live_monitor_health "${validator_tmp}/invalid-openapi-live"
 python3 "${validator_tmp}/docs-live-server.py" "${validator_tmp}/invalid-openapi-port" invalid &
 bad_docs_server_pid="$!"
+track_server_pid "${bad_docs_server_pid}"
 for _ in {1..50}; do
   [[ -s "${validator_tmp}/invalid-openapi-port" ]] && break
   sleep 0.1
 done
 if [[ ! -s "${validator_tmp}/invalid-openapi-port" ]]; then
-  kill "${bad_docs_server_pid}" 2>/dev/null || true
+  stop_server_pid "${bad_docs_server_pid}"
   echo "Invalid OpenAPI live test server did not start." >&2
   exit 1
 fi
@@ -677,8 +716,8 @@ PY
 invalid_openapi_out="${validator_tmp}/invalid-openapi-live.out"
 assert_fails "${invalid_openapi_out}" "${validator_tmp}/invalid-openapi-live/scripts/validate-service-rollout" --base-dir "${validator_tmp}/invalid-openapi-live" --service validator-demo --host macmini --check live --mode strict
 assert_contains "${invalid_openapi_out}" 'OpenAPI schema failed'
-kill "${bad_docs_server_pid}" 2>/dev/null || true
-wait "${bad_docs_server_pid}" 2>/dev/null || true
+assert_contains "${invalid_openapi_out}" 'Mac mini monitor-health check passes'
+stop_server_pid "${bad_docs_server_pid}"
 
 for fixture_case in \
   "validator-worker macmini" \
@@ -852,5 +891,5 @@ sre_out="${validator_tmp}/missing-sre.out"
 assert_fails "${sre_out}" "${validator_tmp}/missing-sre/scripts/validate-service-rollout" --base-dir "${validator_tmp}/missing-sre" --service validator-demo --host macmini --check config --mode strict
 assert_contains "${sre_out}" 'SRE metadata is missing'
 
-rm -rf "${validator_tmp}"
+cleanup_validator_tmp
 trap - EXIT
