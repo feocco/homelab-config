@@ -104,6 +104,11 @@ scrape_configs:
           service: homebox
           host: macmini
       - targets:
+          - http://host.docker.internal:8106/health
+        labels:
+          service: waiting
+          host: macmini
+      - targets:
           - http://host.docker.internal:8100/health
         labels:
           service: instacart-history-service

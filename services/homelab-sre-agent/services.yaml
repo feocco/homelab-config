@@ -226,6 +226,26 @@ services:
       autofix: false
       repo_daily_limit: 1
 
+  waiting:
+    containers:
+      - waiting
+    images:
+      - ghcr.io/feocco/waiting:*
+    source:
+      repo: feocco/waiting
+      path_hint: /Users/feocco/code/waiting
+    issue_repo: feocco/homelab-config
+    deploy:
+      path: services/waiting
+    runbook_url: https://github.com/feocco/homelab-config/tree/main/services/waiting
+    labels:
+      - homelab-sre
+      - waiting
+    sre:
+      enabled: true
+      autofix: false
+      repo_daily_limit: 1
+
   homebox:
     containers:
       - homebox

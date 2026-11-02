@@ -38,7 +38,7 @@ Homepage is the first HTTPS route:
 ## Default route convention
 
 This is the one path for user-facing homelab services (Homepage, docs, Reader,
-homelab-functions, the waiting-on-me dashboard, and anything new). Change it
+homelab-functions, the waiting service, and anything new). Change it
 centrally here, in `scripts/lib/homelab_catalog.py` (Caddy), and in
 `scripts/sync-unifi-dns` / `scripts/sync-cloudflare-dns`; never per service.
 
@@ -50,8 +50,7 @@ centrally here, in `scripts/lib/homelab_catalog.py` (Caddy), and in
   `route_public_dns`), so it resolves publicly but is reachable only over
   Tailscale.
 - A second hostname for the same service and port goes in
-  `route_extra_hostnames:` (example: homelab-functions serves
-  `waiting.home.feocco.com`). It gets the same Caddy, UniFi, and Cloudflare
+  `route_extra_hostnames:` (a second name for one service and port). It gets the same Caddy, UniFi, and Cloudflare
   treatment as `route_hostname`.
 - After merge, publish records with
   `./scripts/dispatch-route-dns --mode apply --watch` and deploy Caddy.
