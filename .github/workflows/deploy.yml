@@ -151,14 +151,12 @@ jobs:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
-          case "${SERVICE_INPUT}" in
-            authentik|bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|honeymoon-planner|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|stockfish-evaluator|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
-              ;;
-            *)
-              echo "Unsupported service: ${SERVICE_INPUT}" >&2
-              exit 2
-              ;;
-          esac
+          # The dispatch choice list is the allowlist (check-deploy-service-choices keeps it
+          # in sync with services/); a second hand-kept list here drifted and rejected waiting.
+          if [ ! -f "services/${SERVICE_INPUT}/ops.yaml" ]; then
+            echo "Unsupported service: ${SERVICE_INPUT}" >&2
+            exit 2
+          fi
           args=()
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
@@ -366,14 +364,12 @@ jobs:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
           CANARY_INPUT: ${{ inputs.canary }}
         run: |
-          case "${SERVICE_INPUT}" in
-            authentik|bedtime|caddy|dashy|dashy-redirect|dog-bowl-monitor|hass-janitor|hello-nas|homarr|homepage|homelab-docs|homelab-functions|homelab-log-watcher|homelab-monitor|homelab-smoke-signal|homelab-sre-agent|honeymoon-planner|instacart-history-service|laundry-monitor|mealie|mealie-planner|netalertx|pirate-radio|plant-monitor|portainer|stockfish-evaluator|streaming-sessions|streaming-sessions-kafka|streaming-sessions-postgres)
-              ;;
-            *)
-              echo "Unsupported service: ${SERVICE_INPUT}" >&2
-              exit 2
-              ;;
-          esac
+          # The dispatch choice list is the allowlist (check-deploy-service-choices keeps it
+          # in sync with services/); a second hand-kept list here drifted and rejected waiting.
+          if [ ! -f "services/${SERVICE_INPUT}/ops.yaml" ]; then
+            echo "Unsupported service: ${SERVICE_INPUT}" >&2
+            exit 2
+          fi
           args=()
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
