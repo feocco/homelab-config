@@ -18,6 +18,7 @@ tailnet: false
 monitoring: true
 sre: false
 route_hostname: auth.home.feocco.com
+route_auth: idp
 route_target_port: 9000
 route_https: true
 route_dns: unifi

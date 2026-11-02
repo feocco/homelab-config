@@ -12,6 +12,7 @@ tailnet: true
 monitoring: true
 sre: false
 route_hostname: home.feocco.com
+route_auth: tailnet_open
 route_target_port: 7576
 route_https: true
 route_dns: unifi

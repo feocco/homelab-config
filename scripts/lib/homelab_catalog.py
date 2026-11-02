@@ -405,6 +405,12 @@ def route_entries(base_dir: pathlib.Path, host: str | None = None) -> list[dict[
                         ),
                         "redirect_to": manifest_value(manifest, "route_redirect_to"),
                         "tailscale_service": manifest_value(manifest, "route_tailscale_service"),
+                        "auth": manifest_value(manifest, "route_auth"),
+                        "auth_bypass_paths": [
+                            str(value) for value in manifest.get("route_auth_bypass_paths", []) or [] if str(value)
+                        ]
+                        if isinstance(manifest.get("route_auth_bypass_paths"), list)
+                        else [],
                     }
                 )
     return sorted(entries, key=lambda row: (str(row["hostname"]), str(row["service"])))
@@ -434,6 +440,49 @@ def caddy_retired_redirects(base_dir: pathlib.Path) -> list[dict[str, str]]:
     return [item for item in redirects if item.get("hostname") and item.get("to")]
 
 
+AUTHENTIK_OUTPOST = "host.docker.internal:9000"
+AUTHENTIK_IDENTITY_HEADERS = (
+    "X-Authentik-Username",
+    "X-Authentik-Groups",
+    "X-Authentik-Email",
+    "X-Authentik-Name",
+    "X-Authentik-Uid",
+)
+
+
+def authentik_forward_auth_block(target_port: Any, bypass_paths: list[str]) -> str:
+    """Caddy directives for the Authentik embedded outpost (forward auth).
+
+    Client-supplied identity headers are always stripped first, so the app only
+    ever sees X-Authentik-* values that Authentik itself returned. Bypass paths
+    (bearer-token APIs and health checks) skip forward auth but still lose the
+    identity headers.
+    """
+    upstream = f"reverse_proxy host.docker.internal:{target_port}"
+    lines = [f"\trequest_header -{header}" for header in AUTHENTIK_IDENTITY_HEADERS]
+    if bypass_paths:
+        lines += [
+            f"\t@idp_bypass path {' '.join(bypass_paths)}",
+            "\thandle @idp_bypass {",
+            f"\t\t{upstream}",
+            "\t}",
+        ]
+    lines += [
+        "\thandle /outpost.goauthentik.io/* {",
+        f"\t\treverse_proxy {AUTHENTIK_OUTPOST}",
+        "\t}",
+        "\thandle {",
+        f"\t\tforward_auth {AUTHENTIK_OUTPOST} {{",
+        "\t\t\turi /outpost.goauthentik.io/auth/caddy",
+        f"\t\t\tcopy_headers {' '.join(AUTHENTIK_IDENTITY_HEADERS)}",
+        "\t\t\ttrusted_proxies private_ranges",
+        "\t\t}",
+        f"\t\t{upstream}",
+        "\t}",
+    ]
+    return "\n".join(lines)
+
+
 def caddy_config(base_dir: pathlib.Path, host: str | None = None) -> str:
     entries = route_entries(base_dir, host)
     entry_hostnames = {str(entry["hostname"]) for entry in entries}
@@ -454,11 +503,12 @@ def caddy_config(base_dir: pathlib.Path, host: str | None = None) -> str:
         hostname = str(entry["hostname"])
         target_port = entry["target_port"]
         redirect_to = str(entry.get("redirect_to") or "")
-        route_action = (
-            f"\tredir {redirect_to.rstrip('/')}{{uri}} 308"
-            if redirect_to
-            else f"\treverse_proxy host.docker.internal:{target_port}"
-        )
+        if redirect_to:
+            route_action = f"\tredir {redirect_to.rstrip('/')}{{uri}} 308"
+        elif entry.get("auth") == "authentik_forward_auth":
+            route_action = authentik_forward_auth_block(target_port, entry.get("auth_bypass_paths") or [])
+        else:
+            route_action = f"\treverse_proxy host.docker.internal:{target_port}"
         lines.extend(
             [
                 f"{hostname} {{",

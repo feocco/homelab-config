@@ -12,6 +12,7 @@ tailnet: false
 monitoring: false
 sre: false
 route_hostname: docs.home.feocco.com
+route_auth: tailnet_open
 route_target_port: 8112
 route_https: true
 route_dns: unifi

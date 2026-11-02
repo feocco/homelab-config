@@ -30,3 +30,9 @@ jobs:
             --repository feocco/homelab-config \
             --deploy-workflow .github/workflows/deploy.yml
           scripts/tests/check-workflow-policy
+
+      - name: Enforce route auth policy (every web UI reuses the homelab IdP)
+        run: scripts/tests/check-route-auth
+
+      - name: Enforce ADR 0002 isolation for forward-auth services
+        run: scripts/tests/check-idp-isolation

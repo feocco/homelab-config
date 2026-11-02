@@ -1,5 +1,7 @@
 # ADR 0001: Unified homelab identity
 
+> Amended by [ADR 0002](0002-never-implement-custom-auth.md): owner-only tools use Authentik forward auth instead of native OIDC.
+
 Status: accepted as the homelab identity pattern; first implemented by Pirate Radio
 
 ## Decision

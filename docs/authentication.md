@@ -60,6 +60,15 @@ service TailVIP, while UniFi DNS points the same hostname to the Mac mini LAN
 address. Raw TCP forwarding preserves TLS SNI so the existing Caddy virtual
 host remains the only HTTP entrypoint.
 
+## Principle: never build custom auth
+
+Never build custom auth. If a service needs auth, reuse the homelab IdP: Caddy
+`route_auth: authentik_forward_auth` for owner-only tools, or the OIDC contract
+below for multi-user apps. Services with nothing sensitive can stay open on the
+tailnet, and shared-functions calls use the existing tokens. See
+[ADR 0002](adr/0002-never-implement-custom-auth.md); CI checks every route
+declares one of these with `scripts/tests/check-route-auth`.
+
 ## Application Identity Contract
 
 Applications adopting the shared identity platform follow these rules:
@@ -70,7 +79,8 @@ Applications adopting the shared identity platform follow these rules:
 - Use Authentik groups only for coarse application and administrator access.
 - Use an application-owned user id for row ownership and durable user state.
 - Keep protected media and APIs behind the same application session as pages.
-- Ignore proxy-supplied user headers.
+- OIDC apps ignore proxy-supplied user headers. Forward-auth apps trust only
+  the `X-Authentik-*` headers Caddy sets after stripping client copies.
 - Link the signed-in account menu to Authentik's central profile editor.
 - Revoke the local session and continue through Authentik's end-session flow on
   logout.

@@ -13,6 +13,7 @@ tailnet: true
 monitoring: true
 sre: false
 route_hostname: honeymoon-planner.home.feocco.com
+route_auth: tailnet_open
 route_target_port: 43127
 route_https: true
 route_dns: unifi

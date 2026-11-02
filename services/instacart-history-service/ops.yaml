@@ -16,6 +16,7 @@ tailnet: true
 monitoring: true
 sre: false
 route_hostname: instacart-history-service.home.feocco.com
+route_auth: api_token
 route_target_port: 8100
 route_https: true
 route_dns: unifi

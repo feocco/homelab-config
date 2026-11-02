@@ -16,6 +16,10 @@ tailnet: true
 monitoring: true
 sre: true
 route_hostname: waiting.home.feocco.com
+route_auth: authentik_forward_auth
+route_auth_bypass_paths:
+  - /v1/*
+  - /health
 route_target_port: 8106
 route_https: true
 route_dns: unifi

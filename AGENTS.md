@@ -2,6 +2,13 @@
 
 ## Repo-Specific Decisions
 
+- Never build custom auth. If a service needs auth, reuse the homelab IdP
+  (Authentik): `route_auth: authentik_forward_auth` in Caddy or
+  `route_auth: authentik_oidc`. Services with nothing sensitive may stay open
+  on the tailnet (`tailnet_open`), and shared-functions calls keep their
+  existing bearer tokens (`api_token`). Both must be listed in the allowlist in
+  `scripts/tests/check-route-auth`, which CI runs. The check never forces auth
+  onto a service.
 - This repo owns private Docker runtime config only. App repos own source,
   Dockerfiles, tests, and GHCR publishing.
 - Use Docker Compose and host manifests, not Kubernetes.

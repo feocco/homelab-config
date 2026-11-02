@@ -18,6 +18,7 @@ tailnet: false
 monitoring: false
 sre: false
 route_hostname: streaming-sessions.home.feocco.com
+route_auth: api_token
 route_target_port: 8110
 route_https: true
 route_dns: unifi
