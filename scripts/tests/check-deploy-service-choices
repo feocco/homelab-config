@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+"""Fail when a directory in services/ is missing from the Deploy workflow's
+manual `service` choice list (a missing entry makes the service impossible to
+deploy by hand, e.g. `waiting` and `homebox` before this check existed)."""
+import pathlib
+import sys
+
+import yaml
+
+repo = pathlib.Path(__file__).resolve().parents[2]
+workflow = yaml.safe_load((repo / ".github/workflows/deploy.yml").read_text())
+on = workflow.get("on", workflow.get(True))
+choices = set(on["workflow_dispatch"]["inputs"]["service"]["options"])
+services = sorted(p.name for p in (repo / "services").iterdir() if p.is_dir() and not p.name.startswith("."))
+missing = [s for s in services if s not in choices]
+if missing:
+    print("Deploy workflow service choices are missing: " + ", ".join(missing), file=sys.stderr)
+    print("Add them under on.workflow_dispatch.inputs.service.options in .github/workflows/deploy.yml", file=sys.stderr)
+    sys.exit(1)
+print(f"Deploy service choices cover all {len(services)} services/ directories.")

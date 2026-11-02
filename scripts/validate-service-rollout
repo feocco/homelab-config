@@ -663,7 +663,9 @@ class Validator:
                 [str(self.base_dir / "scripts/apply-tailscale-serve"), "--host", self.host, "--base-dir", str(self.base_dir), "--dry-run"],
                 cwd=self.base_dir,
             )
-            if apply_check.returncode == 0 and route_tailscale_service in apply_check.stdout:
+            if apply_check.returncode == 0 and "node is not tagged" in apply_check.stdout:
+                self.warn("tailnet service", f"{route_tailscale_service} will be skipped: this node is not tagged, so Tailscale cannot host Services on it")
+            elif apply_check.returncode == 0 and route_tailscale_service in apply_check.stdout:
                 self.pass_("tailnet service", "Named Tailscale Service dry-run passes")
             else:
                 self.fail("tailnet service", f"Named Tailscale Service dry-run failed: {apply_check.stdout.strip()}")

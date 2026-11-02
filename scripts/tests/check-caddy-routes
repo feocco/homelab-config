@@ -211,3 +211,51 @@ if [[ "${docs_deploy_dry_run}" != *"Would build Homelab Docs site"* ]]; then
   echo "${docs_deploy_dry_run}" >&2
   exit 1
 fi
+
+# UniFi's Integration API pages DNS policies (default/capped page size), so a
+# check that reads only the first page reports false drift for newer records.
+paged_fixture="$(mktemp)"
+python3 - "${REPO_DIR}" "${paged_fixture}" <<'PY'
+import json
+import pathlib
+import runpy
+import sys
+
+base = pathlib.Path(sys.argv[1])
+module = runpy.run_path(str(base / "scripts" / "sync-unifi-dns"))
+desired = module["desired_records"](base, "macmini")
+filler = [
+    {"id": f"filler-{i}", "type": "A_RECORD", "domain": f"filler-{i}.example.invalid", "ipv4Address": "192.0.2.1"}
+    for i in range(30)
+]
+records = filler + [
+    {
+        "id": f"rec-{i}",
+        "type": "A_RECORD" if rec["type"] == "A" else "CNAME_RECORD",
+        # UniFi may echo names in a different case; the check must not care.
+        "domain": rec["name"].upper() if i % 2 else rec["name"],
+        ("ipv4Address" if rec["type"] == "A" else "targetDomain"): rec["value"],
+    }
+    for i, rec in enumerate(desired)
+]
+assert len(records) > 25, len(records)
+pathlib.Path(sys.argv[2]).write_text(json.dumps(records))
+PY
+UNIFI_BASE_URL=https://unifi.example.invalid UNIFI_SITE_ID=fixture UNIFI_API_KEY=test-api-key \
+UNIFI_DNS_PAGES_FIXTURE="${paged_fixture}" \
+  "${REPO_DIR}/scripts/sync-unifi-dns" --host macmini --check >/dev/null 2>&1 || {
+  echo "UniFi DNS check should read every page and match case-insensitively" >&2
+  exit 1
+}
+# Dropping the last record must still be detected after paging.
+python3 - "${paged_fixture}" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1]); rows = json.loads(p.read_text()); rows.pop(); p.write_text(json.dumps(rows))
+PY
+if UNIFI_BASE_URL=https://unifi.example.invalid UNIFI_SITE_ID=fixture UNIFI_API_KEY=test-api-key \
+  UNIFI_DNS_PAGES_FIXTURE="${paged_fixture}" \
+  "${REPO_DIR}/scripts/sync-unifi-dns" --host macmini --check >/dev/null 2>&1; then
+  echo "UniFi DNS check should still report a record missing beyond the first page" >&2
+  exit 1
+fi
+rm -f "${paged_fixture}"

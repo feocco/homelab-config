@@ -64,9 +64,16 @@
   new networking paths; the convention is defined once in
   `services/caddy/README.md` and enforced by
   `scripts/tests/check-route-convention`.
-- Secrets a service will need but does not use yet go under `optional_env:` in
-  `service-secrets.yaml` (not rendered, so deploys don't fail on unset values).
-  Move them to `env:` and deploy.yml only when code requires them.
+- Secrets a service can run without go under `optional_env:` in
+  `service-secrets.yaml`. They are wired into deploy.yml by the generator and
+  rendered into `.env` only when the Actions secret exists and is non-empty, so
+  an unset value never fails a deploy. Use `env:` only when the service cannot
+  start without the value. Multi-line values (PEM keys) are rendered as one
+  escaped, double-quoted line that docker compose expands back.
+- Before declaring a new required secret, set it, then confirm with
+  `scripts/check-declared-secrets-set --names-file <(gh secret list -R feocco/homelab-config --json name -q '.[].name') --strict`
+  (names only). In a `--all` render a missing secret skips just that service
+  (`.render-env-skipped`) and homelab-deploy refuses to deploy it.
 - For new Mac mini user-facing HTTP services, default to a LAN HTTPS route
   under `home.feocco.com` unless the service is a worker, disabled, not
   user-facing, or has incompatible base-URL assumptions. Use

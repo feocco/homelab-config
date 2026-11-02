@@ -122,6 +122,25 @@ env_value_from_files() {
   return 1
 }
 
+# Single-line values are written as-is (unchanged behavior). Values with line
+# breaks (PEM keys) are written as one double-quoted line with \n escapes,
+# which docker compose's .env parser expands back into real newlines. A raw
+# multi-line value would otherwise end the entry at its first newline and the
+# next PEM line would fail to parse ("unexpected character ... line N").
+env_file_value() {
+  local value="$1"
+  if [[ "${value}" != *$'\n'* && "${value}" != *$'\r'* ]]; then
+    printf '%s' "${value}"
+    return 0
+  fi
+  value="${value//$'\r'/}"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//\$/\\\$}"
+  value="${value//$'\n'/\\n}"
+  printf '"%s"' "${value}"
+}
+
 render_service() {
   local service="$1"
   local service_path service_dir prefix shared_config host_config tmp_file count config_count secret_count key value
@@ -159,6 +178,33 @@ render_service() {
     return
   fi
 
+  # Check this service's secrets before touching its .env. With --all, one
+  # service's missing secret must not block every other service's deploy: warn,
+  # keep its previous .env, and record it so homelab-deploy refuses to deploy
+  # that one service. Without --all the caller asked for this service, so fail.
+  local missing_secrets=()
+  while IFS= read -r key; do
+    [[ -n "${key}" ]] || continue
+    secret_name="${prefix}__${key}"
+    if [[ -z "${!secret_name+x}" ]]; then
+      missing_secrets+=("Missing environment variable ${secret_name}")
+    elif [[ -z "${!secret_name}" ]]; then
+      missing_secrets+=("Empty environment variable ${secret_name}")
+    fi
+  done < <(service_secret_keys "${MANIFEST_FILE}" "${service}")
+  if [[ "${#missing_secrets[@]}" -gt 0 ]]; then
+    printf '%s\n' "${missing_secrets[@]}" >&2
+    if [[ "${ALL}" != "true" ]]; then
+      exit 2
+    fi
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      echo "::warning title=Secrets missing for ${service}::Skipped rendering ${service}/.env (${#missing_secrets[@]} secret(s) missing or empty). Other services are unaffected; ${service} will not deploy until its secrets are set."
+    fi
+    echo "Skipped ${service}/.env for ${HOST}: secrets missing; previous .env left in place" >&2
+    printf '%s\n' "${service}" >> "${SKIPPED_FILE}"
+    return 0
+  fi
+
   mkdir -p "${service_dir}"
   tmp_file="${service_dir}/.env.tmp.$$"
   umask 077
@@ -187,8 +233,18 @@ render_service() {
       echo "Empty environment variable ${secret_name}" >&2
       exit 2
     fi
-    printf '%s=%s\n' "${key}" "${!secret_name}" >> "${tmp_file}"
+    printf '%s=%s\n' "${key}" "$(env_file_value "${!secret_name}")" >> "${tmp_file}"
   done < <(service_secret_keys "${MANIFEST_FILE}" "${service}")
+
+  while IFS= read -r key; do
+    [[ -n "${key}" ]] || continue
+    secret_name="${prefix}__${key}"
+    if [[ -n "${!secret_name:-}" ]]; then
+      printf '%s=%s\n' "${key}" "$(env_file_value "${!secret_name}")" >> "${tmp_file}"
+    else
+      echo "Optional secret ${secret_name} not set; leaving ${key} out of ${service}/.env" >&2
+    fi
+  done < <(service_secret_optional_keys "${MANIFEST_FILE}" "${service}")
 
   chmod 600 "${tmp_file}"
   mv "${tmp_file}" "${service_dir}/.env"
@@ -198,6 +254,17 @@ render_service() {
   count="$((config_count + secret_count))"
   echo "Rendered ${service}/.env for ${HOST} with ${count} values"
 }
+
+SKIPPED_FILE="${DEPLOY_BASE_DIR}/.render-env-skipped"
+if [[ "${DRY_RUN}" != "true" ]]; then
+  mkdir -p "${DEPLOY_BASE_DIR}"
+  if [[ "${ALL}" == "true" ]]; then
+    : > "${SKIPPED_FILE}"
+  elif [[ -f "${SKIPPED_FILE}" ]]; then
+    grep -vxF "${SERVICE}" "${SKIPPED_FILE}" > "${SKIPPED_FILE}.tmp" || true
+    mv "${SKIPPED_FILE}.tmp" "${SKIPPED_FILE}"
+  fi
+fi
 
 if [[ "${ALL}" == "true" ]]; then
   while IFS= read -r service; do

@@ -402,6 +402,23 @@ changed_services() {
   done < <(service_entries)
 }
 
+caddy_config_changed() {
+  local path current candidate rc
+  enabled_service_names | grep -qx caddy || return 1
+  path="$(service_entries | awk -F'|' '$1 == "caddy" { print $2 }')"
+  [[ -n "${path}" ]] || return 1
+  current="${DEPLOY_BASE_DIR}/${path}/Caddyfile"
+  candidate="$(mktemp)"
+  if ! "${DEPLOY_BASE_DIR}/scripts/generate-caddy-config" \
+    --base-dir "${DEPLOY_BASE_DIR}" --host "${HOST}" --output "${candidate}" >/dev/null 2>&1; then
+    rm -f "${candidate}"
+    return 0
+  fi
+  if [[ -f "${current}" ]] && cmp -s "${candidate}" "${current}"; then rc=1; else rc=0; fi
+  rm -f "${candidate}"
+  return "${rc}"
+}
+
 prepare_service() {
   local service="$1"
   local service_dir="$2"
@@ -536,6 +553,11 @@ deploy_service() {
     exit 2
   fi
 
+  if [[ -f "${DEPLOY_BASE_DIR}/.render-env-skipped" ]] && grep -qxF "${service}" "${DEPLOY_BASE_DIR}/.render-env-skipped"; then
+    echo "Refusing to deploy ${service} on ${HOST}: render-service-env skipped its .env because secrets are missing or empty. Set them with scripts/set-service-secrets, then redeploy." >&2
+    exit 2
+  fi
+
   run_config_validation "${service}"
   echo "Deploying ${service} on ${HOST} from ${service_dir}"
   prepare_service "${service}" "${service_dir}"
@@ -551,19 +573,51 @@ deploy_service() {
       pull_services="$(joe_owned_compose_services "${service_dir}/docker-compose.yml")"
       if [[ -n "${pull_services}" ]]; then
         echo "Pulling Joe-owned runtime images for ${service}: ${pull_services//$'\n'/ }"
-        if ! compose pull ${pull_services}; then
-          echo "Image pull failed for Joe-owned images in ${service}; continuing with cached image if available." >&2
+        pull_log="$(mktemp)"
+        if ! compose pull ${pull_services} 2>&1 | tee "${pull_log}"; then
+          if grep -qiE 'denied|unauthorized|authentication required|not found|manifest unknown' "${pull_log}"; then
+            rm -f "${pull_log}"
+            # An auth or missing-image error means the deploy would silently
+            # keep running a stale cached image. Fail loudly instead.
+            echo "Image pull for ${service} was denied or the image does not exist; refusing to deploy a stale cached image. Check GHCR package access for this repo (GHCR_READ_TOKEN)." >&2
+            exit 2
+          fi
+          echo "Image pull failed for Joe-owned images in ${service} (transient error); continuing with cached image if available." >&2
         fi
+        rm -f "${pull_log}"
       else
         echo "Skipping explicit image pull for ${service}; no ghcr.io/feocco/* runtime images declared."
       fi
     fi
+    up_args=(up -d --remove-orphans)
     if [[ "${FORCE_RECREATE}" == "true" ]]; then
-      compose up -d --force-recreate --remove-orphans
-    else
-      compose up -d --remove-orphans
+      up_args=(up -d --force-recreate --remove-orphans)
+    fi
+    if ! compose "${up_args[@]}"; then
+      echo "compose up failed for ${service}; last 50 log lines per container:" >&2
+      compose ps -a >&2 || true
+      compose logs --no-color --tail 50 >&2 || true
+      exit 1
     fi
     docker ps --filter "name=${service}"
+    if [[ "${service}" == "caddy" ]]; then
+      # The Caddyfile is a bind mount, so a config-only change does not
+      # recreate the container. Reload it explicitly (a no-op when unchanged).
+      # Retry briefly: right after a fresh start the admin API may not be up.
+      reloaded=false
+      for _attempt in 1 2 3 4 5 6 7 8 9 10; do
+        if docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
+          reloaded=true
+          break
+        fi
+        sleep 2
+      done
+      if [[ "${reloaded}" != "true" ]]; then
+        echo "Caddy rejected the regenerated Caddyfile; last 50 log lines:" >&2
+        docker logs --tail 50 caddy >&2 || true
+        exit 1
+      fi
+    fi
     if [[ "${service}" == "authentik" ]]; then
       "${DEPLOY_BASE_DIR}/scripts/configure-authentik-settings" --apply
     fi
@@ -612,6 +666,13 @@ case "${MODE}" in
   changed)
     require_deploy_allowed
     targets="$(changed_services | sort -u)"
+    # The Caddyfile is generated from every service's routes, so route changes
+    # in files outside services/caddy never mark caddy as changed. Compare the
+    # regenerated Caddyfile with the live one and redeploy caddy if it differs.
+    if caddy_config_changed && ! grep -qx caddy <<< "${targets}"; then
+      echo "Generated Caddyfile differs from the deployed one; adding caddy."
+      targets="$(printf '%s\ncaddy\n' "${targets}" | sed '/^$/d')"
+    fi
     if [[ -z "${targets}" ]]; then
       echo "No enabled services to deploy on ${HOST}."
       exit 0
