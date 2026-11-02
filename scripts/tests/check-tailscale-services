@@ -83,3 +83,38 @@ entry = route_entries(pathlib.Path(sys.argv[1]), "macmini")[0]
 if entry["tailscale_service"] != "svc:demo":
     raise SystemExit("Catalog route entry omitted route_tailscale_service")
 PY
+
+# Untagged node: named Services are skipped with a warning (Tailscale rejects
+# them permanently), legacy port mappings still apply, and the run succeeds.
+cat >"${fixture}/bin/tailscale" <<EOF2
+#!/usr/bin/env bash
+if [[ "\$1" == "status" ]]; then
+  printf '%s\n' '{"Self":{"HostName":"macmini","Tags":null}}'
+  exit 0
+fi
+if [[ "\$*" == *"--service="* ]]; then
+  echo "service hosts must be tagged nodes" >&2
+  exit 1
+fi
+printf '%s\n' "\$*" >>"${fixture}/tailscale-untagged.log"
+EOF2
+chmod +x "${fixture}/bin/tailscale"
+untagged_dry="$(PATH="${fixture}/bin:$PATH" "${fixture}/repo/scripts/apply-tailscale-serve" --host macmini --base-dir "${fixture}/repo" --dry-run 2>/dev/null)"
+if [[ "${untagged_dry}" != *"Would skip svc:demo: node is not tagged"* ]]; then
+  echo "Dry-run should flag named Services that an untagged node cannot host" >&2
+  echo "${untagged_dry}" >&2
+  exit 1
+fi
+untagged_err="$(PATH="${fixture}/bin:$PATH" "${fixture}/repo/scripts/apply-tailscale-serve" --host macmini --base-dir "${fixture}/repo" 2>&1 >/dev/null)" || {
+  echo "Apply on an untagged node should skip named Services, not fail" >&2
+  exit 1
+}
+if [[ "${untagged_err}" != *"Skipping named Tailscale Service svc:demo"* ]]; then
+  echo "Apply on an untagged node should warn about the skipped Service" >&2
+  exit 1
+fi
+assert_contains "${fixture}/tailscale-untagged.log" 'serve --bg --http=8099 http://127.0.0.1:8099'
+if grep -q -- '--service=' "${fixture}/tailscale-untagged.log"; then
+  echo "Untagged node must not attempt named Services" >&2
+  exit 1
+fi

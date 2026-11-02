@@ -119,6 +119,39 @@ if value.version != 4 or value not in ipaddress.ip_network("100.64.0.0/10"):
 PY
 }
 
+# Tailscale only lets tagged nodes host named Services ("service hosts must be
+# tagged nodes"). On an untagged node that error is permanent, so retrying the
+# deploy can never succeed; skip the Service entries with a warning instead and
+# keep applying the legacy per-port mappings.
+node_tag_state() {
+  if [[ -n "${TAILSCALE_NODE_TAGGED:-}" ]]; then
+    printf '%s\n' "${TAILSCALE_NODE_TAGGED}"
+    return 0
+  fi
+  local status_json
+  status_json="$(tailscale status --json 2>/dev/null || true)"
+  python3 -c '
+import json, sys
+try:
+    tags = (json.loads(sys.stdin.read()).get("Self") or {}).get("Tags")
+except Exception:
+    print("unknown"); raise SystemExit(0)
+print("true" if tags else "false")
+' <<<"${status_json}"
+}
+NODE_TAGGED="$(node_tag_state)"
+UNTAGGED_WARNED="false"
+warn_untagged() {
+  local service="$1"
+  local message="Skipping named Tailscale Service ${service}: this node is not tagged, and Tailscale only allows tagged nodes to host Services. Tag the node in the tailnet ACL to enable it."
+  if [[ -n "${GITHUB_ACTIONS:-}" && "${UNTAGGED_WARNED}" == "false" ]]; then
+    echo "::warning title=Tailscale node is untagged::Named Tailscale Services are skipped until this node is tagged."
+    UNTAGGED_WARNED="true"
+  fi
+  echo "${message}" >&2
+  [[ "${DRY_RUN}" != "true" ]] || echo "Would skip ${service}: node is not tagged"
+}
+
 while IFS='|' read -r kind name enabled port target service tailvip; do
   [[ -n "${name}" ]] || continue
   case "${enabled}" in true|false) ;; *) echo "Invalid enabled value for ${name}: ${enabled}" >&2; exit 2 ;; esac
@@ -143,6 +176,10 @@ while IFS='|' read -r kind name enabled port target service tailvip; do
   [[ "${port}" == "443" ]] || { echo "Named service ${name} must forward tcp_port: 443" >&2; exit 2; }
   [[ "${target}" == tcp://* ]] || { echo "Named service ${name} must use a raw tcp:// target" >&2; exit 2; }
   validate_tailvip "${tailvip}" || { echo "Named service ${name} has invalid TailVIP ${tailvip}" >&2; exit 2; }
+  if [[ "${NODE_TAGGED}" == "false" ]]; then
+    warn_untagged "${service}"
+    continue
+  fi
   if [[ "${enabled}" == "true" ]]; then
     if [[ "${DRY_RUN}" == "true" ]]; then
       echo "Would advertise ${service} at ${tailvip}:443 -> ${target} (raw TCP)"

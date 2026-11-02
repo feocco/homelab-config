@@ -269,8 +269,56 @@ def current_records(api_base: str, site: str) -> list[dict[str, str]]:
     fixture = os.environ.get("UNIFI_DNS_RECORDS_FIXTURE")
     if fixture:
         return normalize_records(json.loads(pathlib.Path(fixture).read_text()))
-    payload = request_json("GET", f"{api_base}/sites/{site}/dns/policies")
-    return normalize_records(payload.get("data", payload))
+    pages_fixture = os.environ.get("UNIFI_DNS_PAGES_FIXTURE")
+    if pages_fixture:
+        return normalize_records(fetch_all_pages(fixture_page_server(pathlib.Path(pages_fixture)), "fixture://dns/policies"))
+    return normalize_records(fetch_all_pages(lambda url: request_json("GET", url), f"{api_base}/sites/{site}/dns/policies"))
+
+
+PAGE_LIMIT = 200
+FIXTURE_SERVER_MAX_LIMIT = 25
+
+
+def fixture_page_server(path: pathlib.Path) -> Any:
+    """Serve a raw record list like the Integration API: offset/limit, capped page size."""
+    everything = json.loads(path.read_text())
+
+    def get(url: str) -> dict[str, Any]:
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+        offset = int(query.get("offset", ["0"])[0])
+        limit = min(int(query.get("limit", ["25"])[0]), FIXTURE_SERVER_MAX_LIMIT)
+        page = everything[offset : offset + limit]
+        return {"offset": offset, "limit": limit, "count": len(page), "totalCount": len(everything), "data": page}
+
+    return get
+
+
+def fetch_all_pages(get: Any, url: str, limit: int = PAGE_LIMIT) -> list[Any]:
+    """Read every page of a UniFi Integration API list.
+
+    The Integration API pages list endpoints with offset/limit and defaults to
+    25 items, so a single unpaged GET silently drops newer records and makes
+    --check report false drift (and --apply POST duplicates).
+    """
+    items: list[Any] = []
+    offset = 0
+    separator = "&" if "?" in url else "?"
+    while True:
+        payload = get(f"{url}{separator}offset={offset}&limit={limit}")
+        if not isinstance(payload, dict):
+            return items + list(payload or [])
+        page = payload.get("data")
+        if page is None:
+            page = payload.get("records") or []
+        page = list(page or [])
+        items.extend(page)
+        total = payload.get("totalCount")
+        if not page or (isinstance(total, int) and len(items) >= total) or (total is None and len(page) < limit):
+            break
+        offset += len(page)
+    total = payload.get("totalCount") if isinstance(payload, dict) else None
+    print(f"Read {len(items)} UniFi DNS policies (API totalCount={total}).", file=sys.stderr)
+    return items
 
 
 def upsert_record(api_base: str, site: str, record: dict[str, str], existing: dict[str, str] | None) -> None:
@@ -320,12 +368,12 @@ def main(argv: list[str] | None = None) -> int:
         api_base = base_url()
         site = site_id(api_base)
     existing = current_records(api_base, site)
-    by_name = {row["name"]: row for row in existing}
+    by_name = {row["name"].lower(): row for row in existing}
     missing: list[str] = []
     for record in records:
-        found = by_name.get(record["name"])
+        found = by_name.get(record["name"].lower())
         if args.check:
-            if not found or found.get("type") != record["type"] or found.get("value") != record["value"]:
+            if not found or found.get("type") != record["type"] or found.get("value", "").lower().rstrip(".") != record["value"].lower().rstrip("."):
                 missing.append(f"{record['type']} {record['name']} -> {record['value']}")
             continue
         upsert_record(api_base, site, record, found)

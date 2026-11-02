@@ -17,5 +17,6 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "${REPO_DIR}/scripts/tests/check-redeploy-image"
 "${REPO_DIR}/scripts/tests/check-deploy-guards"
 "${REPO_DIR}/scripts/tests/check-workflow-policy"
+"${REPO_DIR}/scripts/tests/check-deploy-service-choices"
 
 echo "Deploy tooling checks passed."
