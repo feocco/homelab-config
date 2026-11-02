@@ -1,11 +1,10 @@
-# PROPOSED, NOT APPLIED. This directory is not mounted into Authentik.
-# Applying it is an Authentik config change and needs Joe's approval:
-# move it to ../blueprints/, confirm the owner group membership, then deploy authentik.
-#
 # Creates a forward-auth (single application) proxy provider for
 # waiting.home.feocco.com, restricts it to the homelab-owners group, and adds it
 # to the embedded outpost. Note: the outpost entry REPLACES the embedded
 # outpost's provider list, so every forward-auth provider must be listed here.
+# (Empty before this blueprint as of 2026-11-01.)
+# The group's users list is set only on this new group; it does not touch
+# the user's other group memberships.
 version: 1
 metadata:
   name: Homelab owner-only forward auth
@@ -16,6 +15,8 @@ entries:
       name: homelab-owners
     attrs:
       is_superuser: false
+      users:
+        - !Find [authentik_core.user, [email, joefeocco@gmail.com]]
   - id: waiting-provider
     model: authentik_providers_proxy.proxyprovider
     identifiers:

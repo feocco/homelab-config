@@ -35,7 +35,7 @@ ALLOWLIST = {
         "instacart-history-service", "mealie-planner", "plant-monitor", "streaming-sessions",
     },
 }
-BYPASS_PATH = re.compile(r"^/(v\d+/\*|health|docs|openapi\.json|metrics)$")
+BYPASS_PATH = re.compile(r"^/(v\d+/\*|health)$")
 
 errors: list[str] = []
 for ops in sorted(REPO.glob("services/*/ops.yaml")):

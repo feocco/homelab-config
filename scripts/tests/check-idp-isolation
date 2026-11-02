@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""ADR 0002 isolation guard for Authentik forward-auth services.
+
+A forward-auth app trusts X-Authentik-* headers, so the only path to it must be
+Caddy. For every service listed in ADR 0002 (which must equal the set of
+services with route_auth: authentik_forward_auth) the Compose file must:
+  - publish ports only on 127.0.0.1 (literal, no variable bind address),
+  - not use network_mode (host or otherwise),
+  - define exactly one service and no `networks:`, so the container sits alone
+    on its own project default network.
+"""
+import pathlib
+import re
+import sys
+
+import yaml
+
+REPO = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parents[2])
+ADR = REPO / "docs/adr/0002-never-implement-custom-auth.md"
+errors: list[str] = []
+
+section = re.search(r"^## Services using forward auth\n(.*?)(?=^## |\Z)", ADR.read_text(), re.M | re.S)
+listed = set(re.findall(r"^- `([a-z0-9-]+)`", section.group(1), re.M)) if section else set()
+if not section:
+    errors.append("ADR 0002 has no '## Services using forward auth' section")
+declared = {
+    ops.parent.name
+    for ops in REPO.glob("services/*/ops.yaml")
+    if re.search(r"^route_auth:\s*authentik_forward_auth\s*$", ops.read_text(), re.M)
+}
+for name in sorted(declared - listed):
+    errors.append(f"{name}: uses authentik_forward_auth but is not listed in ADR 0002")
+for name in sorted(listed - declared):
+    errors.append(f"{name}: listed in ADR 0002 but its route is not authentik_forward_auth")
+
+for name in sorted(listed | declared):
+    compose_path = REPO / "services" / name / "docker-compose.yml"
+    if not compose_path.exists():
+        errors.append(f"{name}: no docker-compose.yml")
+        continue
+    compose = yaml.safe_load(compose_path.read_text()) or {}
+    services = compose.get("services") or {}
+    if len(services) != 1:
+        errors.append(f"{name}: compose must define exactly one service (found {len(services)})")
+    if compose.get("networks"):
+        errors.append(f"{name}: compose must not define or join networks")
+    for svc_name, svc in services.items():
+        if "network_mode" in svc:
+            errors.append(f"{name}/{svc_name}: network_mode is not allowed")
+        if svc.get("networks"):
+            errors.append(f"{name}/{svc_name}: must not join networks")
+        for port in svc.get("ports") or []:
+            text = port if isinstance(port, str) else f"{port.get('host_ip', '')}:"
+            if not str(text).startswith("127.0.0.1:"):
+                errors.append(f"{name}/{svc_name}: port '{port}' must bind literally to 127.0.0.1")
+        if svc.get("expose"):
+            errors.append(f"{name}/{svc_name}: expose is not allowed")
+
+# Forged identity headers: Caddy must strip every client X-Authentik-* header
+# before any handler runs, on every forward-auth host.
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+import homelab_catalog  # noqa: E402
+
+caddyfile = homelab_catalog.caddy_config(REPO)
+for name in sorted(listed & declared):
+    host = re.search(r"^route_hostname:\s*(\S+)", (REPO / "services" / name / "ops.yaml").read_text(), re.M).group(1)
+    block = re.search(rf"^{re.escape(host)} {{\n(.*?)^}}", caddyfile, re.M | re.S)
+    if not block:
+        errors.append(f"{name}: no Caddy site block for {host}")
+        continue
+    body = block.group(1)
+    first_handle = body.find("\thandle")
+    for header in homelab_catalog.AUTHENTIK_IDENTITY_HEADERS:
+        strip = body.find(f"\trequest_header -{header}\n")
+        if strip < 0 or (first_handle >= 0 and strip > first_handle):
+            errors.append(f"{name}: Caddy does not strip client {header} before handlers")
+    if "forward_auth" not in body:
+        errors.append(f"{name}: Caddy block has no forward_auth")
+
+if errors:
+    print("\n".join(errors), file=sys.stderr)
+    sys.exit(1)
+print(f"idp isolation: ok ({', '.join(sorted(listed))})")

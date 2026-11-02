@@ -33,3 +33,6 @@ jobs:
 
       - name: Enforce route auth policy (every web UI reuses the homelab IdP)
         run: scripts/tests/check-route-auth
+
+      - name: Enforce ADR 0002 isolation for forward-auth services
+        run: scripts/tests/check-idp-isolation
