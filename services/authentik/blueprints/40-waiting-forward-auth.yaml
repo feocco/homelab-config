@@ -45,5 +45,13 @@ entries:
     identifiers:
       managed: goauthentik.io/outposts/embedded
     attrs:
+      # Without this the outpost builds sign-in redirects from the internal
+      # request host (http://localhost/...), which browsers cannot follow.
+      config:
+        authentik_host: https://auth.home.feocco.com
+        authentik_host_browser: https://auth.home.feocco.com
+        log_level: info
+        refresh_interval: minutes=5
+        object_naming_template: ak-outpost-%(name)s
       providers:
         - !KeyOf waiting-provider
