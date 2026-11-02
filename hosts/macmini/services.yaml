@@ -55,6 +55,10 @@ services:
     path: services/bedtime
     enabled: true
 
+  waiting:
+    path: services/waiting
+    enabled: true
+
   homebox:
     path: services/homebox
     enabled: true
