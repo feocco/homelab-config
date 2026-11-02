@@ -1,0 +1,48 @@
+# PROPOSED, NOT APPLIED. This directory is not mounted into Authentik.
+# Applying it is an Authentik config change and needs Joe's approval:
+# move it to ../blueprints/, confirm the owner group membership, then deploy authentik.
+#
+# Creates a forward-auth (single application) proxy provider for
+# waiting.home.feocco.com, restricts it to the homelab-owners group, and adds it
+# to the embedded outpost. Note: the outpost entry REPLACES the embedded
+# outpost's provider list, so every forward-auth provider must be listed here.
+version: 1
+metadata:
+  name: Homelab owner-only forward auth
+entries:
+  - id: homelab-owners
+    model: authentik_core.group
+    identifiers:
+      name: homelab-owners
+    attrs:
+      is_superuser: false
+  - id: waiting-provider
+    model: authentik_providers_proxy.proxyprovider
+    identifiers:
+      name: waiting-forward-auth
+    attrs:
+      mode: forward_single
+      external_host: https://waiting.home.feocco.com
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      access_token_validity: hours=24
+  - id: waiting-app
+    model: authentik_core.application
+    identifiers:
+      slug: waiting
+    attrs:
+      name: Waiting on me
+      provider: !KeyOf waiting-provider
+      meta_launch_url: https://waiting.home.feocco.com
+      policy_engine_mode: any
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf waiting-app
+      group: !KeyOf homelab-owners
+      order: 0
+  - model: authentik_outposts.outpost
+    identifiers:
+      managed: goauthentik.io/outposts/embedded
+    attrs:
+      providers:
+        - !KeyOf waiting-provider

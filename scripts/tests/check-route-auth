@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Route auth policy: never build custom auth.
+
+If a service needs auth it reuses the homelab IdP (Authentik). Services with
+nothing sensitive may stay open on the tailnet, and shared-functions calls use
+their existing bearer tokens. This check never forces auth onto a service; it
+only requires every route to declare which case it is:
+
+  authentik_forward_auth  Caddy gates the route with the Authentik embedded
+                          outpost. route_auth_bypass_paths may list only
+                          bearer-token API and health paths.
+  authentik_oidc          The app is an Authentik OIDC client.
+  idp                     The route is Authentik.
+  tailnet_open            Open on the tailnet (no IdP); must be in ALLOWLIST.
+  api_token               Machine API with existing tokens; must be in ALLOWLIST.
+
+Redirect-only routes (route_redirect_to) are exempt.
+"""
+import pathlib
+import re
+import sys
+
+REPO = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parents[2])
+ALLOWED = {"authentik_forward_auth", "authentik_oidc", "idp", "tailnet_open", "api_token"}
+# Explicit, reviewable allowlist of routes that are not behind the IdP.
+# Seeded with the open routes as of 2026-11-01. Adding a route here is a
+# deliberate "nothing sensitive / token API" decision made in code review.
+ALLOWLIST = {
+    "tailnet_open": {
+        "hello-nas", "homebox", "homelab-docs", "homelab-monitor", "homepage",
+        "honeymoon-planner", "laundry-monitor", "mealie",
+    },
+    "api_token": {
+        "hass-janitor", "homelab-functions", "homelab-log-watcher", "homelab-sre-agent",
+        "instacart-history-service", "mealie-planner", "plant-monitor", "streaming-sessions",
+    },
+}
+BYPASS_PATH = re.compile(r"^/(v\d+/\*|health|docs|openapi\.json|metrics)$")
+
+errors: list[str] = []
+for ops in sorted(REPO.glob("services/*/ops.yaml")):
+    text = ops.read_text()
+    service = ops.parent.name
+
+    def scalar(key: str) -> str:
+        m = re.search(rf"^{key}:\s*(.+?)\s*$", text, re.M)
+        return m.group(1).strip("\"'") if m else ""
+
+    if not scalar("route_hostname") or scalar("route_redirect_to"):
+        continue
+    auth = scalar("route_auth")
+    if not auth:
+        errors.append(f"{service}: route has no route_auth; declare authentik_forward_auth/authentik_oidc, or tailnet_open/api_token plus an ALLOWLIST entry")
+        continue
+    if auth not in ALLOWED:
+        errors.append(f"{service}: route_auth '{auth}' is not one of {sorted(ALLOWED)}")
+    if auth in ALLOWLIST and service not in ALLOWLIST[auth]:
+        errors.append(f"{service}: route_auth '{auth}' must be listed in ALLOWLIST['{auth}'] in scripts/tests/check-route-auth")
+    block = re.search(r"^route_auth_bypass_paths:\s*\n((?:  - .*\n?)+)", text, re.M)
+    if block:
+        if auth != "authentik_forward_auth":
+            errors.append(f"{service}: route_auth_bypass_paths only applies to authentik_forward_auth")
+        for line in block.group(1).splitlines():
+            path = line[4:].strip().strip("\"'")
+            if not BYPASS_PATH.match(path):
+                errors.append(f"{service}: bypass path '{path}' is not an API/health path; browser pages must stay behind the IdP")
+
+
+if errors:
+    print("\n".join(errors), file=sys.stderr)
+    sys.exit(1)
+print("route auth policy: ok")

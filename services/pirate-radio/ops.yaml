@@ -21,6 +21,7 @@ tailnet: false
 monitoring: true
 sre: true
 route_hostname: reader.home.feocco.com
+route_auth: authentik_oidc
 route_target_port: 8103
 route_https: true
 route_dns: unifi

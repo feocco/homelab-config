@@ -22,6 +22,7 @@ tailnet: true
 monitoring: false
 sre: false
 route_hostname: grafana.home.feocco.com
+route_auth: tailnet_open
 route_target_port: 3000
 route_https: true
 route_dns: unifi

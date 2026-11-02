@@ -20,6 +20,7 @@ monitoring_hosts:
   - macmini
 sre: true
 route_hostname: homelab-log-watcher.home.feocco.com
+route_auth: api_token
 route_target_port: 8093
 route_https: true
 route_dns: unifi
