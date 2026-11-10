@@ -83,6 +83,10 @@ services:
     path: services/laundry-monitor
     enabled: true
 
+  home-ops:
+    path: services/home-ops
+    enabled: true
+
   pirate-radio:
     path: services/pirate-radio
     enabled: true

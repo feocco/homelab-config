@@ -30,6 +30,7 @@ on:
           - hass-janitor
           - hello-nas
           - homarr
+          - home-ops
           - homebox
           - homepage
           - homelab-docs
