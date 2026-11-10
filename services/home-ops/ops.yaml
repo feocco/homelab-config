@@ -1,0 +1,24 @@
+service: home-ops
+kind: app
+host: macmini
+source_repo: feocco/home-ops
+image: ghcr.io/feocco/home-ops:f5c9570ed24ab82d73a1c037e1b768ec122903e7
+public_image: false
+container: home-ops
+http_port: 8107
+port_env: HOME_OPS_PORT
+health_path: /health
+docs_path: /docs
+openapi_path: /openapi.json
+api_framework: fastapi
+tailnet: false
+monitoring: false
+sre: false
+route_hostname: home-ops.home.feocco.com
+route_auth: tailnet_open
+route_target_port: 8107
+route_https: true
+route_dns: unifi
+dashboard_name: Home Ops
+dashboard_group: Runtime Services
+dashboard_description: Household maintenance inbox (MOCK Home Assistant until a read token exists)

@@ -27,7 +27,7 @@ ALLOWED = {"authentik_forward_auth", "authentik_oidc", "idp", "tailnet_open", "a
 # deliberate "nothing sensitive / token API" decision made in code review.
 ALLOWLIST = {
     "tailnet_open": {
-        "hello-nas", "homebox", "homelab-docs", "homelab-monitor", "homepage",
+        "hello-nas", "home-ops", "homebox", "homelab-docs", "homelab-monitor", "homepage",
         "honeymoon-planner", "laundry-monitor", "mealie",
     },
     "api_token": {
