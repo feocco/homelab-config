@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+source "${REPO_DIR}/scripts/tests/lib-docs-fixture"
 
 SCOPE="all"
 while [[ $# -gt 0 ]]; do
@@ -12,7 +13,7 @@ while [[ $# -gt 0 ]]; do
     --all) SCOPE="all" ;;
     -h|--help)
       echo "Usage: check-docs-site [--offline|--live|--all]"
-      echo "  --offline  MkDocs layout and checked-in docs. No service HTTP."
+      echo "  --offline  MkDocs layout and a loopback docs index. No tailnet HTTP."
       echo "  --live     generated index, including https://hello-nas.home.feocco.com/docs"
       echo "  --all      both (default)"
       exit 0
@@ -84,6 +85,51 @@ assert_contains "${REPO_DIR}/.gitignore" "docs/generated/*"
 assert_contains "${REPO_DIR}/.gitignore" "!docs/generated/.gitkeep"
 assert_contains "${REPO_DIR}/services/homelab-docs/ops.yaml" "dashboard_name: Homelab Docs"
 assert_contains "${REPO_DIR}/services/homelab-docs/ops.yaml" "route_hostname: docs.home.feocco.com"
+
+loop_tmp="$(mktemp -d)"
+cleanup_loopback_docs() {
+  stop_local_docs_fixture
+  rm -rf "${loop_tmp}"
+}
+trap cleanup_loopback_docs EXIT
+docs_fixture="${loop_tmp}/repo"
+start_local_docs_fixture "${REPO_DIR}" "${loop_tmp}" "${docs_fixture}"
+"${REPO_DIR}/scripts/generate-docs-service-index" \
+  --base-dir "${docs_fixture}" \
+  --output "${loop_tmp}/service-index.md"
+assert_contains "${loop_tmp}/service-index.md" "# Services"
+assert_contains "${loop_tmp}/service-index.md" "Generated service documentation portal"
+assert_contains "${loop_tmp}/service-index.md" "Docs status"
+assert_contains "${loop_tmp}/service-index.md" "Plant Monitor"
+assert_contains "${loop_tmp}/service-index.md" "macmini"
+assert_contains "${loop_tmp}/service-index.md" "127.0.0.1:${DOCS_FIXTURE_SERVER_PORT}"
+assert_contains "${loop_tmp}/service-index.md" "Live docs available"
+assert_contains "${loop_tmp}/service-index.md" "Not migrated"
+assert_contains "${loop_tmp}/service-index.md" "Pirate Radio"
+test -f "${loop_tmp}/services/hello-nas.md"
+test -f "${loop_tmp}/services/homelab-functions.md"
+assert_contains "${loop_tmp}/services/hello-nas.md" "# Hello NAS"
+assert_contains "${loop_tmp}/services/hello-nas.md" "Live docs available"
+assert_contains "${loop_tmp}/services/hello-nas.md" "<iframe src=\"${DOCS_FIXTURE_BASE_URL}/docs\""
+assert_contains "${loop_tmp}/services/homelab-functions.md" "# homelab-functions"
+assert_contains "${loop_tmp}/services/homelab-functions.md" "Live docs available"
+assert_contains "${loop_tmp}/services/homelab-functions.md" "<iframe src=\"${DOCS_FIXTURE_BASE_URL}/docs\""
+assert_contains "${loop_tmp}/services-nav.yaml" "      - Services:"
+assert_contains "${loop_tmp}/services-nav.yaml" "          - Overview: services/index.md"
+assert_contains "${loop_tmp}/services-nav.yaml" "          - Hello NAS: services/hello-nas/index.md"
+if grep -q "## By Domain\\|## By Host And Status\\|### Migrated" "${loop_tmp}/service-index.md"; then
+  echo "Service overview should not use the old domain/host/status-heavy layout." >&2
+  exit 1
+fi
+if git -C "${REPO_DIR}" ls-files --error-unmatch docs/generated/service-index.md >/dev/null 2>&1; then
+  echo "Generated docs service index must not be tracked." >&2
+  exit 1
+fi
+if python3 -m mkdocs --version >/dev/null 2>&1; then
+  "${docs_fixture}/scripts/build-docs-site" --site-dir "${loop_tmp}/site"
+fi
+cleanup_loopback_docs
+trap - EXIT
 fi
 
 if [[ "${SCOPE}" != "offline" ]]; then

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# One JSON object per line on stderr:
+# {"event","slug","stage","outcome","ms"}
+# ms is elapsed milliseconds for that stage. Callers pass the elapsed value.
+
+deploy_event_ms() {
+  python3 -c 'import time; print(int(time.time() * 1000))'
+}
+
+deploy_event_elapsed() {
+  python3 -c 'import sys, time; print(max(0, int(time.time() * 1000) - int(sys.argv[1])))' "$1"
+}
+
+log_deploy_event() {
+  python3 -c 'import json, sys
+event, slug, stage, outcome, ms = sys.argv[1:]
+if not all((event, slug, stage, outcome)):
+    raise SystemExit("deploy event requires event, slug, stage, and outcome")
+payload = {
+    "event": event,
+    "slug": slug,
+    "stage": stage,
+    "outcome": outcome,
+    "ms": int(ms),
+}
+if payload["ms"] < 0:
+    raise SystemExit("ms must be >= 0")
+json.dump(payload, sys.stderr, separators=(",", ":"))
+sys.stderr.write("\n")' "$1" "$2" "$3" "$4" "$5"
+}

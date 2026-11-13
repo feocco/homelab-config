@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""Check that every service directory appears in the manual deploy choices."""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+
+
+REPO = Path(__file__).resolve().parents[4]
+REPOSITORY_CHECK = REPO / "scripts" / "tests" / "check-deploy-service-choices"
+
+
+def main() -> int:
+    if REPOSITORY_CHECK.is_file():
+        return subprocess.run([str(REPOSITORY_CHECK)], cwd=REPO, check=False).returncode
+
+    workflow = yaml.safe_load((REPO / ".github" / "workflows" / "deploy.yml").read_text())
+    triggers = workflow.get("on", workflow.get(True))
+    choices = set(triggers["workflow_dispatch"]["inputs"]["service"]["options"])
+    services = sorted(
+        path.name
+        for path in (REPO / "services").iterdir()
+        if path.is_dir() and not path.name.startswith(".")
+    )
+    missing = [service for service in services if service not in choices]
+    if missing:
+        print(
+            "Deploy workflow service choices are missing: " + ", ".join(missing),
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Deploy service choices cover all {len(services)} services/ directories.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

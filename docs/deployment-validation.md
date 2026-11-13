@@ -348,7 +348,13 @@ keeps the tailnet proofs, including the validator-demo strict live check of
 `https://grafana.home.feocco.com/api/health` and the docs index fetch of
 `https://hello-nas.home.feocco.com/docs`, for the self-hosted macmini workflow.
 The default `--all` runs both. `--json` prints one object with each check's
-status.
+status. Each check also writes one JSON line to stderr:
+`{"event":"check","slug":"<check>","stage":"offline|live","outcome":"ok|fail","ms":<int>}`.
+`scripts/homelab-deploy` writes the same shape with `"event":"deploy"` and the
+service slug. `stage` is the deploy step (`config-validate`, `prepare`,
+`image-pull`, `compose-up`, and, when they run, `caddy-reload`,
+`authentik-settings`, or `provenance`). `outcome` is `ok`, `fail`, `skip`, or
+`dry-run`.
 
 `scripts/generate-service-catalog` and `scripts/generate-homepage-config` build
 dashboard/catalog artifacts from `ops.yaml`, host manifests, Compose,

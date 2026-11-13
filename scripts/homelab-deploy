@@ -16,6 +16,7 @@ SKIP_CONFIG_VALIDATE="false"
 CANARY="false"
 
 source "${SCRIPT_DIR}/lib-service-secrets"
+source "${SCRIPT_DIR}/lib-deploy-event-log"
 
 usage() {
   cat <<'EOF'
@@ -275,19 +276,24 @@ EOF
 
 run_config_validation() {
   local service="$1"
+  local started
+  started="$(deploy_event_ms)"
 
   if [[ "${DRY_RUN}" == "true" ]]; then
+    log_deploy_event deploy "${service}" config-validate skip "$(deploy_event_elapsed "${started}")"
     return 0
   fi
 
   if [[ "${SKIP_CONFIG_VALIDATE}" == "true" ]]; then
     echo "Skipping pre-deploy config validation (--skip-config-validate)." >&2
+    log_deploy_event deploy "${service}" config-validate skip "$(deploy_event_elapsed "${started}")"
     return 0
   fi
 
   local validator="${BASE_DIR}/scripts/validate-service-rollout"
   if [[ ! -x "${validator}" ]] || ! command -v python3 >/dev/null 2>&1; then
     echo "Warning: ${validator} or python3 unavailable; deploying without config proof." >&2
+    log_deploy_event deploy "${service}" config-validate skip "$(deploy_event_elapsed "${started}")"
     return 0
   fi
 
@@ -299,8 +305,10 @@ Config validation failed for ${service} on ${HOST}; refusing to deploy.
 Fix the manifest or runtime wiring, or rerun with --skip-config-validate only
 for an explicit emergency runtime edit.
 EOF
+    log_deploy_event deploy "${service}" config-validate fail "$(deploy_event_elapsed "${started}")"
     exit 3
   fi
+  log_deploy_event deploy "${service}" config-validate ok "$(deploy_event_elapsed "${started}")"
 }
 
 write_deploy_state() {
@@ -435,6 +443,9 @@ caddy_config_changed() {
 prepare_service() {
   local service="$1"
   local service_dir="$2"
+  # deploy_service calls this from if, which disables set -e for the whole
+  # function. A failing generator would otherwise continue into return 0,
+  # and the caller would log prepare ok and keep deploying.
 
   if [[ "${service}" == "caddy" ]]; then
     if [[ "${DRY_RUN}" == "true" ]]; then
@@ -446,7 +457,7 @@ prepare_service() {
     "${DEPLOY_BASE_DIR}/scripts/generate-caddy-config" \
       --base-dir "${DEPLOY_BASE_DIR}" \
       --host "${HOST}" \
-      --output "${service_dir}/Caddyfile"
+      --output "${service_dir}/Caddyfile" || return 1
     return 0
   fi
 
@@ -458,14 +469,14 @@ prepare_service() {
 
     echo "Building Homelab Docs site in ${DEPLOY_BASE_DIR}/.site"
     (
-      cd "${DEPLOY_BASE_DIR}"
+      cd "${DEPLOY_BASE_DIR}" || exit 1
       if ! python3 -m mkdocs --version >/dev/null 2>&1; then
-        python3 -m venv .local/docs-venv
-        .local/docs-venv/bin/python -m pip install -r docs/requirements.txt
+        python3 -m venv .local/docs-venv || exit 1
+        .local/docs-venv/bin/python -m pip install -r docs/requirements.txt || exit 1
       fi
       PATH="${DEPLOY_BASE_DIR}/.local/docs-venv/bin:${PATH}" \
-        "${DEPLOY_BASE_DIR}/scripts/build-docs-site"
-    )
+        "${DEPLOY_BASE_DIR}/scripts/build-docs-site" || exit 1
+    ) || return 1
     return 0
   fi
 
@@ -476,13 +487,13 @@ prepare_service() {
     fi
 
     echo "Generating Homelab Functions catalog config in ${service_dir}/config"
-    mkdir -p "${service_dir}/config"
+    mkdir -p "${service_dir}/config" || return 1
     "${DEPLOY_BASE_DIR}/scripts/generate-service-catalog" \
       --base-dir "${DEPLOY_BASE_DIR}" \
-      --output "${service_dir}/config/service-catalog.json"
+      --output "${service_dir}/config/service-catalog.json" || return 1
     "${DEPLOY_BASE_DIR}/scripts/generate-smoke-signal-config" \
       --base-dir "${DEPLOY_BASE_DIR}" \
-      --output "${service_dir}/config"
+      --output "${service_dir}/config" || return 1
     return 0
   fi
 
@@ -509,7 +520,7 @@ prepare_service() {
   echo "Generating Homepage config in ${service_dir}/config"
   "${DEPLOY_BASE_DIR}/scripts/generate-homepage-config" \
     --base-dir "${DEPLOY_BASE_DIR}" \
-    --output "${service_dir}/config"
+    --output "${service_dir}/config" || return 1
 }
 
 joe_owned_compose_services() {
@@ -573,8 +584,22 @@ deploy_service() {
 
   run_config_validation "${service}"
   echo "Deploying ${service} on ${HOST} from ${service_dir}"
-  prepare_service "${service}" "${service_dir}"
+  local prepare_started prepare_outcome
+  prepare_started="$(deploy_event_ms)"
+  if prepare_service "${service}" "${service_dir}"; then
+    if [[ "${DRY_RUN}" == "true" ]]; then
+      prepare_outcome="dry-run"
+    else
+      prepare_outcome="ok"
+    fi
+    log_deploy_event deploy "${service}" prepare "${prepare_outcome}" "$(deploy_event_elapsed "${prepare_started}")"
+  else
+    log_deploy_event deploy "${service}" prepare fail "$(deploy_event_elapsed "${prepare_started}")"
+    exit 1
+  fi
   if [[ "${DRY_RUN}" == "true" ]]; then
+    log_deploy_event deploy "${service}" image-pull skip 0
+    log_deploy_event deploy "${service}" compose-up skip 0
     return 0
   fi
 
@@ -582,42 +607,53 @@ deploy_service() {
     cd "${service_dir}"
     if [[ "${service}" == "caddy" ]]; then
       echo "Skipping image pull for caddy; deploy workflow builds the local Caddy image before deploy."
+      log_deploy_event deploy "${service}" image-pull skip 0
     else
       pull_services="$(joe_owned_compose_services "${service_dir}/docker-compose.yml")"
       if [[ -n "${pull_services}" ]]; then
         echo "Pulling Joe-owned runtime images for ${service}: ${pull_services//$'\n'/ }"
         pull_log="$(mktemp)"
+        pull_started="$(deploy_event_ms)"
         if ! compose pull ${pull_services} 2>&1 | tee "${pull_log}"; then
           if grep -qiE 'denied|unauthorized|authentication required|not found|manifest unknown' "${pull_log}"; then
             rm -f "${pull_log}"
             # An auth or missing-image error means the deploy would silently
             # keep running a stale cached image. Fail loudly instead.
             echo "Image pull for ${service} was denied or the image does not exist; refusing to deploy a stale cached image. Check GHCR package access for this repo (GHCR_READ_TOKEN)." >&2
+            log_deploy_event deploy "${service}" image-pull fail "$(deploy_event_elapsed "${pull_started}")"
             exit 2
           fi
           echo "Image pull failed for Joe-owned images in ${service} (transient error); continuing with cached image if available." >&2
+          log_deploy_event deploy "${service}" image-pull fail "$(deploy_event_elapsed "${pull_started}")"
+        else
+          log_deploy_event deploy "${service}" image-pull ok "$(deploy_event_elapsed "${pull_started}")"
         fi
         rm -f "${pull_log}"
       else
         echo "Skipping explicit image pull for ${service}; no ghcr.io/feocco/* runtime images declared."
+        log_deploy_event deploy "${service}" image-pull skip 0
       fi
     fi
     up_args=(up -d --remove-orphans)
     if [[ "${FORCE_RECREATE}" == "true" ]]; then
       up_args=(up -d --force-recreate --remove-orphans)
     fi
+    up_started="$(deploy_event_ms)"
     if ! compose "${up_args[@]}"; then
       echo "compose up failed for ${service}; last 50 log lines per container:" >&2
       compose ps -a >&2 || true
       compose logs --no-color --tail 50 >&2 || true
+      log_deploy_event deploy "${service}" compose-up fail "$(deploy_event_elapsed "${up_started}")"
       exit 1
     fi
+    log_deploy_event deploy "${service}" compose-up ok "$(deploy_event_elapsed "${up_started}")"
     docker ps --filter "name=${service}"
     if [[ "${service}" == "caddy" ]]; then
       # The Caddyfile is a bind mount, so a config-only change does not
       # recreate the container. Reload it explicitly (a no-op when unchanged).
       # Retry briefly: right after a fresh start the admin API may not be up.
       reloaded=false
+      reload_started="$(deploy_event_ms)"
       for _attempt in 1 2 3 4 5 6 7 8 9 10; do
         if docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
           reloaded=true
@@ -628,14 +664,23 @@ deploy_service() {
       if [[ "${reloaded}" != "true" ]]; then
         echo "Caddy rejected the regenerated Caddyfile; last 50 log lines:" >&2
         docker logs --tail 50 caddy >&2 || true
+        log_deploy_event deploy "${service}" caddy-reload fail "$(deploy_event_elapsed "${reload_started}")"
         exit 1
       fi
+      log_deploy_event deploy "${service}" caddy-reload ok "$(deploy_event_elapsed "${reload_started}")"
     fi
     if [[ "${service}" == "authentik" ]]; then
-      "${DEPLOY_BASE_DIR}/scripts/configure-authentik-settings" --apply
+      settings_started="$(deploy_event_ms)"
+      if ! "${DEPLOY_BASE_DIR}/scripts/configure-authentik-settings" --apply; then
+        log_deploy_event deploy "${service}" authentik-settings fail "$(deploy_event_elapsed "${settings_started}")"
+        exit 1
+      fi
+      log_deploy_event deploy "${service}" authentik-settings ok "$(deploy_event_elapsed "${settings_started}")"
     fi
   )
+  state_started="$(deploy_event_ms)"
   write_deploy_state "${service}"
+  log_deploy_event deploy "${service}" provenance ok "$(deploy_event_elapsed "${state_started}")"
 }
 
 compose() {

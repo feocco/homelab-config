@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+source "${REPO_DIR}/scripts/tests/lib-docs-fixture"
 
 SCOPE="all"
 while [[ $# -gt 0 ]]; do
@@ -12,7 +13,7 @@ while [[ $# -gt 0 ]]; do
     --all) SCOPE="all" ;;
     -h|--help)
       echo "Usage: check-service-docs-migration [--offline|--live|--all]"
-      echo "  --offline  manifest and app-stage contract checks"
+      echo "  --offline  manifest, app-stage contract, and loopback docs-site checks"
       echo "  --live     docs-site stage, which fetches live service docs"
       echo "  --all      both (default)"
       exit 0
@@ -46,7 +47,11 @@ PY
 test -x "${REPO_DIR}/scripts/check-service-docs-migration"
 
 tmpdir="$(mktemp -d)"
-trap 'rm -rf "${tmpdir}"' EXIT
+cleanup_migration() {
+  stop_local_docs_fixture
+  rm -rf "${tmpdir}"
+}
+trap cleanup_migration EXIT
 
 if [[ "${SCOPE}" != "live" ]]; then
 "${REPO_DIR}/scripts/check-service-docs-migration" \
@@ -57,6 +62,35 @@ if [[ "${SCOPE}" != "live" ]]; then
 assert_json_field "${tmpdir}/hello-manifest.json" "success" "true"
 assert_json_value "${tmpdir}/hello-manifest.json" "payload['stages'][0]['name']" "manifest"
 assert_json_value "${tmpdir}/hello-manifest.json" "payload['stages'][0]['success']" "true"
+
+docs_fixture="${tmpdir}/docs-repo"
+start_local_docs_fixture "${REPO_DIR}" "${tmpdir}" "${docs_fixture}"
+"${REPO_DIR}/scripts/check-service-docs-migration" \
+  --service hello-nas \
+  --host macmini \
+  --stage docs-site \
+  --base-dir "${docs_fixture}" \
+  --format json >"${tmpdir}/hello-docs-loopback.json"
+assert_json_field "${tmpdir}/hello-docs-loopback.json" "success" "true"
+assert_json_value "${tmpdir}/hello-docs-loopback.json" "payload['stages'][0]['docs_status']" "Live docs available"
+"${REPO_DIR}/scripts/check-service-docs-migration" \
+  --service homelab-functions \
+  --host macmini \
+  --stage docs-site \
+  --base-dir "${docs_fixture}" \
+  --format json >"${tmpdir}/functions-docs-loopback.json"
+assert_json_field "${tmpdir}/functions-docs-loopback.json" "success" "true"
+assert_json_value "${tmpdir}/functions-docs-loopback.json" "payload['stages'][0]['docs_status']" "Live docs available"
+assert_fails "${tmpdir}/caddy-docs-loopback.out" \
+  "${REPO_DIR}/scripts/check-service-docs-migration" \
+    --service caddy \
+    --host macmini \
+    --stage docs-site \
+    --base-dir "${docs_fixture}" \
+    --format json
+assert_json_field "${tmpdir}/caddy-docs-loopback.out" "success" "false"
+assert_json_value "${tmpdir}/caddy-docs-loopback.out" "payload['stages'][0]['docs_status']" "Not migrated"
+stop_local_docs_fixture
 fi
 
 if [[ "${SCOPE}" != "offline" ]]; then
