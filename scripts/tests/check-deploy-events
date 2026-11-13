@@ -60,7 +60,14 @@ grep -q 'log_deploy_event deploy ' "${REPO_DIR}/scripts/homelab-deploy"
 dry_out="$(mktemp)"
 dry_err="$(mktemp)"
 list_err="$(mktemp)"
-trap 'rm -f "${dry_out}" "${dry_err}" "${list_err}"' EXIT
+prep_tmp=""
+cleanup_event_check() {
+  rm -f "${dry_out}" "${dry_err}" "${list_err}"
+  if [[ -n "${prep_tmp}" ]]; then
+    rm -rf "${prep_tmp}"
+  fi
+}
+trap cleanup_event_check EXIT
 
 "${REPO_DIR}/scripts/homelab-deploy" --host macmini caddy --dry-run --deploy-base-dir "${REPO_DIR}" >"${dry_out}" 2>"${dry_err}"
 assert_contains "${dry_out}" "Would generate Caddy config"
@@ -104,5 +111,87 @@ if grep -q '"event":"deploy"' "${list_err}"; then
   cat "${list_err}" >&2
   exit 1
 fi
+
+# A failed Caddy prepare must stop the deploy. The fixture is a clean main
+# checkout, so this is not a dry-run and does not skip a deploy guard.
+prep_tmp="$(mktemp -d)"
+prep_repo="${prep_tmp}/repo"
+prep_out="${prep_tmp}/out"
+mkdir -p \
+  "${prep_repo}/scripts" \
+  "${prep_repo}/hosts/nasfeo" \
+  "${prep_repo}/services/caddy"
+cp "${REPO_DIR}/scripts/homelab-deploy" "${prep_repo}/scripts/homelab-deploy"
+cp "${REPO_DIR}/scripts/lib-service-secrets" "${prep_repo}/scripts/lib-service-secrets"
+cp "${REPO_DIR}/scripts/lib-deploy-event-log" "${prep_repo}/scripts/lib-deploy-event-log"
+chmod +x "${prep_repo}/scripts/homelab-deploy"
+cat > "${prep_repo}/hosts/nasfeo/services.yaml" <<EOF
+host:
+  name: nasfeo
+
+services:
+  caddy:
+    path: services/caddy
+    enabled: true
+EOF
+cat > "${prep_repo}/services/caddy/docker-compose.yml" <<'EOF'
+services:
+  caddy:
+    image: caddy:fixture
+EOF
+cat > "${prep_repo}/scripts/generate-caddy-config" <<'EOF'
+#!/usr/bin/env bash
+echo "fixture generate-caddy-config failed" >&2
+exit 1
+EOF
+chmod +x "${prep_repo}/scripts/generate-caddy-config"
+(
+  cd "${prep_repo}"
+  git init >/dev/null 2>&1
+  git checkout -b main >/dev/null 2>&1
+  git config user.email "test@example.invalid"
+  git config user.name "Deploy Tooling Test"
+  git add .
+  git commit -m "initial" >/dev/null
+)
+if HOMELAB_CONFIG_DIR="${prep_repo}" \
+  "${prep_repo}/scripts/homelab-deploy" --host nasfeo caddy --deploy-base-dir "${prep_repo}" \
+  >"${prep_out}" 2>&1; then
+  echo "A failed Caddy prepare must stop the deploy." >&2
+  cat "${prep_out}" >&2
+  exit 1
+fi
+assert_contains "${prep_out}" "fixture generate-caddy-config failed"
+assert_contains "${prep_out}" "Generating Caddy config"
+python3 - "${prep_out}" <<'PY'
+import json
+import pathlib
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text()
+events = []
+for line in text.splitlines():
+    line = line.strip()
+    if not line.startswith("{"):
+        continue
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if payload.get("event") != "deploy":
+        continue
+    events.append((payload.get("slug"), payload.get("stage"), payload.get("outcome")))
+
+if ("caddy", "prepare", "fail") not in events:
+    raise SystemExit(f"prepare fail event missing: {events}")
+continued = [item for item in events if item[1] in {"image-pull", "compose-up", "provenance"}]
+if continued:
+    raise SystemExit(f"deploy continued after prepare fail: {continued}")
+PY
+if [[ -e "${prep_repo}/.homelab-deploy-state/nasfeo/caddy.json" ]]; then
+  echo "A failed prepare must not write deploy provenance." >&2
+  exit 1
+fi
+rm -rf "${prep_tmp}"
 
 echo "deploy event log: ok"

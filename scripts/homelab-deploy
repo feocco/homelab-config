@@ -443,6 +443,9 @@ caddy_config_changed() {
 prepare_service() {
   local service="$1"
   local service_dir="$2"
+  # deploy_service calls this from if, which disables set -e for the whole
+  # function. A failing generator would otherwise continue into return 0,
+  # and the caller would log prepare ok and keep deploying.
 
   if [[ "${service}" == "caddy" ]]; then
     if [[ "${DRY_RUN}" == "true" ]]; then
@@ -454,7 +457,7 @@ prepare_service() {
     "${DEPLOY_BASE_DIR}/scripts/generate-caddy-config" \
       --base-dir "${DEPLOY_BASE_DIR}" \
       --host "${HOST}" \
-      --output "${service_dir}/Caddyfile"
+      --output "${service_dir}/Caddyfile" || return 1
     return 0
   fi
 
@@ -466,14 +469,14 @@ prepare_service() {
 
     echo "Building Homelab Docs site in ${DEPLOY_BASE_DIR}/.site"
     (
-      cd "${DEPLOY_BASE_DIR}"
+      cd "${DEPLOY_BASE_DIR}" || exit 1
       if ! python3 -m mkdocs --version >/dev/null 2>&1; then
-        python3 -m venv .local/docs-venv
-        .local/docs-venv/bin/python -m pip install -r docs/requirements.txt
+        python3 -m venv .local/docs-venv || exit 1
+        .local/docs-venv/bin/python -m pip install -r docs/requirements.txt || exit 1
       fi
       PATH="${DEPLOY_BASE_DIR}/.local/docs-venv/bin:${PATH}" \
-        "${DEPLOY_BASE_DIR}/scripts/build-docs-site"
-    )
+        "${DEPLOY_BASE_DIR}/scripts/build-docs-site" || exit 1
+    ) || return 1
     return 0
   fi
 
@@ -484,13 +487,13 @@ prepare_service() {
     fi
 
     echo "Generating Homelab Functions catalog config in ${service_dir}/config"
-    mkdir -p "${service_dir}/config"
+    mkdir -p "${service_dir}/config" || return 1
     "${DEPLOY_BASE_DIR}/scripts/generate-service-catalog" \
       --base-dir "${DEPLOY_BASE_DIR}" \
-      --output "${service_dir}/config/service-catalog.json"
+      --output "${service_dir}/config/service-catalog.json" || return 1
     "${DEPLOY_BASE_DIR}/scripts/generate-smoke-signal-config" \
       --base-dir "${DEPLOY_BASE_DIR}" \
-      --output "${service_dir}/config"
+      --output "${service_dir}/config" || return 1
     return 0
   fi
 
@@ -517,7 +520,7 @@ prepare_service() {
   echo "Generating Homepage config in ${service_dir}/config"
   "${DEPLOY_BASE_DIR}/scripts/generate-homepage-config" \
     --base-dir "${DEPLOY_BASE_DIR}" \
-    --output "${service_dir}/config"
+    --output "${service_dir}/config" || return 1
 }
 
 joe_owned_compose_services() {
