@@ -11,14 +11,14 @@ for expected in \
   "authentik_stages_user_logout.userlogoutstage" \
   "invalidation_flow: !KeyOf pirate-radio-invalidation-flow"; do
   grep -Fq "${expected}" "${BLUEPRINT}" || {
-    echo "Missing Authentik logout configuration: ${expected}" >&2
+    echo "Missing Authentik logout configuration: ${expected}. Fix: add it to services/authentik/blueprints/30-pirate-radio.yaml. Do not leave the logout flow as a UI-only change." >&2
     exit 1
   }
 done
 
 grep -Fq '"${DEPLOY_BASE_DIR}/scripts/configure-authentik-settings" --apply' \
   "${REPO_DIR}/scripts/homelab-deploy" || {
-  echo "Authentik deploys must apply the tenant settings contract." >&2
+  echo "Authentik deploys must apply the tenant settings contract. Fix: call scripts/configure-authentik-settings --apply from scripts/homelab-deploy. Do not leave tenant settings as a UI-only change." >&2
   exit 1
 }
 

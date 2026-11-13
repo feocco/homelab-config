@@ -50,20 +50,41 @@ for ops in sorted(REPO.glob("services/*/ops.yaml")):
         continue
     auth = scalar("route_auth")
     if not auth:
-        errors.append(f"{service}: route has no route_auth; declare authentik_forward_auth/authentik_oidc, or tailnet_open/api_token plus an ALLOWLIST entry")
+        errors.append(
+            f"{service}: route has no route_auth. "
+            "Fix: set route_auth to authentik_forward_auth or authentik_oidc. "
+            "Use tailnet_open or api_token only for a nothing-sensitive tailnet "
+            "route or an existing bearer token, and add the service to ALLOWLIST "
+            "in scripts/tests/check-route-auth."
+        )
         continue
     if auth not in ALLOWED:
-        errors.append(f"{service}: route_auth '{auth}' is not one of {sorted(ALLOWED)}")
+        errors.append(
+            f"{service}: route_auth '{auth}' is not allowed. "
+            f"Fix: use one of {sorted(ALLOWED)}. Do not add a custom auth mode."
+        )
     if auth in ALLOWLIST and service not in ALLOWLIST[auth]:
-        errors.append(f"{service}: route_auth '{auth}' must be listed in ALLOWLIST['{auth}'] in scripts/tests/check-route-auth")
+        errors.append(
+            f"{service}: route_auth '{auth}' is not allowlisted. "
+            f"Fix: add '{service}' to ALLOWLIST['{auth}'] in scripts/tests/check-route-auth "
+            "only when the route is intentionally open or token-authenticated."
+        )
     block = re.search(r"^route_auth_bypass_paths:\s*\n((?:  - .*\n?)+)", text, re.M)
     if block:
         if auth != "authentik_forward_auth":
-            errors.append(f"{service}: route_auth_bypass_paths only applies to authentik_forward_auth")
+            errors.append(
+                f"{service}: route_auth_bypass_paths is set. "
+                "Fix: remove it, or set route_auth: authentik_forward_auth. "
+                "Bypass paths apply only to that mode."
+            )
         for line in block.group(1).splitlines():
             path = line[4:].strip().strip("\"'")
             if not BYPASS_PATH.match(path):
-                errors.append(f"{service}: bypass path '{path}' is not an API/health path; browser pages must stay behind the IdP")
+                errors.append(
+                    f"{service}: bypass path '{path}' is not an API or health path. "
+                    "Fix: delete it. Browser pages stay behind Authentik. "
+                    "Allowed shapes are /health and /v<digits>/*."
+                )
 
 
 if errors:
