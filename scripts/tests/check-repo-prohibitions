@@ -41,10 +41,23 @@ AGENTS_NEEDLES = (
 )
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 ALLOWED_EMAIL_SUFFIXES = ("@example.com", "@example.invalid", "@example.org")
-FINGERPRINT_KEYS = (
-    "GITHUB_APP_ID",
-    "GITHUB_APP_INSTALLATION_ID",
-    "SRE_DIAGNOSTIC_S3_BUCKET",
+FINGERPRINT_KEY = re.compile(
+    r"^([A-Z0-9_]*(?:APP_ID|INSTALLATION_ID|S3_BUCKET|HA_NOTIFY_[A-Z0-9_]*SERVICE))=(\S+)\s*$",
+    re.M,
+)
+# Tracked before this check existed. Delete an entry once its value moves to
+# $HOME/homelab-private-config/<host>/<service>.env and the tracked value is replace_me.
+FINGERPRINT_DEBT = frozenset(
+    {
+        ("services/waiting/.env.config", "DASHBOARD_GH_APP_ID"),
+        ("services/waiting/.env.config", "DASHBOARD_GH_APP_INSTALLATION_ID"),
+        ("services/waiting/.env.example", "DASHBOARD_GH_APP_ID"),
+        ("services/waiting/.env.example", "DASHBOARD_GH_APP_INSTALLATION_ID"),
+        ("services/homelab-functions/.env.config", "HA_NOTIFY_JESS_SERVICE"),
+        ("services/homelab-functions/.env.example", "HA_NOTIFY_JESS_SERVICE"),
+        ("services/laundry-monitor/.env.example", "HA_NOTIFY_JOE_SERVICE"),
+        ("services/laundry-monitor/.env.example", "HA_NOTIFY_JESS_SERVICE"),
+    }
 )
 K8S_KIND = re.compile(
     r"(?m)^kind:\s+(Deployment|Pod|StatefulSet|DaemonSet|Ingress|CronJob|Job|ReplicaSet|Namespace)\s*$"
@@ -415,8 +428,10 @@ def dockerignore_errors(repo: pathlib.Path) -> list[str]:
 
 def fingerprint_files(repo: pathlib.Path) -> list[pathlib.Path]:
     files = [repo / "service-secrets.yaml"]
-    files.extend(sorted((repo / "services").glob("*/*.env.config")) if (repo / "services").is_dir() else [])
-    files.extend(sorted((repo / "hosts").glob("*/*.env.config")) if (repo / "hosts").is_dir() else [])
+    for top in ("services", "hosts"):
+        if (repo / top).is_dir():
+            files.extend(sorted((repo / top).glob("*/*.env.config")))
+            files.extend(sorted((repo / top).glob("*/*.env.example")))
     workflow = repo / ".github" / "workflows"
     if workflow.is_dir():
         files.extend(sorted(workflow.glob("*.yml")))
@@ -442,7 +457,7 @@ def fingerprint_errors(repo: pathlib.Path) -> list[str]:
         text = path.read_text(encoding="utf-8", errors="replace")
         for match in EMAIL.finditer(text):
             email = match.group(0)
-            if email.lower().endswith(ALLOWED_EMAIL_SUFFIXES):
+            if email.lower().endswith(ALLOWED_EMAIL_SUFFIXES) or placeholder(email.split("@", 1)[0]):
                 continue
             errors.append(
                 f"{rel} contains personal email {email}. "
@@ -450,14 +465,10 @@ def fingerprint_errors(repo: pathlib.Path) -> list[str]:
                 "$HOME/homelab-private-config/<host>/<service>.env. "
                 "Do not add it as a GitHub Actions secret."
             )
-        for key in FINGERPRINT_KEYS:
-            found = re.search(rf"^{re.escape(key)}=(\S+)\s*$", text, re.M)
-            if not found:
+        for key, value in FINGERPRINT_KEY.findall(text):
+            if placeholder(value) or (rel, key) in FINGERPRINT_DEBT:
                 continue
-            value = found.group(1)
-            if placeholder(value):
-                continue
-            if key == "SRE_DIAGNOSTIC_S3_BUCKET" or value.isdigit():
+            if key.endswith("S3_BUCKET") or value.isdigit() or value.startswith("notify."):
                 errors.append(
                     f"{rel} sets {key} to a real value. "
                     "Fix: set the tracked value to replace_me and put the real value in "
