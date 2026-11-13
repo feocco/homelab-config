@@ -40,7 +40,7 @@ To see that a rule can still fail, break the matching action in a scratch copy o
 
 The rule: a real deploy writes provenance only after strict config validation passed, or the operator passed `--skip-config-validate`.
 
-The script's path: `run_config_validation` sees `scripts/validate-service-rollout` missing or not executable, or `python3` missing. It prints `deploying without config proof`, logs `config-validate` `skip`, and returns 0. Prepare, image pull, and compose up then run, and `write_deploy_state` writes `.homelab-deploy-state/<host>/<service>.json` with `canary` false and `git_dirty` false when the tree was a clean `main`. That JSON does not say validation was skipped.
+The script's path: `run_config_validation` sees `scripts/validate-service-rollout` missing or not executable. It prints `deploying without config proof`, logs `config-validate` `skip`, and returns 0. Prepare, image pull, and compose up then run, and `write_deploy_state` writes `.homelab-deploy-state/<host>/<service>.json` with `canary` false and `git_dirty` false when the tree was a clean `main`. That JSON does not say validation was skipped. A missing `python3` does not take this path. `run_config_validation` calls `deploy_event_ms` first, and that runs `python3`, so `set -e` exits 127 before the warning, the skip log, and provenance. The `command -v python3` test in the skip branch is unreachable.
 
 `/statechart` numbers the shortest path. Replay it against `deploy_service` before calling it a modeling error. This path happens in the script. A step that cannot happen is a modeling error: fix the model, not the invariant.
 

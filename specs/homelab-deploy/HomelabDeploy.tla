@@ -13,7 +13,7 @@
 \* The promise each invariant names is the one in the script's guard text and
 \* in docs/deployment-source-of-truth.md. ConfigProof is the documented rule
 \* that only --skip-config-validate skips strict config validation. The script
-\* also continues when the validator is missing or python3 is missing. That
+\* also continues when the validator is missing or not executable. That
 \* path is in this model. Do not drop it, and do not weaken ConfigProof.
 
 \* ---------------------------------------------------------------------------
@@ -199,7 +199,7 @@ SecretsGate ==
                  recordedDirty, recordedCanary>>
 
 \* run_config_validation. Dry-run logs skip. --skip-config-validate logs skip.
-\* A missing validator or a missing python3 logs skip and returns 0. A failing
+\* A missing or non-executable validator logs skip and returns 0. A failing
 \* strict check exits 3. A passing check continues.
 ConfigGate ==
   /\ pc = "config"

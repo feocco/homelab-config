@@ -75,7 +75,7 @@ export function step(action, from, to) {
   if (src === "Config validation" && dst === "Prepare") {
     if (from.situation.dryRun) return "skip validation [dry run]";
     if (from.situation.skipConfigValidate) return "skip validation [--skip-config-validate]";
-    if (from.situation.validator === "absent") return "validator or python3 is missing";
+    if (from.situation.validator === "absent") return "the validator is missing or not executable";
     return "validation passed";
   }
   if (dst === "Refused: config validation") return "validation failed";
