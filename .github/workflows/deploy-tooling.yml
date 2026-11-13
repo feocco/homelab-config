@@ -1,5 +1,6 @@
 name: Deploy Tooling
 
+# Offline suite only. Live tailnet checks are deploy-tooling-live.yml.
 on:
   pull_request:
   push:
@@ -40,4 +41,4 @@ jobs:
           tailscale version
 
       - name: Run deploy tooling checks
-        run: LC_ALL=C ./scripts/test-deploy-tooling
+        run: LC_ALL=C ./scripts/test-deploy-tooling --offline

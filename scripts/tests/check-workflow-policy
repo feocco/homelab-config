@@ -145,11 +145,25 @@ for passing_fixture in (
     "call-only-workflow-run.yml",
     "guard-with-always.yml",
     "job-elevation.yml",
+    "preflight-main.yml",
 ):
     if f"{passing_fixture}:" in fixture_output:
         raise AssertionError(
             f"{passing_fixture} should not produce a finding:\n{fixture_output}"
         )
+
+preflight_as_deploy = run_validator(
+    FIXTURE_DIR / ".github" / "workflows",
+    EXPECTED_REPOSITORY,
+    ".github/workflows/preflight-main.yml",
+)
+preflight_output = preflight_as_deploy.stdout + preflight_as_deploy.stderr
+if "preflight-main.yml:" in preflight_output:
+    raise AssertionError(
+        "a preflight job on push to main and workflow_dispatch must stay allowed "
+        "when the self-hosted deploy job needs it:\n"
+        f"{preflight_output}"
+    )
 
 repo_result = run_validator(
     REPO_DIR / ".github" / "workflows",
@@ -161,6 +175,57 @@ if repo_result.returncode != 0:
         f"current repository workflows should pass:\n"
         f"{repo_result.stdout}{repo_result.stderr}"
     )
+
+deploy_text = (REPO_DIR / ".github" / "workflows" / "deploy.yml").read_text()
+on_block, separator, jobs_block = deploy_text.partition("\njobs:\n")
+if not separator:
+    raise AssertionError("deploy.yml must contain a jobs block")
+if re.search(r"(?m)^[ \t]*pull_request\s*:", on_block):
+    raise AssertionError(
+        "deploy.yml must stay on push to main and workflow_dispatch so preflight "
+        "cannot reach a self-hosted runner from pull_request"
+    )
+if "\n  preflight:\n" not in jobs_block:
+    raise AssertionError(
+        "deploy.yml must keep a preflight job for push to main and workflow_dispatch"
+    )
+preflight_job = jobs_block.split("\n  preflight:\n", 1)[1].split("\n  deploy-nasfeo:\n", 1)[0]
+if "runs-on: ubuntu-latest" not in preflight_job:
+    raise AssertionError("deploy.yml preflight must run on ubuntu-latest")
+if "github.repository == 'feocco/homelab-config'" not in preflight_job:
+    raise AssertionError(
+        "deploy.yml preflight is inside the deploy workflow and must keep the repository guard"
+    )
+if "test-deploy-tooling --offline" not in preflight_job:
+    raise AssertionError("deploy.yml preflight must run the offline suite")
+if jobs_block.count("needs: preflight") < 2:
+    raise AssertionError("both deploy jobs must need the preflight job")
+
+offline_workflow = (REPO_DIR / ".github" / "workflows" / "deploy-tooling.yml").read_text()
+if "test-deploy-tooling --offline" not in offline_workflow:
+    raise AssertionError(
+        "GitHub-hosted Deploy Tooling must run scripts/test-deploy-tooling --offline"
+    )
+if "self-hosted" in offline_workflow:
+    raise AssertionError("offline Deploy Tooling must stay on GitHub-hosted runners")
+
+live_path = REPO_DIR / ".github" / "workflows" / "deploy-tooling-live.yml"
+if not live_path.is_file():
+    raise AssertionError("live tailnet checks must keep a self-hosted workflow")
+live_text = live_path.read_text()
+live_on, _, _ = live_text.partition("\njobs:\n")
+if re.search(r"(?m)^[ \t]*pull_request\s*:", live_on):
+    raise AssertionError("deploy-tooling-live.yml must not run from pull_request")
+if "workflow_dispatch" not in live_on or "branches: [main]" not in live_on:
+    raise AssertionError(
+        "deploy-tooling-live.yml must run on push to main and workflow_dispatch"
+    )
+if "runs-on: [self-hosted, macmini]" not in live_text:
+    raise AssertionError("live tailnet checks must run on the macmini self-hosted runner")
+if "github.repository == 'feocco/homelab-config'" not in live_text:
+    raise AssertionError("the live tailnet job must keep the repository guard")
+if "test-deploy-tooling --live" not in live_text:
+    raise AssertionError("the live workflow must run scripts/test-deploy-tooling --live")
 
 gate_text = (REPO_DIR / ".github" / "workflows" / "workflow-policy.yml").read_text()
 action_refs = re.findall(r"\buses:\s*\S+@([^\s#]+)", gate_text)

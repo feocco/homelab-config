@@ -114,7 +114,7 @@ services:
    - For friend-private routes, also prove the public record uses the service
      TailVIP, raw TLS reaches the intended Caddy virtual host, and a friend
      identity cannot connect to an unrelated service.
-   - Run `./scripts/test-deploy-tooling`.
+   - Run `LC_ALL=C ./scripts/test-deploy-tooling --offline` for the deterministic suite. `--live` contacts the tailnet and belongs on the self-hosted macmini workflow. The default `--all` runs both.
    - Run `./scripts/homelab-deploy --host nasfeo --list`.
    - Run `./scripts/homelab-deploy --host macmini --list`.
    - Run `./scripts/homelab-deploy --host <host> <service> --dry-run --deploy-base-dir $HOME/code/homelab-config`.

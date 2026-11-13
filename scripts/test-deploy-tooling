@@ -1,22 +1,161 @@
 #!/usr/bin/env bash
+# Deterministic checks (--offline) run on GitHub-hosted runners.
+# Tailnet checks (--live) run on the self-hosted macmini workflow.
+# The default is both, which matches a shell that can reach the tailnet.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${REPO_DIR}"
+export LC_ALL=C
 
-"${REPO_DIR}/scripts/tests/check-service-inventory"
-"${REPO_DIR}/scripts/tests/check-secret-rendering"
-"${REPO_DIR}/scripts/tests/check-service-rollout"
-"${REPO_DIR}/scripts/tests/check-tailscale-services"
-"${REPO_DIR}/scripts/tests/check-authentik-config"
-"${REPO_DIR}/scripts/tests/check-docs-site"
-"${REPO_DIR}/scripts/tests/check-service-docs-migration"
-"${REPO_DIR}/scripts/tests/check-homepage-catalog"
-"${REPO_DIR}/scripts/tests/check-smoke-signal-config"
-"${REPO_DIR}/scripts/tests/check-caddy-routes"
-"${REPO_DIR}/scripts/tests/check-route-convention"
-"${REPO_DIR}/scripts/tests/check-redeploy-image"
-"${REPO_DIR}/scripts/tests/check-deploy-guards"
-"${REPO_DIR}/scripts/tests/check-workflow-policy"
-"${REPO_DIR}/scripts/tests/check-deploy-service-choices"
+SCOPE="all"
+JSON="false"
+scope_chosen=""
 
-echo "Deploy tooling checks passed."
+usage() {
+  cat <<'EOF'
+Usage: test-deploy-tooling [--offline|--live|--all] [--json]
+
+  --offline  Deterministic checks for GitHub-hosted runners.
+  --live     Tailnet checks for the self-hosted macmini runner.
+             Includes the validator-demo strict live proof
+             (https://grafana.home.feocco.com/api/health) and the docs index
+             fetch of https://hello-nas.home.feocco.com/docs.
+  --all      Offline checks, then live checks. Default.
+  --json     Print one JSON object on stdout:
+             {"suite","success","checks":[{"name","scope","status",
+             "duration_seconds","exit_code","detail"?}]}
+             Check logs stay out of that object. Failed checks include the
+             last 40 log lines in "detail".
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --offline|--live|--all)
+      selected="${1#--}"
+      if [[ -n "${scope_chosen}" && "${scope_chosen}" != "${selected}" ]]; then
+        echo "Choose only one of --offline, --live, or --all." >&2
+        exit 2
+      fi
+      SCOPE="${selected}"
+      scope_chosen="${selected}"
+      ;;
+    --json)
+      JSON="true"
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+results_dir="$(mktemp -d)"
+trap 'rm -rf "${results_dir}"' EXIT
+index=0
+failed=0
+
+run_check() {
+  local name="$1"
+  local scope="$2"
+  shift 2
+  index=$((index + 1))
+  local id log started ended duration status rc
+  id="$(printf '%02d' "${index}")"
+  log="${results_dir}/${id}.log"
+  started="$(date +%s.%N)"
+  set +e
+  "${REPO_DIR}/scripts/tests/${name}" "$@" >"${log}" 2>&1
+  rc=$?
+  set -e
+  ended="$(date +%s.%N)"
+  duration="$(python3 -c 'import sys; print(f"{float(sys.argv[2]) - float(sys.argv[1]):.3f}")' "${started}" "${ended}")"
+  if [[ "${rc}" -eq 0 ]]; then
+    status="pass"
+  else
+    status="fail"
+    failed=1
+  fi
+  python3 - "${results_dir}/${id}.json" "${name}" "${scope}" "${status}" "${duration}" "${rc}" "${log}" <<'PY'
+import json
+import pathlib
+import sys
+
+dest, name, scope, status, duration, rc, log = sys.argv[1:]
+text = pathlib.Path(log).read_text(encoding="utf-8", errors="replace")
+payload = {
+    "name": name,
+    "scope": scope,
+    "status": status,
+    "duration_seconds": float(duration),
+    "exit_code": int(rc),
+}
+if status != "pass":
+    payload["detail"] = "\n".join(text.splitlines()[-40:])
+pathlib.Path(dest).write_text(json.dumps(payload), encoding="utf-8")
+PY
+  if [[ "${JSON}" != "true" ]]; then
+    if [[ -s "${log}" ]]; then
+      cat "${log}"
+    fi
+    if [[ "${status}" == "fail" ]]; then
+      echo "FAIL ${name} (${scope})" >&2
+    fi
+  fi
+}
+
+if [[ "${SCOPE}" != "live" ]]; then
+  run_check check-service-inventory offline
+  run_check check-secret-rendering offline
+  run_check check-service-rollout offline --offline
+  run_check check-tailscale-services offline
+  run_check check-authentik-config offline
+  run_check check-docs-site offline --offline
+  run_check check-service-docs-migration offline --offline
+  run_check check-homepage-catalog offline
+  run_check check-smoke-signal-config offline
+  run_check check-caddy-routes offline
+  run_check check-route-convention offline
+  run_check check-redeploy-image offline
+  run_check check-deploy-guards offline
+  run_check check-workflow-policy offline
+  run_check check-deploy-service-choices offline
+fi
+
+if [[ "${SCOPE}" != "offline" ]]; then
+  run_check check-service-rollout live --live
+  run_check check-docs-site live --live
+  run_check check-service-docs-migration live --live
+fi
+
+python3 - "${results_dir}" "${SCOPE}" "${failed}" "${JSON}" <<'PY'
+import json
+import pathlib
+import sys
+
+results_dir, scope, failed, as_json = sys.argv[1:]
+checks = [
+    json.loads(path.read_text(encoding="utf-8"))
+    for path in sorted(pathlib.Path(results_dir).glob("*.json"))
+]
+payload = {"suite": scope, "success": failed == "0", "checks": checks}
+if as_json == "true":
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+elif failed == "0":
+    print("Deploy tooling checks passed.")
+else:
+    print("Deploy tooling checks failed.", file=sys.stderr)
+    raise SystemExit(1)
+PY
+
+if [[ "${JSON}" == "true" && "${failed}" -ne 0 ]]; then
+  exit 1
+fi

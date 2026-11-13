@@ -69,11 +69,12 @@ permissions:
   packages: read
 
 jobs:
-  # Same checks as .github/workflows/deploy-tooling.yml. Both deploy jobs need
-  # this one, and their if conditions include success(), so a failed run does
-  # not deploy either host.
-  validate-deploy-tooling:
-    name: Validate deploy tooling
+  # Offline preflight for push to main and workflow_dispatch. Both deploy jobs
+  # need this job, and their if conditions include success(), so a failed run
+  # does not deploy either host. Live tailnet checks stay in
+  # deploy-tooling-live.yml and do not gate these jobs.
+  preflight:
+    name: Preflight
     runs-on: ubuntu-latest
     if: github.repository == 'feocco/homelab-config'
     permissions:
@@ -106,11 +107,11 @@ jobs:
           tailscale version
 
       - name: Run deploy tooling checks
-        run: LC_ALL=C ./scripts/test-deploy-tooling
+        run: LC_ALL=C ./scripts/test-deploy-tooling --offline
 
   deploy-nasfeo:
     name: Deploy nasfeo
-    needs: validate-deploy-tooling
+    needs: preflight
     runs-on: [self-hosted, nasfeo]
     # Never run untrusted/fork work on self-hosted runners. Keep this repo-only
     # guard even if PR triggers are added later by mistake.
@@ -224,7 +225,7 @@ jobs:
 
   deploy-macmini:
     name: Deploy macmini
-    needs: validate-deploy-tooling
+    needs: preflight
     runs-on: [self-hosted, macmini]
     if: github.repository == 'feocco/homelab-config' && success() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.host == 'macmini' || inputs.host == 'all')))
     steps:

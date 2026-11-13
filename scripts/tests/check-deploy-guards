@@ -25,7 +25,25 @@ assert_contains "${REPO_DIR}/services/caddy/docker-compose.yml" "${expected_cadd
 assert_contains "${REPO_DIR}/services/caddy/ops.yaml" "image: ${expected_caddy_ref}"
 assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" "scripts/caddy-image-env"
 assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" "          - authentik"
-assert_contains "${REPO_DIR}/.github/workflows/deploy.yml" "authentik|bedtime|caddy"
+# Commit 5f45a54 removed the hand-kept `authentik|bedtime|caddy` case list
+# because it drifted and rejected waiting. The workflow_dispatch choice list
+# is the allowlist (check-deploy-service-choices). Both host jobs then reject
+# an unknown service by checking services/${SERVICE_INPUT}/ops.yaml.
+deploy_workflow="${REPO_DIR}/.github/workflows/deploy.yml"
+if grep -F -q 'authentik|bedtime|caddy' "${deploy_workflow}"; then
+  echo "deploy.yml still contains the removed case list authentik|bedtime|caddy." >&2
+  echo "Do not restore it. Commit 5f45a54 dropped it after the list drifted and rejected waiting." >&2
+  echo "Keep the workflow_dispatch choice list as the allowlist (check-deploy-service-choices)" >&2
+  echo "and reject unknown services with: if [ ! -f \"services/\${SERVICE_INPUT}/ops.yaml\" ]; then" >&2
+  exit 1
+fi
+ops_yaml_checks="$(grep -F -c 'if [ ! -f "services/${SERVICE_INPUT}/ops.yaml" ]; then' "${deploy_workflow}" || true)"
+if [[ "${ops_yaml_checks}" -lt 2 ]]; then
+  echo "deploy.yml must reject an unknown dispatch service on both nasfeo and macmini." >&2
+  echo "Expected at least 2 occurrences of: if [ ! -f \"services/\${SERVICE_INPUT}/ops.yaml\" ]; then" >&2
+  echo "Found ${ops_yaml_checks}. Do not replace that check with a hand-kept case list." >&2
+  exit 1
+fi
 assert_contains "${REPO_DIR}/.github/workflows/caddy-image.yml" "scripts/caddy-image-env"
 
 python3 - \
