@@ -176,30 +176,98 @@ if repo_result.returncode != 0:
         f"{repo_result.stdout}{repo_result.stderr}"
     )
 
+def preflight_gate_errors(deploy_text: str) -> list[str]:
+    errors: list[str] = []
+    on_block, separator, jobs_block = deploy_text.partition("\njobs:\n")
+    if not separator:
+        return ["deploy.yml must contain a jobs block"]
+    if re.search(r"(?m)^[ \t]*pull_request\s*:", on_block):
+        errors.append(
+            "deploy.yml must stay on push to main and workflow_dispatch so preflight "
+            "cannot reach a self-hosted runner from pull_request"
+        )
+    if "\n  preflight:\n" not in jobs_block:
+        return errors + [
+            "deploy.yml must keep a preflight job for push to main and workflow_dispatch"
+        ]
+    preflight_job = jobs_block.split("\n  preflight:\n", 1)[1].split("\n  deploy-nasfeo:\n", 1)[0]
+    if "runs-on: ubuntu-latest" not in preflight_job:
+        errors.append("deploy.yml preflight must run on ubuntu-latest")
+    if "github.repository == 'feocco/homelab-config'" not in preflight_job:
+        errors.append(
+            "deploy.yml preflight is inside the deploy workflow and must keep the repository guard"
+        )
+    if "test-deploy-tooling --offline" not in preflight_job:
+        errors.append("deploy.yml preflight must run the offline suite")
+    if jobs_block.count("needs: preflight") < 2:
+        errors.append("both deploy jobs must need the preflight job")
+    return errors
+
+
+def replace_in_job(text: str, job: str, old: str, new: str) -> str:
+    start = text.index(f"\n  {job}:\n")
+    following = re.search(r"\n  [A-Za-z0-9_-]+:\n", text[start + 1 :])
+    end = start + 1 + following.start() if following else len(text)
+    block = text[start:end]
+    if old not in block:
+        raise AssertionError(f"mutation fixture expects {old!r} in deploy.yml job {job}")
+    return text[:start] + block.replace(old, new, 1) + text[end:]
+
+
+PREFLIGHT_BYPASSES = (
+    (
+        "deploy-macmini runs after a failed preflight with always()",
+        "deploy-macmini",
+        "&& success() &&",
+        "&& always() &&",
+    ),
+    (
+        "deploy-nasfeo runs after a failed preflight with !cancelled()",
+        "deploy-nasfeo",
+        "&& success() &&",
+        "&& !cancelled() &&",
+    ),
+    (
+        "deploy-nasfeo no longer needs preflight",
+        "deploy-nasfeo",
+        "    needs: preflight\n",
+        "",
+    ),
+    (
+        "the preflight job sets continue-on-error",
+        "preflight",
+        "    runs-on: ubuntu-latest\n",
+        "    runs-on: ubuntu-latest\n    continue-on-error: true\n",
+    ),
+    (
+        "the preflight suite step sets continue-on-error",
+        "preflight",
+        "        run: LC_ALL=C ./scripts/test-deploy-tooling --offline\n",
+        "        continue-on-error: true\n"
+        "        run: LC_ALL=C ./scripts/test-deploy-tooling --offline\n",
+    ),
+    (
+        "the preflight suite step ignores its exit status",
+        "preflight",
+        "        run: LC_ALL=C ./scripts/test-deploy-tooling --offline\n",
+        "        run: LC_ALL=C ./scripts/test-deploy-tooling --offline || true\n",
+    ),
+)
+
 deploy_text = (REPO_DIR / ".github" / "workflows" / "deploy.yml").read_text()
-on_block, separator, jobs_block = deploy_text.partition("\njobs:\n")
-if not separator:
-    raise AssertionError("deploy.yml must contain a jobs block")
-if re.search(r"(?m)^[ \t]*pull_request\s*:", on_block):
+gate_errors = preflight_gate_errors(deploy_text)
+if gate_errors:
+    raise AssertionError("\n".join(gate_errors))
+accepted_bypasses = [
+    label
+    for label, job, old, new in PREFLIGHT_BYPASSES
+    if not preflight_gate_errors(replace_in_job(deploy_text, job, old, new))
+]
+if accepted_bypasses:
     raise AssertionError(
-        "deploy.yml must stay on push to main and workflow_dispatch so preflight "
-        "cannot reach a self-hosted runner from pull_request"
+        "the preflight gate check accepted a deploy.yml where:\n  "
+        + "\n  ".join(accepted_bypasses)
     )
-if "\n  preflight:\n" not in jobs_block:
-    raise AssertionError(
-        "deploy.yml must keep a preflight job for push to main and workflow_dispatch"
-    )
-preflight_job = jobs_block.split("\n  preflight:\n", 1)[1].split("\n  deploy-nasfeo:\n", 1)[0]
-if "runs-on: ubuntu-latest" not in preflight_job:
-    raise AssertionError("deploy.yml preflight must run on ubuntu-latest")
-if "github.repository == 'feocco/homelab-config'" not in preflight_job:
-    raise AssertionError(
-        "deploy.yml preflight is inside the deploy workflow and must keep the repository guard"
-    )
-if "test-deploy-tooling --offline" not in preflight_job:
-    raise AssertionError("deploy.yml preflight must run the offline suite")
-if jobs_block.count("needs: preflight") < 2:
-    raise AssertionError("both deploy jobs must need the preflight job")
 
 offline_workflow = (REPO_DIR / ".github" / "workflows" / "deploy-tooling.yml").read_text()
 if "test-deploy-tooling --offline" not in offline_workflow:
