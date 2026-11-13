@@ -5,6 +5,18 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# python3 time.time. Do not shell out to date for a fractional epoch.
+# BSD date on the macmini runner errors or prints a non-numeric stamp,
+# and float() then fails the live suite.
+epoch_seconds() {
+  python3 -c 'import time; print(f"{time.time():.6f}")'
+}
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
 cd "${REPO_DIR}"
 export LC_ALL=C
 
@@ -70,12 +82,12 @@ run_check() {
   local id log started ended duration status rc
   id="$(printf '%02d' "${index}")"
   log="${results_dir}/${id}.log"
-  started="$(date +%s.%N)"
+  started="$(epoch_seconds)"
   set +e
   "${REPO_DIR}/scripts/tests/${name}" "$@" >"${log}" 2>&1
   rc=$?
   set -e
-  ended="$(date +%s.%N)"
+  ended="$(epoch_seconds)"
   duration="$(python3 -c 'import sys; print(f"{float(sys.argv[2]) - float(sys.argv[1]):.3f}")' "${started}" "${ended}")"
   if [[ "${rc}" -eq 0 ]]; then
     status="pass"
@@ -112,6 +124,7 @@ PY
 }
 
 if [[ "${SCOPE}" != "live" ]]; then
+  run_check check-deploy-tooling-timer offline
   run_check check-service-inventory offline
   run_check check-secret-rendering offline
   run_check check-service-rollout offline --offline
