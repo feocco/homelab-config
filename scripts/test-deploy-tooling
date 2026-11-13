@@ -127,6 +127,7 @@ if [[ "${SCOPE}" != "live" ]]; then
   run_check check-deploy-guards offline
   run_check check-workflow-policy offline
   run_check check-deploy-service-choices offline
+  run_check check-repo-prohibitions offline
 fi
 
 if [[ "${SCOPE}" != "offline" ]]; then

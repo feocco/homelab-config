@@ -1,0 +1,699 @@
+#!/usr/bin/env python3
+"""Deterministic stand-in for the AGENTS.md "never do X" rules.
+
+Each failure names the fix. The real checkout is checked, then small fixtures
+prove the failure text still names that fix.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import pathlib
+
+import yaml
+
+REPO = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+from homelab_catalog import parse_simple_yaml  # noqa: E402
+
+GENERATED_SERVICES = ("caddy", "homepage", "homelab-functions", "homelab-docs")
+GITIGNORE_LINES = (
+    "**/.env",
+    "**/data/*",
+    "!**/data/.gitkeep",
+    "services/homepage/config/*",
+    "!services/homepage/config/.gitkeep",
+    "services/homelab-functions/config/*",
+    "!services/homelab-functions/config/.gitkeep",
+    "docs/generated/*",
+    "!docs/generated/.gitkeep",
+    "services/caddy/Caddyfile",
+    "**/homelab-private-config/",
+)
+AGENTS_NEEDLES = (
+    "optional_env:",
+    "./scripts/dispatch-route-dns",
+    "./scripts/redeploy-image",
+)
+EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+ALLOWED_EMAIL_SUFFIXES = ("@example.com", "@example.invalid", "@example.org")
+FINGERPRINT_KEYS = (
+    "GITHUB_APP_ID",
+    "GITHUB_APP_INSTALLATION_ID",
+    "SRE_DIAGNOSTIC_S3_BUCKET",
+)
+K8S_KIND = re.compile(
+    r"(?m)^kind:\s+(Deployment|Pod|StatefulSet|DaemonSet|Ingress|CronJob|Job|ReplicaSet|Namespace)\s*$"
+)
+K8S_API = re.compile(r"(?m)^apiVersion:\s+\S+")
+CATALOG_NAMES = {
+    "service-catalog.json",
+    "service-catalog.md",
+    "service-catalog.yaml",
+    "service-catalog.yml",
+    "catalog.json",
+    "catalog.md",
+    "catalog.yaml",
+}
+
+
+def git_files(repo: pathlib.Path) -> tuple[list[str] | None, str | None]:
+    proc = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "-z"],
+        check=False,
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        return None, (
+            f"{repo} is not a git checkout. "
+            "Fix: run scripts/tests/check-repo-prohibitions inside the homelab-config repository."
+        )
+    files = [item.decode() for item in proc.stdout.split(b"\0") if item]
+    return files, None
+
+
+def tracked_errors(repo: pathlib.Path) -> list[str]:
+    files, failure = git_files(repo)
+    if failure:
+        return [failure]
+    errors: list[str] = []
+    assert files is not None
+    for path in files:
+        name = path.rsplit("/", 1)[-1]
+        if path == "services/caddy/Caddyfile":
+            errors.append(
+                f"{path} is tracked. "
+                "Fix: git rm --cached services/caddy/Caddyfile. "
+                "Change flat route_* fields in the service ops.yaml and render with "
+                "./scripts/generate-caddy-config. Do not hand-edit or commit the Caddyfile."
+            )
+            continue
+        if path.startswith("services/homepage/config/") and name != ".gitkeep":
+            errors.append(
+                f"{path} is tracked. "
+                f"Fix: git rm --cached {path}. "
+                "Put card metadata in flat dashboard_* fields and manual links in "
+                "services/homepage/manual-links.yaml. Homepage config is generated at deploy."
+            )
+            continue
+        if path.startswith("services/homelab-functions/config/") and name != ".gitkeep":
+            errors.append(
+                f"{path} is tracked. "
+                f"Fix: git rm --cached {path}. "
+                "homelab-functions config is generated at deploy from ops.yaml."
+            )
+            continue
+        if path.startswith("docs/generated/") and name != ".gitkeep":
+            errors.append(
+                f"{path} is tracked. "
+                f"Fix: git rm --cached {path}. "
+                "Docs under docs/generated/ are built by ./scripts/build-docs-site. Do not commit them."
+            )
+            continue
+        if name == ".env":
+            errors.append(
+                f"{path} is tracked. "
+                f"Fix: git rm --cached {path}. "
+                "Put non-secrets in .env.config, secret names in service-secrets.yaml "
+                "(optional_env: when the service can start without the value), and identity "
+                "fingerprints in $HOME/homelab-private-config/<host>/<service>.env."
+            )
+            continue
+        if "data" in path.split("/") and name != ".gitkeep":
+            errors.append(
+                f"{path} is tracked. "
+                f"Fix: git rm --cached {path}. "
+                "Runtime data stays on the host. Keep **/data/* gitignored."
+            )
+            continue
+        if "homelab-private-config" in path.split("/"):
+            errors.append(
+                f"{path} is tracked. "
+                f"Fix: git rm --cached {path}. "
+                "Keep identity fingerprints only in $HOME/homelab-private-config/<host>/<service>.env "
+                "on the runner. Do not commit them and do not add them as new GitHub Actions secrets."
+            )
+            continue
+        if name in CATALOG_NAMES or path in {"docs/catalog.md", "services/catalog.yaml"}:
+            errors.append(
+                f"{path} is a committed service catalog. "
+                f"Fix: git rm --cached {path}. "
+                "Inspect the catalog with ./scripts/generate-service-catalog --format json. "
+                "Do not hand-maintain a parallel catalog file."
+            )
+            continue
+        if looks_like_kubernetes(repo, path):
+            errors.append(
+                f"{path} is a Kubernetes manifest. "
+                f"Fix: delete {path}. "
+                "Declare the service with Docker Compose and hosts/<host>/services.yaml."
+            )
+    return errors
+
+
+def looks_like_kubernetes(repo: pathlib.Path, path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    if name in {"kustomization.yaml", "kustomization.yml", "Chart.yaml"}:
+        return True
+    slash = f"/{path}"
+    if "/k8s/" in slash or "/kubernetes/" in slash or path.startswith(("k8s/", "kubernetes/")):
+        return True
+    if not path.endswith((".yml", ".yaml")):
+        return False
+    text = (repo / path).read_text(encoding="utf-8", errors="replace")
+    return K8S_API.search(text) is not None and K8S_KIND.search(text) is not None
+
+
+def gitignore_errors(repo: pathlib.Path) -> list[str]:
+    path = repo / ".gitignore"
+    if not path.is_file():
+        return [
+            ".gitignore is missing. "
+            "Fix: restore the ignore rules for .env, runtime data/, "
+            "services/caddy/Caddyfile, services/homepage/config/, and homelab-private-config/."
+        ]
+    present = set(path.read_text(encoding="utf-8").splitlines())
+    errors = []
+    for line in GITIGNORE_LINES:
+        if line not in present:
+            errors.append(
+                f".gitignore is missing {line}. "
+                f"Fix: add `{line}` so that generated or secret file cannot be committed."
+            )
+    return errors
+
+
+def hardcoded_redeploy_errors(repo: pathlib.Path) -> list[str]:
+    path = repo / "scripts" / "homelab-deploy"
+    if not path.is_file():
+        return [
+            "scripts/homelab-deploy is missing. "
+            "Fix: restore it. Extra deploy triggers belong in redeploy_on on the service ops.yaml."
+        ]
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"^changed_services\(\) \{", text, re.M)
+    if not match:
+        return [
+            "scripts/homelab-deploy has no changed_services function. "
+            "Fix: keep changed_services reading redeploy_on from each service ops.yaml."
+        ]
+    rest = text[match.end() :]
+    nxt = re.search(r"^[A-Za-z_][A-Za-z0-9_]*\(\) \{", rest, re.M)
+    body = text[match.start() : match.end() + (nxt.start() if nxt else len(rest))]
+    errors = []
+    quoted = re.findall(r'"([^"]*)"', body) + re.findall(r"'([^']*)'", body)
+    for item in quoted:
+        if "/" in item and "${" not in item:
+            errors.append(
+                "scripts/homelab-deploy changed_services hardcodes trigger path "
+                f"{item!r}. "
+                "Fix: delete that path from changed_services and add a redeploy_on regex "
+                "to the service ops.yaml."
+            )
+    return errors
+
+
+def generated_redeploy_errors(repo: pathlib.Path) -> list[str]:
+    errors = []
+    for name in GENERATED_SERVICES:
+        path = repo / "services" / name / "ops.yaml"
+        rel = path.relative_to(repo).as_posix()
+        if not path.is_file():
+            errors.append(
+                f"{rel} is missing. "
+                f"Fix: restore {rel} and give it a redeploy_on list. "
+                "Do not hardcode those trigger paths in scripts/homelab-deploy."
+            )
+            continue
+        try:
+            data = parse_simple_yaml(path)
+        except ValueError as exc:
+            errors.append(
+                f"{rel}: {exc}. "
+                f"Fix: flatten {rel} to flat keys or a single-level list."
+            )
+            continue
+        patterns = data.get("redeploy_on") or []
+        if not isinstance(patterns, list) or not [item for item in patterns if str(item).strip()]:
+            errors.append(
+                f"{rel} has no redeploy_on patterns. "
+                f"Fix: add a redeploy_on regex list to {rel}. "
+                "Do not hardcode those paths in scripts/homelab-deploy."
+            )
+    return errors
+
+
+def flat_ops_errors(repo: pathlib.Path) -> list[str]:
+    errors = []
+    services = repo / "services"
+    if not services.is_dir():
+        return errors
+    for path in sorted(services.glob("*/ops.yaml")):
+        rel = path.relative_to(repo).as_posix()
+        try:
+            parse_simple_yaml(path)
+        except ValueError as exc:
+            errors.append(
+                f"{rel}: {exc}. "
+                f"Fix: flatten {rel} to flat keys or a single-level list. Nested mappings are illegal."
+            )
+    return errors
+
+
+def friend_path_errors(repo: pathlib.Path) -> list[str]:
+    errors = []
+    declared: dict[str, str] = {}
+    services = repo / "services"
+    if services.is_dir():
+        for path in sorted(services.glob("*/ops.yaml")):
+            match = re.search(r"^route_tailscale_service:\s*(\S+)\s*$", path.read_text(encoding="utf-8"), re.M)
+            if match:
+                declared[match.group(1)] = path.relative_to(repo).as_posix()
+
+    found: dict[str, tuple[str, str]] = {}
+    hosts = repo / "hosts"
+    if hosts.is_dir():
+        for serve in sorted(hosts.glob("*/tailscale-serve.yaml")):
+            data = yaml.safe_load(serve.read_text(encoding="utf-8")) or {}
+            host = serve.parent.name
+            named = data.get("named_services") or {}
+            if not isinstance(named, dict):
+                errors.append(
+                    f"hosts/{host}/tailscale-serve.yaml named_services is not a mapping. "
+                    "Fix: make named_services a mapping of Tailscale Services that target "
+                    "tcp://127.0.0.1:443."
+                )
+                continue
+            for key, entry in named.items():
+                if not isinstance(entry, dict):
+                    errors.append(
+                        f"hosts/{host}/tailscale-serve.yaml named_services.{key} is not a mapping. "
+                        "Fix: set service, tcp_port: 443, target: tcp://127.0.0.1:443, and tailvip."
+                    )
+                    continue
+                service = str(entry.get("service") or "")
+                target = str(entry.get("target") or "")
+                tailvip = str(entry.get("tailvip") or "")
+                try:
+                    port_ok = int(entry.get("tcp_port")) == 443
+                except (TypeError, ValueError):
+                    port_ok = False
+                if target != "tcp://127.0.0.1:443" or not port_ok:
+                    errors.append(
+                        f"hosts/{host}/tailscale-serve.yaml named_services.{key} "
+                        f"targets {target or 'nothing'} on port {entry.get('tcp_port')}. "
+                        "Fix: set tcp_port: 443 and target: tcp://127.0.0.1:443 so the "
+                        "Tailscale Service hits Caddy. Do not publish the app port as a friend path."
+                    )
+                if not re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", tailvip):
+                    errors.append(
+                        f"hosts/{host}/tailscale-serve.yaml named_services.{key} has no TailVIP. "
+                        "Fix: set tailvip to the actual Tailscale Service address."
+                    )
+                if not service.startswith("svc:"):
+                    errors.append(
+                        f"hosts/{host}/tailscale-serve.yaml named_services.{key} service is {service or 'empty'}. "
+                        "Fix: set service: svc:<name>, matching route_tailscale_service on the service ops.yaml."
+                    )
+                    continue
+                found[service] = (host, str(key))
+
+    for service, ops_path in sorted(declared.items()):
+        if service not in found:
+            errors.append(
+                f"{ops_path} sets route_tailscale_service {service}, which has no named_services entry. "
+                f"Fix: add hosts/<host>/tailscale-serve.yaml named_services with service: {service}, "
+                "tcp_port: 443, target: tcp://127.0.0.1:443, and the actual tailvip."
+            )
+    for service, (host, key) in sorted(found.items()):
+        if service not in declared:
+            errors.append(
+                f"hosts/{host}/tailscale-serve.yaml named_services.{key} advertises {service} "
+                "with no route_tailscale_service. "
+                f"Fix: set route_tailscale_service: {service} on that service ops.yaml, "
+                "or remove the named_services entry."
+            )
+    return errors
+
+
+def placement_errors(repo: pathlib.Path) -> list[str]:
+    errors = []
+    hosts = repo / "hosts"
+    if not hosts.is_dir():
+        return errors
+    for manifest in sorted(hosts.glob("*/services.yaml")):
+        data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+        directory = manifest.parent.name
+        host_meta = data.get("host") or {}
+        name = str(host_meta.get("name") or directory) if isinstance(host_meta, dict) else directory
+        services = data.get("services") or {}
+        if not isinstance(services, dict):
+            errors.append(
+                f"hosts/{directory}/services.yaml services is not a mapping. "
+                "Fix: list homelab-log-watcher enabled: true, and enable homelab-sre-agent only on macmini."
+            )
+            continue
+        rel = f"hosts/{directory}/services.yaml"
+        watcher = services.get("homelab-log-watcher") or {}
+        if not (isinstance(watcher, dict) and watcher.get("enabled") is True):
+            errors.append(
+                f"{rel} does not enable homelab-log-watcher. "
+                "Fix: set homelab-log-watcher.enabled: true. Run one homelab-log-watcher on every Docker host."
+            )
+        sre = services.get("homelab-sre-agent") or {}
+        sre_on = isinstance(sre, dict) and sre.get("enabled") is True
+        if name == "macmini" and not sre_on:
+            errors.append(
+                f"{rel} does not enable homelab-sre-agent. "
+                "Fix: set homelab-sre-agent.enabled: true. The central agent runs on macmini."
+            )
+        if name != "macmini" and sre_on:
+            errors.append(
+                f"{rel} enables homelab-sre-agent. "
+                f"Fix: set homelab-sre-agent.enabled: false on {name}. The central agent runs only on macmini."
+            )
+    return errors
+
+
+def dockerignore_errors(repo: pathlib.Path) -> list[str]:
+    ignore = repo / "services" / "caddy" / ".dockerignore"
+    if not ignore.is_file():
+        return [
+            "services/caddy/.dockerignore is missing. "
+            "Fix: set it to exactly '*' and '!Dockerfile' so .env.config and the rest of the repo "
+            "stay out of the Caddy image build. Mount the generated Caddyfile at runtime."
+        ]
+    lines = [
+        line.strip()
+        for line in ignore.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    errors = []
+    if lines != ["*", "!Dockerfile"]:
+        errors.append(
+            "services/caddy/.dockerignore does not limit the build context to the Dockerfile. "
+            "Fix: set it to exactly '*' and '!Dockerfile' so .env.config and the rest of the repo "
+            "stay out of the Caddy image build. Mount the generated Caddyfile at runtime."
+        )
+    dockerfile = repo / "services" / "caddy" / "Dockerfile"
+    if dockerfile.is_file():
+        for raw in dockerfile.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line.startswith("ADD ") or (line.startswith("COPY ") and "--from=" not in line):
+                errors.append(
+                    "services/caddy/Dockerfile copies build-context files. "
+                    "Fix: remove that COPY or ADD. The image only needs the xcaddy binary; "
+                    "the Caddyfile is mounted at runtime, and .dockerignore must keep the repo out of the build."
+                )
+                break
+    return errors
+
+
+def fingerprint_files(repo: pathlib.Path) -> list[pathlib.Path]:
+    files = [repo / "service-secrets.yaml"]
+    files.extend(sorted((repo / "services").glob("*/*.env.config")) if (repo / "services").is_dir() else [])
+    files.extend(sorted((repo / "hosts").glob("*/*.env.config")) if (repo / "hosts").is_dir() else [])
+    workflow = repo / ".github" / "workflows"
+    if workflow.is_dir():
+        files.extend(sorted(workflow.glob("*.yml")))
+        files.extend(sorted(workflow.glob("*.yaml")))
+    return [path for path in files if path.is_file()]
+
+
+def placeholder(value: str) -> bool:
+    low = value.lower()
+    return (
+        low in {"replace_me", "example", "changeme", "placeholder", "your-bucket", "your_bucket"}
+        or low.startswith("replace")
+        or "example" in low
+        or "your_" in low
+        or "your-" in low
+    )
+
+
+def fingerprint_errors(repo: pathlib.Path) -> list[str]:
+    errors = []
+    for path in fingerprint_files(repo):
+        rel = path.relative_to(repo).as_posix()
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in EMAIL.finditer(text):
+            email = match.group(0)
+            if email.lower().endswith(ALLOWED_EMAIL_SUFFIXES):
+                continue
+            errors.append(
+                f"{rel} contains personal email {email}. "
+                "Fix: remove it from the tracked file and put it in "
+                "$HOME/homelab-private-config/<host>/<service>.env. "
+                "Do not add it as a GitHub Actions secret."
+            )
+        for key in FINGERPRINT_KEYS:
+            found = re.search(rf"^{re.escape(key)}=(\S+)\s*$", text, re.M)
+            if not found:
+                continue
+            value = found.group(1)
+            if placeholder(value):
+                continue
+            if key == "SRE_DIAGNOSTIC_S3_BUCKET" or value.isdigit():
+                errors.append(
+                    f"{rel} sets {key} to a real value. "
+                    "Fix: set the tracked value to replace_me and put the real value in "
+                    "$HOME/homelab-private-config/<host>/<service>.env. "
+                    "Do not add it as a GitHub Actions secret."
+                )
+    return errors
+
+
+def agents_errors(repo: pathlib.Path) -> list[str]:
+    path = repo / "AGENTS.md"
+    if not path.is_file():
+        return [
+            "AGENTS.md is missing. "
+            "Fix: restore AGENTS.md and keep optional_env:, ./scripts/dispatch-route-dns, "
+            "and ./scripts/redeploy-image in it."
+        ]
+    text = path.read_text(encoding="utf-8")
+    errors = []
+    count = len(text.split())
+    if count >= 900:
+        errors.append(
+            f"AGENTS.md is {count} words. "
+            "Fix: keep AGENTS.md under 900 words. Move never-do rules into "
+            "scripts/tests/check-repo-prohibitions, whose failures name the fix."
+        )
+    for needle in AGENTS_NEEDLES:
+        if needle not in text:
+            errors.append(
+                f"AGENTS.md does not mention {needle}. "
+                f"Fix: keep {needle} in AGENTS.md."
+            )
+    return errors
+
+
+def secret_errors(repo: pathlib.Path) -> list[str]:
+    script = repo / "scripts" / "check-service-secrets"
+    if not script.is_file():
+        return [
+            "scripts/check-service-secrets is missing. "
+            "Fix: restore it. Do not hand-edit the generated secret block in "
+            ".github/workflows/deploy.yml. Update service-secrets.yaml or the host manifest, "
+            "then run LC_ALL=C ./scripts/generate-service-secret-workflow-env."
+        ]
+    env = os.environ.copy()
+    env["LC_ALL"] = "C"
+    proc = subprocess.run(
+        [str(script), "--base-dir", str(repo)],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return []
+    detail = "\n".join(part.strip() for part in (proc.stderr, proc.stdout) if part and part.strip())
+    if "Fix:" not in detail:
+        detail += (
+            "\nFix: do not hand-edit the generated secret block in .github/workflows/deploy.yml. "
+            "Update service-secrets.yaml or the host manifest, then run "
+            "LC_ALL=C ./scripts/generate-service-secret-workflow-env."
+        )
+    return [detail]
+
+
+def repo_errors(repo: pathlib.Path) -> list[str]:
+    errors: list[str] = []
+    for check in (
+        tracked_errors,
+        gitignore_errors,
+        hardcoded_redeploy_errors,
+        generated_redeploy_errors,
+        flat_ops_errors,
+        friend_path_errors,
+        placement_errors,
+        dockerignore_errors,
+        fingerprint_errors,
+        agents_errors,
+        secret_errors,
+    ):
+        errors.extend(check(repo))
+    return errors
+
+
+def write_file(root: pathlib.Path, rel: str, content: str, track: bool = False) -> None:
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    if track:
+        subprocess.run(["git", "-C", str(root), "add", "-f", "--", rel], check=True)
+
+
+def init_repo(root: pathlib.Path) -> None:
+    subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
+
+
+def self_test() -> list[str]:
+    problems: list[str] = []
+
+    def expect(label: str, errors: list[str], snippet: str) -> None:
+        blob = "\n".join(errors)
+        if not errors or "Fix:" not in blob or snippet not in blob:
+            problems.append(
+                f"self-test {label} did not name the fix (expected {snippet!r}). "
+                f"Fix: make that fixture fail with a Fix: line containing {snippet!r}. "
+                f"Got: {blob}"
+            )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        base = pathlib.Path(tmp)
+
+        tracked = base / "tracked"
+        init_repo(tracked)
+        write_file(tracked, "services/caddy/Caddyfile", "home {\n}\n", track=True)
+        expect("caddyfile", tracked_errors(tracked), "git rm --cached services/caddy/Caddyfile")
+
+        homepage = base / "homepage"
+        init_repo(homepage)
+        write_file(homepage, "services/homepage/config/services.yaml", "x: 1\n", track=True)
+        expect("homepage-config", tracked_errors(homepage), "dashboard_*")
+
+        env_repo = base / "env"
+        init_repo(env_repo)
+        write_file(env_repo, "services/demo/.env", "TOKEN=secret\n", track=True)
+        expect("dotenv", tracked_errors(env_repo), "git rm --cached services/demo/.env")
+
+        data_repo = base / "data"
+        init_repo(data_repo)
+        write_file(data_repo, "services/demo/data/db.sqlite", "x", track=True)
+        expect("runtime-data", tracked_errors(data_repo), "git rm --cached services/demo/data/db.sqlite")
+
+        private = base / "private"
+        init_repo(private)
+        write_file(private, "homelab-private-config/macmini/demo.env", "X=1\n", track=True)
+        expect("private-overlay", tracked_errors(private), "homelab-private-config")
+
+        catalog = base / "catalog"
+        init_repo(catalog)
+        write_file(catalog, "docs/service-catalog.json", "{}\n", track=True)
+        expect("catalog", tracked_errors(catalog), "generate-service-catalog")
+
+        k8s = base / "k8s"
+        init_repo(k8s)
+        write_file(
+            k8s,
+            "k8s/deploy.yaml",
+            "apiVersion: apps/v1\nkind: Deployment\n",
+            track=True,
+        )
+        expect("kubernetes", tracked_errors(k8s), "Docker Compose")
+
+        ignored = base / "ignored"
+        ignored.mkdir()
+        (ignored / ".gitignore").write_text("**/.env\n", encoding="utf-8")
+        expect("gitignore", gitignore_errors(ignored), "services/caddy/Caddyfile")
+
+        deploy = base / "deploy"
+        deploy.mkdir()
+        (deploy / "scripts").mkdir()
+        (deploy / "scripts" / "homelab-deploy").write_text(
+            'changed_services() {\n'
+            '  echo "${files}" | grep -q "^services/homepage/"\n'
+            '}\n'
+            'caddy_config_changed() {\n'
+            '  true\n'
+            '}\n',
+            encoding="utf-8",
+        )
+        expect("hardcoded-redeploy", hardcoded_redeploy_errors(deploy), "redeploy_on")
+
+        flat = base / "flat"
+        write_file(flat, "services/demo/ops.yaml", "service: demo\nmetadata:\n  nested: true\n")
+        expect("flat-ops", flat_ops_errors(flat), "flatten")
+
+        friend = base / "friend"
+        write_file(
+            friend,
+            "hosts/macmini/tailscale-serve.yaml",
+            "named_services:\n"
+            "  demo:\n"
+            "    enabled: true\n"
+            "    service: svc:demo\n"
+            "    tcp_port: 443\n"
+            "    target: tcp://127.0.0.1:8099\n"
+            "    tailvip: 100.1.1.1\n",
+        )
+        write_file(
+            friend,
+            "services/demo/ops.yaml",
+            "service: demo\nroute_tailscale_service: svc:demo\n",
+        )
+        expect("friend-port", friend_path_errors(friend), "tcp://127.0.0.1:443")
+
+        placed = base / "placed"
+        write_file(
+            placed,
+            "hosts/nasfeo/services.yaml",
+            "host:\n  name: nasfeo\nservices:\n"
+            "  homelab-log-watcher:\n    enabled: false\n"
+            "  homelab-sre-agent:\n    enabled: true\n",
+        )
+        placement = placement_errors(placed)
+        expect("log-watcher", placement, "homelab-log-watcher")
+        expect("sre-agent", placement, "only on macmini")
+
+        context = base / "context"
+        write_file(context, "services/caddy/.dockerignore", "*\n!.env.config\n")
+        write_file(context, "services/caddy/Dockerfile", "FROM scratch\nCOPY .env.config /env\n")
+        expect("dockerignore", dockerignore_errors(context), "!Dockerfile")
+
+        finger = base / "finger"
+        write_file(finger, "services/demo/.env.config", "OWNER_EMAIL=a@gmail.com\nGITHUB_APP_ID=123456\n")
+        fingerprints = fingerprint_errors(finger)
+        expect("email", fingerprints, "a@gmail.com")
+        expect("github-app-id", fingerprints, "GITHUB_APP_ID")
+
+        agents = base / "agents"
+        write_file(agents, "AGENTS.md", "word " * 900)
+        expect("agents-words", agents_errors(agents), "under 900")
+        write_file(agents, "AGENTS.md", "Use optional_env: and ./scripts/redeploy-image.\n")
+        expect("dispatch-shortcut", agents_errors(agents), "./scripts/dispatch-route-dns")
+
+    return problems
+
+
+def main() -> int:
+    repo = pathlib.Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else REPO
+    errors = repo_errors(repo)
+    errors.extend(self_test())
+    if errors:
+        print("\n".join(errors), file=sys.stderr)
+        return 1
+    print("repo prohibitions: ok")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
