@@ -4,6 +4,11 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_DIR}/scripts/tests/lib-test-helpers"
 
+# pull_request jobs set GITHUB_REF_NAME to <pr>/merge. Fixture repos in this
+# file are on main or feature/canary; that job ref must not become the branch
+# homelab-deploy refuses.
+export GITHUB_REF_NAME="${GITHUB_REF_NAME:-50/merge}"
+
 "${REPO_DIR}/scripts/apply-tailscale-serve" --host macmini --base-dir "${REPO_DIR}" --dry-run >/dev/null
 "${REPO_DIR}/scripts/ensure-macmini-node-exporter" --dry-run >/dev/null
 bash -n "${REPO_DIR}/scripts/check-macmini-monitor-health"
@@ -174,7 +179,7 @@ rm -f "${guard_repo}/dirty.txt"
   cd "${guard_repo}"
   git checkout main >/dev/null
 )
-PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" \
+PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" GITHUB_REF_NAME=50/merge \
   "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}" >/dev/null
 assert_json_field "${guard_runtime}/.homelab-deploy-state/macmini/demo.json" git_branch main
 
