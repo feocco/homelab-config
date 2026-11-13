@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 
 REPO_DIR = Path(__file__).resolve().parents[2]
 VALIDATOR = REPO_DIR / "scripts" / "check-workflow-policy"
@@ -176,31 +178,69 @@ if repo_result.returncode != 0:
         f"{repo_result.stdout}{repo_result.stderr}"
     )
 
+PREFLIGHT_COMMAND = "LC_ALL=C ./scripts/test-deploy-tooling --offline"
+STATUS_OVERRIDE = re.compile(r"\b(?:always|failure|cancelled)\s*\(")
+
+
+def runner_labels(job: dict) -> set[str]:
+    runs_on = job.get("runs-on")
+    if isinstance(runs_on, str):
+        return {runs_on}
+    if isinstance(runs_on, list):
+        return {str(label) for label in runs_on}
+    return set()
+
+
 def preflight_gate_errors(deploy_text: str) -> list[str]:
+    workflow = yaml.safe_load(deploy_text) or {}
     errors: list[str] = []
-    on_block, separator, jobs_block = deploy_text.partition("\njobs:\n")
-    if not separator:
-        return ["deploy.yml must contain a jobs block"]
-    if re.search(r"(?m)^[ \t]*pull_request\s*:", on_block):
+    triggers = workflow.get("on", workflow.get(True)) or {}
+    if isinstance(triggers, str):
+        triggers = {triggers: None}
+    elif isinstance(triggers, list):
+        triggers = {event: None for event in triggers}
+    if {"pull_request", "pull_request_target"} & set(triggers):
         errors.append(
             "deploy.yml must stay on push to main and workflow_dispatch so preflight "
             "cannot reach a self-hosted runner from pull_request"
         )
-    if "\n  preflight:\n" not in jobs_block:
+    jobs = workflow.get("jobs") or {}
+    preflight = jobs.get("preflight")
+    if not isinstance(preflight, dict):
         return errors + [
             "deploy.yml must keep a preflight job for push to main and workflow_dispatch"
         ]
-    preflight_job = jobs_block.split("\n  preflight:\n", 1)[1].split("\n  deploy-nasfeo:\n", 1)[0]
-    if "runs-on: ubuntu-latest" not in preflight_job:
+    if preflight.get("runs-on") != "ubuntu-latest":
         errors.append("deploy.yml preflight must run on ubuntu-latest")
-    if "github.repository == 'feocco/homelab-config'" not in preflight_job:
+    if "github.repository == 'feocco/homelab-config'" not in str(preflight.get("if", "")):
         errors.append(
             "deploy.yml preflight is inside the deploy workflow and must keep the repository guard"
         )
-    if "test-deploy-tooling --offline" not in preflight_job:
-        errors.append("deploy.yml preflight must run the offline suite")
-    if jobs_block.count("needs: preflight") < 2:
-        errors.append("both deploy jobs must need the preflight job")
+    steps = [step for step in preflight.get("steps") or [] if isinstance(step, dict)]
+    if not any(str(step.get("run", "")).strip() == PREFLIGHT_COMMAND for step in steps):
+        errors.append(
+            f"deploy.yml preflight must run exactly `{PREFLIGHT_COMMAND}` so a failed check fails the job"
+        )
+    if preflight.get("continue-on-error") or any(step.get("continue-on-error") for step in steps):
+        errors.append(
+            "deploy.yml preflight must not set continue-on-error; a failed check has to fail the job"
+        )
+    deploy_jobs = {
+        name: job
+        for name, job in jobs.items()
+        if isinstance(job, dict) and "self-hosted" in runner_labels(job)
+    }
+    if not deploy_jobs:
+        errors.append("deploy.yml must keep its self-hosted deploy jobs")
+    for name, job in sorted(deploy_jobs.items()):
+        needs = job.get("needs") or []
+        if "preflight" not in ([needs] if isinstance(needs, str) else list(needs)):
+            errors.append(f"deploy.yml {name} must need the preflight job")
+        if STATUS_OVERRIDE.search(str(job.get("if", ""))):
+            errors.append(
+                f"deploy.yml {name} must not use always(), failure(), or cancelled(); "
+                "it would deploy after a failed preflight"
+            )
     return errors
 
 
