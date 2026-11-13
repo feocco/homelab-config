@@ -108,6 +108,7 @@ mkdir -p \
   "${guard_fakebin}"
 cp "${REPO_DIR}/scripts/homelab-deploy" "${guard_repo}/scripts/homelab-deploy"
 cp "${REPO_DIR}/scripts/lib-service-secrets" "${guard_repo}/scripts/lib-service-secrets"
+cp "${REPO_DIR}/scripts/lib-deploy-event-log" "${guard_repo}/scripts/lib-deploy-event-log"
 chmod +x "${guard_repo}/scripts/homelab-deploy"
 cat > "${guard_repo}/hosts/macmini/services.yaml" <<EOF
 host:
@@ -198,6 +199,8 @@ validate_fail_out="${guard_tmp}/validate-fail.out"
 assert_fails "${validate_fail_out}" env PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" VALIDATE_EXIT=1 \
   "${guard_repo}/scripts/homelab-deploy" --host macmini demo --deploy-base-dir "${guard_runtime}"
 assert_contains "${validate_fail_out}" 'Config validation failed'
+assert_contains "${validate_fail_out}" '"stage":"config-validate"'
+assert_contains "${validate_fail_out}" '"outcome":"fail"'
 assert_contains "${guard_tmp}/validate.log" '--check config'
 rm -f "${guard_tmp}/validate.log"
 PATH="${guard_fakebin}:$PATH" HOMELAB_CONFIG_DIR="${guard_repo}" VALIDATE_EXIT=1 \
@@ -223,6 +226,7 @@ mkdir -p \
   "${pull_fakebin}"
 cp "${REPO_DIR}/scripts/homelab-deploy" "${pull_repo}/scripts/homelab-deploy"
 cp "${REPO_DIR}/scripts/lib-service-secrets" "${pull_repo}/scripts/lib-service-secrets"
+cp "${REPO_DIR}/scripts/lib-deploy-event-log" "${pull_repo}/scripts/lib-deploy-event-log"
 chmod +x "${pull_repo}/scripts/homelab-deploy"
 cat > "${pull_repo}/hosts/macmini/services.yaml" <<EOF
 host:
@@ -312,6 +316,7 @@ mkdir -p \
   "${identity_fakebin}"
 cp "${REPO_DIR}/scripts/homelab-deploy" "${identity_repo}/scripts/homelab-deploy"
 cp "${REPO_DIR}/scripts/lib-service-secrets" "${identity_repo}/scripts/lib-service-secrets"
+cp "${REPO_DIR}/scripts/lib-deploy-event-log" "${identity_repo}/scripts/lib-deploy-event-log"
 chmod +x "${identity_repo}/scripts/homelab-deploy"
 cat > "${identity_repo}/hosts/macmini/services.yaml" <<EOF
 host:
@@ -375,6 +380,7 @@ mkdir -p \
   "${caddy_auth_config}"
 cp "${REPO_DIR}/scripts/homelab-deploy" "${caddy_repo}/scripts/homelab-deploy"
 cp "${REPO_DIR}/scripts/lib-service-secrets" "${caddy_repo}/scripts/lib-service-secrets"
+cp "${REPO_DIR}/scripts/lib-deploy-event-log" "${caddy_repo}/scripts/lib-deploy-event-log"
 chmod +x "${caddy_repo}/scripts/homelab-deploy"
 cat > "${caddy_repo}/hosts/macmini/services.yaml" <<EOF
 host:

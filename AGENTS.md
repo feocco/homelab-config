@@ -79,7 +79,8 @@
   Deploys pull `ghcr.io/feocco/*` Compose services. Third-party images are
   manual or image-reference updates. Third-party or config-only services are
   usually owned here.
-- Inspect `git status --short --branch` before deployment work. Validate with
+- Do not deploy unless the user explicitly asks. Inspect
+  `git status --short --branch` before deployment work. Validate with
   `LC_ALL=C ./scripts/test-deploy-tooling`. Every enabled service needs
   `services/<service>/ops.yaml`.
 - Real deploys run strict config validation before `compose up`.
@@ -111,3 +112,8 @@
 - Offline deploy exercises live in `scripts/tests/check-deploy-guards` and
   `scripts/test-deploy-tooling`. They use fake `docker` shims and a temp
   `--deploy-base-dir`.
+
+## pstack
+
+- Use exactly one implementer and one reviewer. Do not use arena, swarm, or
+  multi-judge fan-outs unless Joe explicitly asks.

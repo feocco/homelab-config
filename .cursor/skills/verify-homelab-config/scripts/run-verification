@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+ARTIFACTS_DIR="${VERIFY_HOMELAB_ARTIFACTS:-/opt/cursor/artifacts/verify-homelab-config-${RUN_ID}}"
+SUMMARY="${ARTIFACTS_DIR}/summary.txt"
+FAILURES=0
+
+if ! mkdir -p "${ARTIFACTS_DIR}"; then
+  printf 'Cannot create artifact directory: %s\n' "${ARTIFACTS_DIR}" >&2
+  exit 1
+fi
+if ! printf 'check\texit\tcommand\n' >"${SUMMARY}"; then
+  printf 'Cannot write verification summary: %s\n' "${SUMMARY}" >&2
+  exit 1
+fi
+
+check_prerequisites() {
+  local status=0
+  local command_name path
+
+  for command_name in git python3 docker tailscale tee; do
+    if ! command -v "${command_name}"; then
+      printf 'Missing required command: %s\n' "${command_name}" >&2
+      status=1
+    fi
+  done
+
+  if ! python3 -c 'import yaml'; then
+    printf 'Missing required Python module: yaml\n' >&2
+    status=1
+  fi
+
+  for path in \
+    scripts/test-deploy-tooling \
+    scripts/check-workflow-policy \
+    scripts/tests/check-workflow-policy \
+    scripts/tests/check-route-auth \
+    scripts/tests/check-caddy-routes \
+    scripts/generate-caddy-config \
+    scripts/caddy-image-env \
+    scripts/tests/check-deploy-events \
+    .cursor/skills/verify-homelab-config/scripts/check-deploy-service-choices; do
+    if [[ ! -x "${REPO_DIR}/${path}" ]]; then
+      printf 'Missing required executable: %s\n' "${path}" >&2
+      status=1
+    fi
+  done
+
+  return "${status}"
+}
+
+check_deploy_tooling() {
+  LC_ALL=C "${REPO_DIR}/scripts/test-deploy-tooling" --offline
+}
+
+check_deploy_events() {
+  "${REPO_DIR}/scripts/tests/check-deploy-events"
+}
+
+check_workflow_policy() {
+  "${REPO_DIR}/scripts/check-workflow-policy" \
+    --repository feocco/homelab-config \
+    --deploy-workflow .github/workflows/deploy.yml
+}
+
+check_workflow_policy_fixtures() {
+  "${REPO_DIR}/scripts/tests/check-workflow-policy"
+}
+
+check_route_auth() {
+  "${REPO_DIR}/scripts/tests/check-route-auth"
+}
+
+check_deploy_service_choices() {
+  "${REPO_DIR}/.cursor/skills/verify-homelab-config/scripts/check-deploy-service-choices"
+}
+
+render_caddyfile() {
+  "${REPO_DIR}/scripts/generate-caddy-config" \
+    --output "${ARTIFACTS_DIR}/Caddyfile"
+}
+
+check_caddy_routes() {
+  "${REPO_DIR}/scripts/tests/check-caddy-routes"
+}
+
+validate_caddyfile() (
+  local image_env image_status caddy_version="" build_status
+  local docker_config="${ARTIFACTS_DIR}/docker-config"
+  local verification_image=""
+  local image_built=false
+
+  image_env="$("${REPO_DIR}/scripts/caddy-image-env" 2>&1)"
+  image_status=$?
+  printf '%s\n' "${image_env}"
+  if (( image_status != 0 )); then
+    return "${image_status}"
+  fi
+
+  while IFS='=' read -r key value; do
+    case "${key}" in
+      CADDY_VERSION) caddy_version="${value}" ;;
+    esac
+  done <<<"${image_env}"
+
+  if [[ -z "${caddy_version}" ]]; then
+    printf 'scripts/caddy-image-env did not return CADDY_VERSION\n' >&2
+    return 1
+  fi
+  if ! command -v docker >/dev/null; then
+    printf 'Missing required command: docker\n' >&2
+    return 127
+  fi
+  if ! mkdir -p "${docker_config}" || ! printf '{}\n' >"${docker_config}/config.json"; then
+    printf 'Cannot create empty Docker client config: %s\n' "${docker_config}" >&2
+    return 1
+  fi
+
+  verification_image="homelab-config-caddy-verification:${caddy_version}-${RUN_ID}-$$"
+  cleanup_verification_image() {
+    local command_status=$?
+    local cleanup_status=0
+
+    trap - EXIT
+    if [[ "${image_built}" == "true" ]]; then
+      printf 'Removing verification-only Caddy image: %s\n' "${verification_image}"
+      DOCKER_CONFIG="${docker_config}" docker image rm "${verification_image}" ||
+        cleanup_status=$?
+    fi
+    if (( command_status != 0 )); then
+      exit "${command_status}"
+    fi
+    exit "${cleanup_status}"
+  }
+  trap cleanup_verification_image EXIT
+
+  printf 'Building verification-only Caddy image: %s\n' "${verification_image}"
+  build_status=0
+  DOCKER_CONFIG="${docker_config}" docker build \
+    --build-arg "CADDY_VERSION=${caddy_version}" \
+    --tag "${verification_image}" \
+    "${REPO_DIR}/services/caddy" ||
+    build_status=$?
+  if (( build_status != 0 )); then
+    exit "${build_status}"
+  fi
+  image_built=true
+
+  DOCKER_CONFIG="${docker_config}" docker run --rm --network none \
+    -e CADDY_ACME_EMAIL=verifier@example.invalid \
+    -e CADDY_HOME_DOMAIN=verification.invalid \
+    -e CLOUDFLARE_API_TOKEN=0000000000000000000000000000000000000000 \
+    -v "${ARTIFACTS_DIR}/Caddyfile:/etc/caddy/Caddyfile:ro" \
+    "${verification_image}" caddy validate \
+    --config /etc/caddy/Caddyfile --adapter caddyfile
+)
+
+record_git_status() {
+  git status --short --branch
+}
+
+run_check() {
+  local name="$1"
+  local description="$2"
+  local function_name="$3"
+  local log="${ARTIFACTS_DIR}/${name}.log"
+  local status
+  local -a pipeline_status
+
+  printf 'Running %s\n' "${description}"
+  (
+    cd "${REPO_DIR}"
+    "${function_name}"
+  ) 2>&1 | tee "${log}"
+  pipeline_status=("${PIPESTATUS[@]}")
+  status="${pipeline_status[0]}"
+  if (( pipeline_status[1] != 0 )); then
+    printf 'Failed to write combined log: %s\n' "${log}" >&2
+    if (( status == 0 )); then
+      status="${pipeline_status[1]}"
+    fi
+  fi
+
+  printf '%s\t%s\t%s\n' "${name}" "${status}" "${description}" >>"${SUMMARY}"
+  if (( status != 0 )); then
+    FAILURES=$((FAILURES + 1))
+  fi
+}
+
+CHECKS=(
+  "prerequisites|check required commands, Python modules, and executables|check_prerequisites"
+  "deploy-tooling|LC_ALL=C ./scripts/test-deploy-tooling --offline|check_deploy_tooling"
+  "deploy-events|./scripts/tests/check-deploy-events|check_deploy_events"
+  "workflow-policy|./scripts/check-workflow-policy --repository feocco/homelab-config --deploy-workflow .github/workflows/deploy.yml|check_workflow_policy"
+  "workflow-policy-fixtures|./scripts/tests/check-workflow-policy|check_workflow_policy_fixtures"
+  "route-auth|./scripts/tests/check-route-auth|check_route_auth"
+  "deploy-service-choices|./.cursor/skills/verify-homelab-config/scripts/check-deploy-service-choices|check_deploy_service_choices"
+  "caddy-render|./scripts/generate-caddy-config --output <artifacts>/Caddyfile|render_caddyfile"
+  "caddy-routes|./scripts/tests/check-caddy-routes|check_caddy_routes"
+  "caddy-syntax|build, validate with, and remove a verification-only Caddy image|validate_caddyfile"
+  "git-status|git status --short --branch|record_git_status"
+)
+
+for check in "${CHECKS[@]}"; do
+  IFS='|' read -r name description function_name <<<"${check}"
+  run_check "${name}" "${description}" "${function_name}"
+done
+
+printf 'overall\t%s\t%s required check(s) failed\n' \
+  "$((FAILURES > 0 ? 1 : 0))" "${FAILURES}" >>"${SUMMARY}"
+printf 'Verification artifacts: %s\n' "${ARTIFACTS_DIR}"
+
+if (( FAILURES > 0 )); then
+  exit 1
+fi

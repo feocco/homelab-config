@@ -5,6 +5,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib-deploy-event-log
+source "${REPO_DIR}/scripts/lib-deploy-event-log"
 
 # python3 time.time. Do not shell out to date for a fractional epoch.
 # BSD date on the macmini runner errors or prints a non-numeric stamp,
@@ -39,6 +41,9 @@ Usage: test-deploy-tooling [--offline|--live|--all] [--json]
              "duration_seconds","exit_code","detail"?}]}
              Check logs stay out of that object. Failed checks include the
              last 40 log lines in "detail".
+             Each check also prints one JSON line on stderr:
+             {"event":"check","slug","stage","outcome","ms"}
+             stage is offline or live. outcome is ok or fail. ms is an integer.
 EOF
 }
 
@@ -79,7 +84,7 @@ run_check() {
   local scope="$2"
   shift 2
   index=$((index + 1))
-  local id log started ended duration status rc
+  local id log started ended duration status rc check_outcome check_ms
   id="$(printf '%02d' "${index}")"
   log="${results_dir}/${id}.log"
   started="$(epoch_seconds)"
@@ -91,10 +96,14 @@ run_check() {
   duration="$(python3 -c 'import sys; print(f"{float(sys.argv[2]) - float(sys.argv[1]):.3f}")' "${started}" "${ended}")"
   if [[ "${rc}" -eq 0 ]]; then
     status="pass"
+    check_outcome="ok"
   else
     status="fail"
+    check_outcome="fail"
     failed=1
   fi
+  check_ms="$(python3 -c 'import sys; print(max(0, int(round(float(sys.argv[1]) * 1000))))' "${duration}")"
+  log_deploy_event check "${name}" "${scope}" "${check_outcome}" "${check_ms}"
   python3 - "${results_dir}/${id}.json" "${name}" "${scope}" "${status}" "${duration}" "${rc}" "${log}" <<'PY'
 import json
 import pathlib
@@ -141,6 +150,7 @@ if [[ "${SCOPE}" != "live" ]]; then
   run_check check-workflow-policy offline
   run_check check-deploy-service-choices offline
   run_check check-repo-prohibitions offline
+  run_check check-deploy-events offline
 fi
 
 if [[ "${SCOPE}" != "offline" ]]; then

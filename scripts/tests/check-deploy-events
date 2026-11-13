@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Deploy and check paths emit {"event","slug","stage","outcome","ms"}.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+# shellcheck source=../lib-deploy-event-log
+source "${REPO_DIR}/scripts/lib-deploy-event-log"
+
+assert_event_object() {
+  local line="$1"
+  python3 - "${line}" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+keys = set(payload)
+expected = {"event", "slug", "stage", "outcome", "ms"}
+if keys != expected:
+    raise SystemExit(f"event keys {sorted(keys)} != {sorted(expected)}")
+ms = payload["ms"]
+if isinstance(ms, bool) or not isinstance(ms, int) or ms < 0:
+    raise SystemExit(f"ms {ms!r} is not a non-negative int")
+for field in ("event", "slug", "stage", "outcome"):
+    value = payload[field]
+    if not isinstance(value, str) or not value:
+        raise SystemExit(f"{field} must be a non-empty string")
+PY
+}
+
+sample="$(mktemp)"
+log_deploy_event deploy demo compose-up ok 15 2>"${sample}"
+sample_line="$(cat "${sample}")"
+assert_event_object "${sample_line}"
+python3 - "${sample_line}" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+expected = {
+    "event": "deploy",
+    "slug": "demo",
+    "stage": "compose-up",
+    "outcome": "ok",
+    "ms": 15,
+}
+if payload != expected:
+    raise SystemExit(f"sample event {payload} != {expected}")
+PY
+rm -f "${sample}"
+
+if log_deploy_event deploy demo compose-up ok -1 2>/dev/null; then
+  echo "A negative ms must be rejected." >&2
+  exit 1
+fi
+
+grep -q 'log_deploy_event check ' "${REPO_DIR}/scripts/test-deploy-tooling"
+grep -q 'log_deploy_event deploy ' "${REPO_DIR}/scripts/homelab-deploy"
+
+dry_out="$(mktemp)"
+dry_err="$(mktemp)"
+list_err="$(mktemp)"
+trap 'rm -f "${dry_out}" "${dry_err}" "${list_err}"' EXIT
+
+"${REPO_DIR}/scripts/homelab-deploy" --host macmini caddy --dry-run --deploy-base-dir "${REPO_DIR}" >"${dry_out}" 2>"${dry_err}"
+assert_contains "${dry_out}" "Would generate Caddy config"
+
+python3 - "${dry_err}" <<'PY'
+import json
+import pathlib
+import sys
+
+lines = [line for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.strip()]
+if not lines:
+    raise SystemExit("dry-run deploy produced no event lines")
+events = []
+for line in lines:
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"dry-run stderr is not one JSON event per line: {line}") from error
+    keys = set(payload)
+    if keys != {"event", "slug", "stage", "outcome", "ms"}:
+        raise SystemExit(f"event keys {sorted(keys)}")
+    if payload["event"] != "deploy" or payload["slug"] != "caddy":
+        raise SystemExit(f"unexpected deploy event {payload}")
+    if isinstance(payload["ms"], bool) or not isinstance(payload["ms"], int) or payload["ms"] < 0:
+        raise SystemExit(f"ms {payload['ms']!r} is not a non-negative int")
+    events.append((payload["stage"], payload["outcome"]))
+
+expected = [
+    ("config-validate", "skip"),
+    ("prepare", "dry-run"),
+    ("image-pull", "skip"),
+    ("compose-up", "skip"),
+]
+if events != expected:
+    raise SystemExit(f"dry-run stages {events} != {expected}")
+PY
+
+"${REPO_DIR}/scripts/homelab-deploy" --host macmini --list >/dev/null 2>"${list_err}"
+if grep -q '"event":"deploy"' "${list_err}"; then
+  echo "--list must not emit deploy events." >&2
+  cat "${list_err}" >&2
+  exit 1
+fi
+
+echo "deploy event log: ok"

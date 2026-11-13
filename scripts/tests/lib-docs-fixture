@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+
+DOCS_FIXTURE_SERVER_PID=""
+DOCS_FIXTURE_SERVER_PORT=""
+DOCS_FIXTURE_BASE_URL=""
+
+copy_local_docs_fixture() {
+  local repo_dir="$1"
+  local destination="$2"
+
+  mkdir -p "${destination}"
+  # Python copy: the file list is null-delimited, and macOS tar has no
+  # --verbatim-files-from. Ignored paths stay out via git ls-files.
+  git -C "${repo_dir}" ls-files --cached --others --exclude-standard -z |
+    python3 -c '
+import os
+import shutil
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+dest = Path(sys.argv[2])
+for raw in sys.stdin.buffer.read().split(b"\0"):
+    if not raw:
+        continue
+    rel = os.fsdecode(raw)
+    src = root / rel
+    if not src.exists() and not src.is_symlink():
+        continue
+    target = dest / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.is_symlink() or (target.exists() and not target.is_dir()):
+        target.unlink()
+    if src.is_symlink():
+        target.symlink_to(os.readlink(src))
+    elif src.is_dir():
+        target.mkdir(parents=True, exist_ok=True)
+    else:
+        shutil.copy2(src, target, follow_symlinks=False)
+' "${repo_dir}" "${destination}"
+}
+
+configure_local_docs_fixture() {
+  local fixture="$1"
+  local port="$2"
+
+  python3 - "${fixture}" "${port}" <<'PY'
+import pathlib
+import re
+import sys
+
+base = pathlib.Path(sys.argv[1])
+port = sys.argv[2]
+local_base = f"http://127.0.0.1:{port}"
+
+
+def set_scalar(text: str, key: str, value: str) -> str:
+    pattern = rf"^{re.escape(key)}:.*$"
+    if re.search(pattern, text, flags=re.MULTILINE):
+        return re.sub(pattern, f"{key}: {value}", text, count=1, flags=re.MULTILINE)
+    return text.rstrip() + f"\n{key}: {value}\n"
+
+
+for path in sorted((base / "services").glob("*/ops.yaml")):
+    text = path.read_text()
+    if not re.search(r"^docs_path:\s*\S+", text, flags=re.MULTILINE):
+        continue
+    text = set_scalar(text, "live_base_url", local_base)
+    if re.search(r"^route_hostname:", text, flags=re.MULTILINE):
+        text = set_scalar(text, "route_hostname", f"127.0.0.1:{port}")
+        text = set_scalar(text, "route_https", "false")
+    path.write_text(text)
+PY
+}
+
+write_local_docs_server() {
+  local server_path="$1"
+
+  cat >"${server_path}" <<'PY'
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import pathlib
+import sys
+
+port_file = pathlib.Path(sys.argv[1])
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/docs":
+            body = b"<!doctype html><title>fixture docs</title>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if self.path == "/openapi.json":
+            body = json.dumps({
+                "openapi": "3.1.0",
+                "info": {"title": "fixture docs"},
+                "paths": {"/health": {}},
+            }).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_error(404)
+
+    def log_message(self, fmt, *args):
+        return
+
+
+server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+port_file.write_text(str(server.server_port))
+server.serve_forever()
+PY
+}
+
+start_local_docs_fixture() {
+  local repo_dir="$1"
+  local scratch_dir="$2"
+  local fixture="$3"
+  local port_file="${scratch_dir}/docs-server-port"
+  local server_path="${scratch_dir}/docs-server.py"
+
+  write_local_docs_server "${server_path}"
+  python3 "${server_path}" "${port_file}" &
+  DOCS_FIXTURE_SERVER_PID="$!"
+  for _ in {1..50}; do
+    [[ -s "${port_file}" ]] && break
+    sleep 0.1
+  done
+  if [[ ! -s "${port_file}" ]]; then
+    printf 'Docs test server did not start.\n' >&2
+    return 1
+  fi
+
+  DOCS_FIXTURE_SERVER_PORT="$(cat "${port_file}")"
+  DOCS_FIXTURE_BASE_URL="http://127.0.0.1:${DOCS_FIXTURE_SERVER_PORT}"
+  copy_local_docs_fixture "${repo_dir}" "${fixture}"
+  configure_local_docs_fixture "${fixture}" "${DOCS_FIXTURE_SERVER_PORT}"
+}
+
+stop_local_docs_fixture() {
+  if [[ -n "${DOCS_FIXTURE_SERVER_PID}" ]]; then
+    kill "${DOCS_FIXTURE_SERVER_PID}" 2>/dev/null || true
+    wait "${DOCS_FIXTURE_SERVER_PID}" 2>/dev/null || true
+  fi
+  DOCS_FIXTURE_SERVER_PID=""
+}
