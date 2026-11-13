@@ -63,6 +63,29 @@ if [[ "${dry_run}" != *"Would advertise svc:demo at 100.100.100.100:443 -> tcp:/
   exit 1
 fi
 
+mkdir -p "${fixture}/no-cli"
+ln -s "$(command -v dirname)" "${fixture}/no-cli/dirname"
+ln -s "$(command -v python3)" "${fixture}/no-cli/python3"
+no_cli_dry="$(env PATH="${fixture}/no-cli" "${BASH}" "${fixture}/repo/scripts/apply-tailscale-serve" --host macmini --base-dir "${fixture}/repo" --dry-run 2>&1)" || {
+  echo "Dry-run must preview the Serve config without the tailscale CLI on PATH" >&2
+  echo "${no_cli_dry}" >&2
+  exit 1
+}
+if [[ "${no_cli_dry}" != *"Would expose legacy on Tailnet HTTP port 8099"* || "${no_cli_dry}" != *"Would advertise svc:demo at 100.100.100.100:443"* ]]; then
+  echo "Dry-run without the tailscale CLI skipped entries" >&2
+  echo "${no_cli_dry}" >&2
+  exit 1
+fi
+if no_cli_apply="$(env PATH="${fixture}/no-cli" "${BASH}" "${fixture}/repo/scripts/apply-tailscale-serve" --host macmini --base-dir "${fixture}/repo" 2>&1)"; then
+  echo "Apply must refuse without the tailscale CLI on PATH" >&2
+  exit 1
+fi
+if [[ "${no_cli_apply}" != *"tailscale CLI is required"* ]]; then
+  echo "Apply without the tailscale CLI must say the CLI is required" >&2
+  echo "${no_cli_apply}" >&2
+  exit 1
+fi
+
 PATH="${fixture}/bin:$PATH" "${fixture}/repo/scripts/apply-tailscale-serve" --host macmini --base-dir "${fixture}/repo" >/dev/null
 assert_contains "${fixture}/tailscale.log" 'serve --bg --http=8099 http://127.0.0.1:8099'
 assert_contains "${fixture}/tailscale.log" 'serve --service=svc:demo --bg --tcp=443 tcp://127.0.0.1:443'
