@@ -675,6 +675,18 @@ def self_test() -> list[str]:
         expect("email", fingerprints, "a@gmail.com")
         expect("github-app-id", fingerprints, "GITHUB_APP_ID")
 
+        named = base / "named"
+        write_file(
+            named,
+            "services/demo/.env.config",
+            "DASHBOARD_GH_APP_ID=123456\nHA_NOTIFY_JOE_SERVICE=notify.mobile_app_demo\n",
+        )
+        write_file(named, "services/demo/.env.example", "CLOSER_APP_INSTALLATION_ID=42\n")
+        named_errors = fingerprint_errors(named)
+        expect("prefixed-app-id", named_errors, "DASHBOARD_GH_APP_ID")
+        expect("ha-notify-entity", named_errors, "HA_NOTIFY_JOE_SERVICE")
+        expect("example-installation-id", named_errors, "CLOSER_APP_INSTALLATION_ID")
+
         agents = base / "agents"
         write_file(agents, "AGENTS.md", "word " * 900)
         expect("agents-words", agents_errors(agents), "under 900")
