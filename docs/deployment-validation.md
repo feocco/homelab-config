@@ -343,6 +343,12 @@ External dependencies used by validation:
 
 `scripts/test-deploy-tooling` is the blessed command for deploy tooling
 regression checks. Keep it as a thin orchestrator over focused subchecks.
+`--offline` is the deterministic suite for GitHub-hosted runners. `--live`
+keeps the tailnet proofs, including the validator-demo strict live check of
+`https://grafana.home.feocco.com/api/health` and the docs index fetch of
+`https://hello-nas.home.feocco.com/docs`, for the self-hosted macmini workflow.
+The default `--all` runs both. `--json` prints one object with each check's
+status.
 
 `scripts/generate-service-catalog` and `scripts/generate-homepage-config` build
 dashboard/catalog artifacts from `ops.yaml`, host manifests, Compose,

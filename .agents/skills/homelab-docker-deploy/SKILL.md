@@ -90,7 +90,7 @@ Keep application code and runtime configuration separate.
    - Make an explicit SRE decision for every repo-managed app service:
      - Set `sre.enabled: true` when Joe should receive SRE issues/notifications for container errors.
      - Set `sre.enabled: false` or omit metadata only for infrastructure, intentionally unmanaged, noisy, experimental, or short-lived/dev containers.
-   - Add or update `homelab-sre-agent/services.yaml` so the log SRE agent can map the container/image back to the source repo, issue repo, deploy path, runbook, labels, `sre.enabled`, and `sre.autofix` decision.
+   - Add or update `services/homelab-sre-agent/services.yaml` so the log SRE agent can map the container/image back to the source repo, issue repo, deploy path, runbook, labels, `sre.enabled`, and `sre.autofix` decision.
    - If `sre.enabled: true`, verify the `homelab-sre` GitHub App is installed on the source/issue repo before relying on SRE issue comments, labels, or dispatch. If it is not installed, either install it or leave SRE disabled until it is.
    - Default `sre.autofix` to `false`; set it to `true` only when the source repo has a `homelab-sre-investigate` workflow, an `OPENAI_API_KEY` GitHub Actions secret, an `SRE_GITHUB_TOKEN` or approved bot/app PR token for draft PR creation, the repo is installed for the SRE GitHub App, and Joe explicitly wants draft PR automation for that service.
    - Add config files only when they belong in the private homelab-config repo.
@@ -114,7 +114,7 @@ services:
    - For friend-private routes, also prove the public record uses the service
      TailVIP, raw TLS reaches the intended Caddy virtual host, and a friend
      identity cannot connect to an unrelated service.
-   - Run `./scripts/test-deploy-tooling`.
+   - Run `LC_ALL=C ./scripts/test-deploy-tooling --offline` for the deterministic suite. `--live` contacts the tailnet and belongs on the self-hosted macmini workflow. The default `--all` runs both.
    - Run `./scripts/homelab-deploy --host nasfeo --list`.
    - Run `./scripts/homelab-deploy --host macmini --list`.
    - Run `./scripts/homelab-deploy --host <host> <service> --dry-run --deploy-base-dir $HOME/code/homelab-config`.
@@ -182,7 +182,7 @@ services:
 - Do not end at "branch deployed" unless Joe explicitly wants temporary runtime
   state. Merge to `main` and redeploy from `main` when practical.
 - Do not deploy a service that requires environment values until `$homelab-github-secrets` has tracked non-secret config, uploaded required secret values, and `./scripts/check-service-secrets` passes.
-- Do not omit an SRE decision for repo-managed services. Either add explicit `homelab-sre-agent/services.yaml` metadata or state why the service should intentionally be unmanaged by the SRE agent.
+- Do not omit an SRE decision for repo-managed services. Either add explicit `services/homelab-sre-agent/services.yaml` metadata or state why the service should intentionally be unmanaged by the SRE agent.
 - Do not set `sre.autofix: true` unless the source repo has the wrapper workflow, required GitHub Actions secrets, GitHub App installation, and Joe wants approved Codex draft PRs for that service.
 - Do not make one giant Compose file unless services are tightly coupled.
 - Do not assume GHCR package visibility from repo visibility. New container packages may start private; verify the package itself.

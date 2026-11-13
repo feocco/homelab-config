@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# The live suite runs on macOS. BSD date rejects GNU +%s.%N, so the timer must
+# stay a Python float even when that date is first on PATH.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+
+if grep -n '%s\.%N' "${REPO_DIR}/scripts/test-deploy-tooling"; then
+  echo "test-deploy-tooling must not time checks with date +%s.%N." >&2
+  echo "BSD date on the macmini runner errors or prints a non-numeric stamp, and float() then aborts the live suite before Grafana or the docs fetch." >&2
+  exit 1
+fi
+
+# shellcheck source=../../test-deploy-tooling
+source "${REPO_DIR}/scripts/test-deploy-tooling"
+
+assert_timer_float() {
+  local path_dir="$1"
+  local label="$2"
+  local started ended duration
+
+  started="$(PATH="${path_dir}:${PATH}" epoch_seconds)"
+  ended="$(PATH="${path_dir}:${PATH}" epoch_seconds)"
+  duration="$(PATH="${path_dir}:${PATH}" python3 -c 'import sys; print(f"{float(sys.argv[2]) - float(sys.argv[1]):.3f}")' "${started}" "${ended}")"
+  python3 - "${label}" "${started}" "${ended}" "${duration}" <<'PY'
+import sys
+
+label, started, ended, duration = sys.argv[1:]
+for name, raw in (("start", started), ("end", ended), ("duration", duration)):
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise SystemExit(f"{label}: {name} {raw!r} is not a float ({error})") from error
+    if name != "duration" and value <= 0:
+        raise SystemExit(f"{label}: {name} {value} is not a positive epoch float")
+if float(duration) < 0:
+    raise SystemExit(f"{label}: duration {duration} is negative")
+PY
+}
+
+fixture="$(mktemp -d)"
+trap 'rm -rf "${fixture}"' EXIT
+
+mkdir -p "${fixture}/error" "${fixture}/text"
+cat > "${fixture}/error/date" <<'EOF'
+#!/usr/bin/env bash
+echo "date: illegal time format" >&2
+exit 1
+EOF
+cat > "${fixture}/text/date" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '+%s.%N'
+EOF
+chmod +x "${fixture}/error/date" "${fixture}/text/date"
+
+if PATH="${fixture}/error:${PATH}" date +%s.%N >/dev/null 2>&1; then
+  echo "The error fixture must fail the way BSD date fails on +%s.%N." >&2
+  exit 1
+fi
+text_stamp="$(PATH="${fixture}/text:${PATH}" date +%s.%N)"
+if python3 -c 'import sys; float(sys.argv[1])' "${text_stamp}" >/dev/null 2>&1; then
+  echo "The text fixture must print a non-numeric stamp, not a float." >&2
+  exit 1
+fi
+
+assert_timer_float "${fixture}/error" "date exits non-zero"
+assert_timer_float "${fixture}/text" "date prints a non-numeric stamp"

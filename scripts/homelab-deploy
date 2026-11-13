@@ -129,11 +129,24 @@ fi
 DEPLOY_BASE_DIR="$(service_secret_expand_path "${DEPLOY_BASE_DIR}")"
 
 git_branch() {
+  local head=""
+  head="$(git -C "${BASE_DIR}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  # Actions checks out a detached commit, so the job ref is the branch name.
+  # A named branch in BASE_DIR is the tree being deployed. GITHUB_REF_NAME is
+  # the job ref (a pull_request run is "<pr>/merge") and must not replace it.
+  if [[ "${head}" == "HEAD" && -n "${GITHUB_REF_NAME:-}" ]]; then
+    echo "${GITHUB_REF_NAME}"
+    return
+  fi
+  if [[ -n "${head}" ]]; then
+    echo "${head}"
+    return
+  fi
   if [[ -n "${GITHUB_REF_NAME:-}" ]]; then
     echo "${GITHUB_REF_NAME}"
     return
   fi
-  git -C "${BASE_DIR}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"
+  echo "unknown"
 }
 
 git_sha() {
