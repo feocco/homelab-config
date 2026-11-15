@@ -27,6 +27,7 @@ GitHub Actions secrets and rendered into the ignored runtime `.env`:
 
 - `XAI_API_KEY` for text-to-speech
 - `OPENAI_API_KEY`
+- `CURSOR_API_KEY` for unsupported article URL extraction
 - `X_API_BEARER_TOKEN` for official X Article lookup
 - `HA_URL`
 - `HA_LONG_LIVED_TOKEN`
