@@ -4,6 +4,27 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_DIR}/scripts/tests/lib-test-helpers"
 
+SCOPE="all"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --offline) SCOPE="offline" ;;
+    --live) SCOPE="live" ;;
+    --all) SCOPE="all" ;;
+    -h|--help)
+      echo "Usage: check-service-rollout [--offline|--live|--all]"
+      echo "  --offline  config and fixture checks that do not contact the tailnet"
+      echo "  --live     real-service and strict fixture live proof, including Grafana"
+      echo "  --all      both (default)"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
 require_ops_manifests_for_enabled_services() {
   PYTHONPATH="${REPO_DIR}/scripts/lib" python3 - "${REPO_DIR}" <<'PY'
 import pathlib
@@ -30,6 +51,7 @@ PY
 }
 
 validate_discovered_manifests() {
+  local phase="${1:?config or live}"
   local found="false"
   local manifest service host hosts_file enabled_file
 
@@ -96,13 +118,13 @@ PY
         continue
       fi
       rm -f "${enabled_file}"
-      "${REPO_DIR}/scripts/validate-service-rollout" \
-        --service "${service}" \
-        --host "${host}" \
-        --check config \
-        --mode strict
-
-      if grep -q '^live_base_url:' "${manifest}"; then
+      if [[ "${phase}" == "config" ]]; then
+        "${REPO_DIR}/scripts/validate-service-rollout" \
+          --service "${service}" \
+          --host "${host}" \
+          --check config \
+          --mode strict
+      elif grep -q '^live_base_url:' "${manifest}"; then
         "${REPO_DIR}/scripts/validate-service-rollout" \
           --service "${service}" \
           --host "${host}" \
@@ -492,6 +514,7 @@ copy_fixture() {
     -cf - . | tar -xf - -C "${destination}"
 }
 
+if [[ "${SCOPE}" != "live" ]]; then
 missing_out="$(mktemp)"
 assert_fails "${missing_out}" "${REPO_DIR}/scripts/validate-service-rollout" --service missing-demo --host macmini --check config --mode strict
 assert_contains "${missing_out}" 'Missing service rollout manifest'
@@ -499,7 +522,7 @@ assert_contains "${missing_out}" 'services/missing-demo/ops.yaml'
 rm -f "${missing_out}"
 
 require_ops_manifests_for_enabled_services
-validate_discovered_manifests
+validate_discovered_manifests config
 
 validator_tmp="$(mktemp -d)"
 trap 'rm -rf "${validator_tmp}"' EXIT
@@ -529,6 +552,17 @@ PY
 docs_framework_out="${validator_tmp}/missing-docs-framework.out"
 assert_fails "${docs_framework_out}" "${validator_tmp}/missing-docs-framework/scripts/validate-service-rollout" --base-dir "${validator_tmp}/missing-docs-framework" --service validator-demo --host macmini --check config --mode strict
 assert_contains "${docs_framework_out}" 'api_framework must be one of'
+fi
+
+if [[ "${SCOPE}" != "offline" ]]; then
+  if [[ -z "${validator_fixture:-}" || ! -d "${validator_fixture}" ]]; then
+    validator_tmp="$(mktemp -d)"
+    trap 'rm -rf "${validator_tmp}"' EXIT
+    validator_fixture="${validator_tmp}/repo"
+    copy_fixture "${validator_fixture}"
+    add_validator_demo_fixture "${validator_fixture}"
+  fi
+  validate_discovered_manifests live
 
 cat >"${validator_tmp}/docs-live-server.py" <<'PY'
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -679,7 +713,9 @@ assert_fails "${invalid_openapi_out}" "${validator_tmp}/invalid-openapi-live/scr
 assert_contains "${invalid_openapi_out}" 'OpenAPI schema failed'
 kill "${bad_docs_server_pid}" 2>/dev/null || true
 wait "${bad_docs_server_pid}" 2>/dev/null || true
+fi
 
+if [[ "${SCOPE}" != "live" ]]; then
 for fixture_case in \
   "validator-worker macmini" \
   "validator-multi macmini" \
@@ -851,6 +887,9 @@ PY
 sre_out="${validator_tmp}/missing-sre.out"
 assert_fails "${sre_out}" "${validator_tmp}/missing-sre/scripts/validate-service-rollout" --base-dir "${validator_tmp}/missing-sre" --service validator-demo --host macmini --check config --mode strict
 assert_contains "${sre_out}" 'SRE metadata is missing'
+fi
 
-rm -rf "${validator_tmp}"
-trap - EXIT
+if [[ -n "${validator_tmp:-}" ]]; then
+  rm -rf "${validator_tmp}"
+  trap - EXIT
+fi

@@ -1,0 +1,23 @@
+name: Deploy Tooling Live
+
+# Tailnet checks only. pull_request must stay off this file: the job uses the
+# macmini self-hosted runner. Deploy jobs do not wait on this workflow.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-live:
+    name: Validate deploy tooling live
+    runs-on: [self-hosted, macmini]
+    if: github.repository == 'feocco/homelab-config'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+
+      - name: Run live deploy tooling checks
+        run: LC_ALL=C ./scripts/test-deploy-tooling --live

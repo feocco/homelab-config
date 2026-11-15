@@ -4,6 +4,28 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_DIR}/scripts/tests/lib-test-helpers"
 
+SCOPE="all"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --offline) SCOPE="offline" ;;
+    --live) SCOPE="live" ;;
+    --all) SCOPE="all" ;;
+    -h|--help)
+      echo "Usage: check-docs-site [--offline|--live|--all]"
+      echo "  --offline  MkDocs layout and checked-in docs. No service HTTP."
+      echo "  --live     generated index, including https://hello-nas.home.feocco.com/docs"
+      echo "  --all      both (default)"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+if [[ "${SCOPE}" != "live" ]]; then
 test -f "${REPO_DIR}/mkdocs.yml"
 assert_contains "${REPO_DIR}/mkdocs.yml" "material"
 assert_contains "${REPO_DIR}/mkdocs.yml" "Home: index.md"
@@ -60,7 +82,11 @@ if grep -Eq "deploy-pages|upload-pages-artifact|github-pages|pages: write|id-tok
 fi
 assert_contains "${REPO_DIR}/.gitignore" "docs/generated/*"
 assert_contains "${REPO_DIR}/.gitignore" "!docs/generated/.gitkeep"
+assert_contains "${REPO_DIR}/services/homelab-docs/ops.yaml" "dashboard_name: Homelab Docs"
+assert_contains "${REPO_DIR}/services/homelab-docs/ops.yaml" "route_hostname: docs.home.feocco.com"
+fi
 
+if [[ "${SCOPE}" != "offline" ]]; then
 tmpdir="$(mktemp -d)"
 "${REPO_DIR}/scripts/generate-docs-service-index" --output "${tmpdir}/service-index.md"
 assert_contains "${tmpdir}/service-index.md" "# Services"
@@ -96,9 +122,7 @@ if git -C "${REPO_DIR}" ls-files --error-unmatch docs/generated/service-index.md
   exit 1
 fi
 
-assert_contains "${REPO_DIR}/services/homelab-docs/ops.yaml" "dashboard_name: Homelab Docs"
-assert_contains "${REPO_DIR}/services/homelab-docs/ops.yaml" "route_hostname: docs.home.feocco.com"
-
 if python3 -m mkdocs --version >/dev/null 2>&1; then
   "${REPO_DIR}/scripts/build-docs-site" --site-dir "${tmpdir}/site"
+fi
 fi

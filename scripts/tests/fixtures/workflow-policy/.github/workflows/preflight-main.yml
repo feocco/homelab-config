@@ -1,0 +1,23 @@
+name: Preflight gate
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    if: github.repository == 'feocco/example'
+    steps:
+      - run: "true"
+
+  deploy:
+    needs: preflight
+    runs-on: [self-hosted, macmini]
+    if: github.repository == 'feocco/example' && success() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    steps:
+      - run: "true"

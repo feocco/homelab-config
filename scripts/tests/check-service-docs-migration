@@ -4,6 +4,27 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_DIR}/scripts/tests/lib-test-helpers"
 
+SCOPE="all"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --offline) SCOPE="offline" ;;
+    --live) SCOPE="live" ;;
+    --all) SCOPE="all" ;;
+    -h|--help)
+      echo "Usage: check-service-docs-migration [--offline|--live|--all]"
+      echo "  --offline  manifest and app-stage contract checks"
+      echo "  --live     docs-site stage, which fetches live service docs"
+      echo "  --all      both (default)"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
 assert_json_value() {
   local json_file="$1"
   local expression="$2"
@@ -27,6 +48,7 @@ test -x "${REPO_DIR}/scripts/check-service-docs-migration"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "${tmpdir}"' EXIT
 
+if [[ "${SCOPE}" != "live" ]]; then
 "${REPO_DIR}/scripts/check-service-docs-migration" \
   --service hello-nas \
   --host macmini \
@@ -35,7 +57,9 @@ trap 'rm -rf "${tmpdir}"' EXIT
 assert_json_field "${tmpdir}/hello-manifest.json" "success" "true"
 assert_json_value "${tmpdir}/hello-manifest.json" "payload['stages'][0]['name']" "manifest"
 assert_json_value "${tmpdir}/hello-manifest.json" "payload['stages'][0]['success']" "true"
+fi
 
+if [[ "${SCOPE}" != "offline" ]]; then
 "${REPO_DIR}/scripts/check-service-docs-migration" \
   --service hello-nas \
   --host macmini \
@@ -60,7 +84,9 @@ assert_fails "${tmpdir}/caddy-docs-site.out" \
     --format json
 assert_json_field "${tmpdir}/caddy-docs-site.out" "success" "false"
 assert_json_value "${tmpdir}/caddy-docs-site.out" "payload['stages'][0]['docs_status']" "Not migrated"
+fi
 
+if [[ "${SCOPE}" != "live" ]]; then
 assert_fails "${tmpdir}/app-no-proof.out" \
   "${REPO_DIR}/scripts/check-service-docs-migration" \
     --service hello-nas \
@@ -69,3 +95,4 @@ assert_fails "${tmpdir}/app-no-proof.out" \
     --app-repo "${REPO_DIR}" \
     --format json
 assert_contains "${tmpdir}/app-no-proof.out" "app stage requires --app-test-command or --local-base-url"
+fi
