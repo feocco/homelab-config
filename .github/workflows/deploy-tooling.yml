@@ -25,20 +25,5 @@ jobs:
       - name: Install validator dependency
         run: python -m pip install --require-hashes -r scripts/requirements-workflow-policy.txt
 
-      - name: Install Tailscale CLI
-        run: |
-          set -euo pipefail
-          case "$(uname -m)" in
-            x86_64) arch=amd64 ;;
-            aarch64|arm64) arch=arm64 ;;
-            *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
-          esac
-          tarball="$(python3 -c 'import json,sys,urllib.request; print(json.load(urllib.request.urlopen("https://pkgs.tailscale.com/stable/?mode=json"))["Tarballs"][sys.argv[1]])' "${arch}")"
-          curl -fsSL "https://pkgs.tailscale.com/stable/${tarball}" -o "/tmp/${tarball}"
-          tar -xzf "/tmp/${tarball}" -C /tmp
-          sudo install -m 0755 "/tmp/${tarball%.tgz}/tailscale" /usr/local/bin/tailscale
-          command -v tailscale
-          tailscale version
-
       - name: Run deploy tooling checks
         run: LC_ALL=C ./scripts/test-deploy-tooling --offline

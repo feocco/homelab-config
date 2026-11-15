@@ -136,6 +136,8 @@ if [[ "${SCOPE}" != "live" ]]; then
   run_check check-smoke-signal-config offline
   run_check check-caddy-routes offline
   run_check check-route-convention offline
+  run_check check-route-auth offline
+  run_check check-idp-isolation offline
   run_check check-redeploy-image offline
   run_check check-deploy-guards offline
   run_check check-workflow-policy offline

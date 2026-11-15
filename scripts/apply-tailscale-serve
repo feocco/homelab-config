@@ -45,7 +45,7 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
   echo "No Tailscale Serve config for ${HOST}."
   exit 0
 fi
-if ! command -v tailscale >/dev/null 2>&1; then
+if [[ "${DRY_RUN}" != "true" ]] && ! command -v tailscale >/dev/null 2>&1; then
   echo "tailscale CLI is required to apply ${CONFIG_FILE}" >&2
   exit 2
 fi
