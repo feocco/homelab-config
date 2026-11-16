@@ -138,6 +138,20 @@ Dirty/canary model: `docs/deployment-source-of-truth.md`.
 Disabling a service in the host manifest does not stop a running container.
 Stop the old container manually after verifying the new host.
 
+## Runner Watch
+
+`Runner watch` runs on a GitHub-hosted runner every 15 minutes. It records
+offline self-hosted runners, an empty runner list, and Deploy jobs queued for
+15 minutes or longer on the orphan branch `runner-watch-state`.
+
+`Runner watch notify` runs on the macmini runner and phones Joe through
+homelab-functions at `http://127.0.0.1:8091`. The broker is on the tailnet, so
+the GitHub-hosted job only records the incident. The notification ledger is
+the send record, and each incident is phoned once.
+
+When the macmini runner is down, the state branch still records the incident.
+The phone waits until that runner is back.
+
 ## Security Notes
 
 - Publish ports on the narrowest useful interface.

@@ -1,0 +1,32 @@
+name: Runner watch notify
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Runner watch"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runner-watch-notify
+  cancel-in-progress: true
+
+jobs:
+  notify:
+    name: Notify Joe
+    # homelab-functions is tailnet-only. This job calls the broker on the
+    # macmini loopback. A GitHub-hosted runner cannot reach it.
+    runs-on: [self-hosted, macmini]
+    if: github.repository == 'feocco/homelab-config'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+
+      - name: Send pending alerts
+        env:
+          HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_FUNCTIONS__HOMELAB_FUNCTIONS_TOKEN }}
+        run: scripts/runner-watch deliver --git-repo . --branch runner-watch-state --fetch --notify-url http://127.0.0.1:8091
