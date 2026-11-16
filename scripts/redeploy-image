@@ -108,7 +108,6 @@ cmd=(
   -f "host=${HOST}"
   -f "service=${SERVICE}"
   -f force_recreate=true
-  -f canary=false
 )
 
 printf_command() {

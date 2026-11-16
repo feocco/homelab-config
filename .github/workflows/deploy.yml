@@ -58,23 +58,31 @@ on:
         required: false
         type: boolean
         default: false
-      canary:
-        description: Allow temporary deployment from a non-main branch
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
   packages: read
 
 jobs:
+  require-main:
+    name: Require main
+    runs-on: ubuntu-latest
+    if: github.repository == 'feocco/homelab-config'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+
+      - name: Refuse a ref other than main
+        run: scripts/require-main-ref
+
   deploy-nasfeo:
     name: Deploy nasfeo
+    needs: require-main
     runs-on: [self-hosted, nasfeo]
     # Never run untrusted/fork work on self-hosted runners. Keep this repo-only
     # guard even if PR triggers are added later by mistake.
-    if: github.repository == 'feocco/homelab-config' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.host == 'nasfeo' || inputs.host == 'all')))
+    # success() is required because a custom if replaces the default needs check.
+    if: github.repository == 'feocco/homelab-config' && success() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.host == 'nasfeo' || inputs.host == 'all')))
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
@@ -150,7 +158,6 @@ jobs:
         env:
           SERVICE_INPUT: ${{ inputs.service }}
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
-          CANARY_INPUT: ${{ inputs.canary }}
         run: |
           # The dispatch choice list is the allowlist (check-deploy-service-choices keeps it
           # in sync with services/); a second hand-kept list here drifted and rejected waiting.
@@ -162,30 +169,25 @@ jobs:
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
           fi
-          if [ "${CANARY_INPUT}" = "true" ]; then
-            args+=(--canary)
-          fi
           ./scripts/homelab-deploy --host nasfeo "${SERVICE_INPUT}" "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
 
       - name: Deploy all services
         if: github.event_name == 'workflow_dispatch' && inputs.service == 'all'
         env:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
-          CANARY_INPUT: ${{ inputs.canary }}
         run: |
           args=()
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
           fi
-          if [ "${CANARY_INPUT}" = "true" ]; then
-            args+=(--canary)
-          fi
           ./scripts/homelab-deploy --host nasfeo --all "${args[@]}" --deploy-base-dir /volume1/docker/homelab-config
 
   deploy-macmini:
     name: Deploy macmini
+    needs: require-main
     runs-on: [self-hosted, macmini]
-    if: github.repository == 'feocco/homelab-config' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.host == 'macmini' || inputs.host == 'all')))
+    # success() is required because a custom if replaces the default needs check.
+    if: github.repository == 'feocco/homelab-config' && success() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.host == 'macmini' || inputs.host == 'all')))
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
@@ -364,7 +366,6 @@ jobs:
         env:
           SERVICE_INPUT: ${{ inputs.service }}
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
-          CANARY_INPUT: ${{ inputs.canary }}
         run: |
           # The dispatch choice list is the allowlist (check-deploy-service-choices keeps it
           # in sync with services/); a second hand-kept list here drifted and rejected waiting.
@@ -375,9 +376,6 @@ jobs:
           args=()
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
-          fi
-          if [ "${CANARY_INPUT}" = "true" ]; then
-            args+=(--canary)
           fi
           RUNNER_HOME="${HOME}"
           export HOME="${RUNNER_TEMP:-/tmp}/docker-home"
@@ -411,14 +409,10 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.service == 'all'
         env:
           FORCE_RECREATE_INPUT: ${{ inputs.force_recreate }}
-          CANARY_INPUT: ${{ inputs.canary }}
         run: |
           args=()
           if [ "${FORCE_RECREATE_INPUT}" = "true" ]; then
             args+=(--force-recreate)
-          fi
-          if [ "${CANARY_INPUT}" = "true" ]; then
-            args+=(--canary)
           fi
           RUNNER_HOME="${HOME}"
           export HOME="${RUNNER_TEMP:-/tmp}/docker-home"

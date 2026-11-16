@@ -66,6 +66,16 @@ image reference or running a manual maintenance update.
 
 ## Canary And Emergency Deploys
 
+The Deploy workflow accepts a run only when `github.ref` is `refs/heads/main`.
+It has no canary input. Dispatching the workflow from any other branch fails
+in the `require-main` job on a GitHub-hosted runner, before either host job
+starts. A service image built from an unmerged service pull request is still
+deployed when `main` names that image tag. `scripts/redeploy-image` dispatches
+the workflow with `--ref main`.
+
+A branch canary of this repo's own files is a host-local command, not a
+workflow dispatch:
+
 Use `--canary` for a branch deploy:
 
 ```sh
