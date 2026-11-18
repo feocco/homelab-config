@@ -4,8 +4,9 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 probe_dir="${REPO_DIR}/services/tailnet-client-probe"
 
-expected="$("${REPO_DIR}/scripts/sync-cloudflare-dns" --dry-run | sed -E 's/^Would upsert Cloudflare A ([^ ]+) .*/\1/' | sort)"
-actual="$(grep -v '^#' "${probe_dir}/targets.txt" | sed '/^$/d')"
+# LC_ALL=C: en_US.UTF-8 sort ignores punctuation, so home-ops sorts after home.feocco.com.
+expected="$(LC_ALL=C "${REPO_DIR}/scripts/sync-cloudflare-dns" --dry-run | sed -E 's/^Would upsert Cloudflare A ([^ ]+) .*/\1/' | LC_ALL=C sort)"
+actual="$(grep -v '^#' "${probe_dir}/targets.txt" | sed '/^$/d' | LC_ALL=C sort)"
 if [[ "${expected}" != "${actual}" ]]; then
   echo "services/tailnet-client-probe/targets.txt is out of date; regenerate it (see its README)." >&2
   diff <(echo "${expected}") <(echo "${actual}") >&2 || true

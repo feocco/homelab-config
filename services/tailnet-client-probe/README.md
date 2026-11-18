@@ -38,7 +38,7 @@ For each hostname in `targets.txt`:
 fails CI when it drifts. Regenerate with:
 
 ```sh
-./scripts/sync-cloudflare-dns --dry-run | sed -E 's/^Would upsert Cloudflare A ([^ ]+) .*/\1/' | sort
+./scripts/sync-cloudflare-dns --dry-run | sed -E 's/^Would upsert Cloudflare A ([^ ]+) .*/\1/' | LC_ALL=C sort
 ```
 
 ## Run once by hand
