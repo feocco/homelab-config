@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Tailnet clients (Joe's Pixel with Tailscale on) must resolve every LAN-routed
+# homelab name to a tailnet address, never the RFC1918 LAN address. Android 17
+# drops app traffic to RFC1918 on Wi-Fi without ACCESS_LOCAL_NETWORK, which
+# Chrome 156 turns into ERR_TOO_MANY_RETRIES.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${REPO_DIR}/scripts/tests/lib-test-helpers"
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT
+
+"${REPO_DIR}/scripts/sync-tailscale-split-dns" --dry-run >"${tmp}/plan" 2>"${tmp}/warn"
+assert_contains "${tmp}/plan" 'Would set Tailscale split DNS home.feocco.com -> 1.1.1.1, 1.0.0.1'
+assert_contains "${tmp}/plan" 'Would set Tailscale split DNS mealie.feocco.com -> 1.1.1.1, 1.0.0.1'
+
+# Every Cloudflare answer a tailnet client gets for home.feocco.com names is a tailnet address.
+"${REPO_DIR}/scripts/sync-cloudflare-dns" --dry-run | python3 -c '
+import ipaddress, re, sys
+bad = []
+for line in sys.stdin:
+    m = re.search(r"A (\S+) -> (\S+)", line)
+    if m and ipaddress.ip_address(m.group(2)) not in ipaddress.ip_network("100.64.0.0/10"):
+        bad.append(line.strip())
+if bad:
+    sys.exit("non-tailnet Cloudflare answers: " + "; ".join(bad))
+'
+
+# --check reports drift against the live config (fixture here) and passes when it matches.
+echo '{"example.com": ["9.9.9.9"]}' >"${tmp}/unset.json"
+assert_fails "${tmp}/out" env TAILSCALE_API_KEY=test TAILSCALE_SPLIT_DNS_FIXTURE="${tmp}/unset.json" \
+  "${REPO_DIR}/scripts/sync-tailscale-split-dns" --check
+assert_contains "${tmp}/out" 'home.feocco.com: unset != '
+echo '{"home.feocco.com": ["1.1.1.1", "1.0.0.1"], "mealie.feocco.com": ["1.1.1.1", "1.0.0.1"], "example.com": ["9.9.9.9"]}' >"${tmp}/ok.json"
+TAILSCALE_API_KEY=test TAILSCALE_SPLIT_DNS_FIXTURE="${tmp}/ok.json" \
+  "${REPO_DIR}/scripts/sync-tailscale-split-dns" --check >"${tmp}/ok"
+assert_contains "${tmp}/ok" 'Tailscale split DNS matches route manifests.'
+
+# A LAN-routed home.feocco.com name without a tailnet Cloudflare record must fail the plan.
+cp -R "${REPO_DIR}" "${tmp}/repo"
+sed -i.bak 's/^  tailnet_addr: .*/  tailnet_addr: 192.168.1.43/' "${tmp}/repo/hosts/macmini/services.yaml"
+assert_fails "${tmp}/bad" "${tmp}/repo/scripts/sync-tailscale-split-dns" --dry-run
+assert_contains "${tmp}/bad" 'home.feocco.com: Cloudflare answer 192.168.1.43 is not a tailnet address'
+
+echo "tailnet split DNS checks passed"

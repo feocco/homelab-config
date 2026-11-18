@@ -49,11 +49,23 @@ centrally here, in `scripts/lib/homelab_catalog.py` (Caddy), and in
 - Off-LAN: Cloudflare DNS-only A record to `host.tailnet_addr` (default
   `route_public_dns`), so it resolves publicly but is reachable only over
   Tailscale.
+- Tailnet clients: Tailscale split DNS sends `home.feocco.com` (and each
+  LAN-routed hostname outside it, such as `mealie.feocco.com`) to Cloudflare's
+  public resolvers, so a device with Tailscale on gets the tailnet address even
+  at home. This keeps Android 17 phones working: Android drops app traffic to
+  RFC1918 addresses on Wi-Fi unless the app holds the Local network
+  permission, and Chrome 156 then fails with `ERR_TOO_MANY_RETRIES`. VPN traffic
+  is exempt. `scripts/sync-tailscale-split-dns` owns this setting and
+  `scripts/tests/check-tailnet-split-dns` fails CI if a LAN-routed name would
+  resolve to anything but a tailnet address for tailnet clients.
 - A second hostname for the same service and port goes in
   `route_extra_hostnames:` (a second name for one service and port). It gets the same Caddy, UniFi, and Cloudflare
   treatment as `route_hostname`.
 - After merge, publish records with
-  `./scripts/dispatch-route-dns --mode apply --watch` and deploy Caddy.
+  `./scripts/dispatch-route-dns --mode apply --watch` and deploy Caddy. Split
+  DNS is a separate provider:
+  `./scripts/dispatch-route-dns --provider tailscale --mode apply --watch`
+  (needs the `TAILSCALE_API_KEY` repository secret).
 
 `scripts/tests/check-route-convention` fails CI if a `*.home.feocco.com`
 hostname skips HTTPS, skips UniFi DNS, uses a different public DNS mode, or is
