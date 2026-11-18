@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+probe_dir="${REPO_DIR}/services/tailnet-client-probe"
+
+expected="$("${REPO_DIR}/scripts/sync-cloudflare-dns" --dry-run | sed -E 's/^Would upsert Cloudflare A ([^ ]+) .*/\1/' | sort)"
+actual="$(grep -v '^#' "${probe_dir}/targets.txt" | sed '/^$/d')"
+if [[ "${expected}" != "${actual}" ]]; then
+  echo "services/tailnet-client-probe/targets.txt is out of date; regenerate it (see its README)." >&2
+  diff <(echo "${expected}") <(echo "${actual}") >&2 || true
+  exit 1
+fi
+
+python3 "${probe_dir}/test_probe.py" -q
+echo "tailnet client probe checks passed"

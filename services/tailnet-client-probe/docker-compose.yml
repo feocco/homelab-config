@@ -1,0 +1,21 @@
+services:
+  tailnet-client-probe:
+    image: python:3.12-slim
+    platform: ${SERVICE_PLATFORM:-linux/amd64}
+    container_name: tailnet-client-probe
+    restart: unless-stopped
+    env_file:
+      - .env
+    command:
+      - python
+      - /app/probe.py
+    volumes:
+      - ./probe.py:/app/probe.py:ro
+      - ./targets.txt:/app/targets.txt:ro
+      - ./data:/app/data
+    logging:
+      driver: local
+      options:
+        max-size: "5m"
+        max-file: "1"
+        compress: "false"

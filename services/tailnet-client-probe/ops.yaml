@@ -1,0 +1,15 @@
+service: tailnet-client-probe
+kind: app
+host: nasfeo
+source_repo: feocco/homelab-config
+image: python:3.12-slim
+public_image: true
+container: tailnet-client-probe
+monitoring: false
+sre: false
+dashboard_name: Tailnet Client Probe
+dashboard_group: Infrastructure
+dashboard_description: Checks homelab sites the way a Tailscale phone reaches them
+dashboard_icon: mdi-cellphone-check
+secrets:
+  - HOMELAB_FUNCTIONS_TOKEN
