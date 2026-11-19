@@ -1,0 +1,30 @@
+name: Runner watch
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runner-watch-detect
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    name: Detect offline runners
+    runs-on: ubuntu-latest
+    if: github.repository == 'feocco/homelab-config'
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+
+      - name: Record runner and queue incidents
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: scripts/runner-watch sync --git-repo . --branch runner-watch-state --repo-slug "${{ github.repository }}" --push

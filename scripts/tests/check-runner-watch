@@ -1,0 +1,724 @@
+#!/usr/bin/env python3
+"""Prove runner-watch detects offline runners and queued deploys, then phones once."""
+
+from __future__ import annotations
+
+import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+import yaml
+
+
+REPO = Path(__file__).resolve().parents[2]
+SCRIPT = REPO / "scripts" / "runner-watch"
+SLUG = "feocco/homelab-config"
+API = "https://api.github.com"
+NOW = "2026-11-16T18:15:00Z"
+TOKEN = "runner-watch-test-token"
+GITHUB_TOKEN = "github-test-token-not-for-logs"
+
+
+def runners_url(page: int) -> str:
+    return f"{API}/repos/{SLUG}/actions/runners?per_page=100&page={page}"
+
+
+def runs_url(status: str, page: int) -> str:
+    return (
+        f"{API}/repos/{SLUG}/actions/workflows/deploy.yml/runs"
+        f"?status={status}&per_page=100&page={page}"
+    )
+
+
+def jobs_url(run_id: int, page: int) -> str:
+    return f"{API}/repos/{SLUG}/actions/runs/{run_id}/jobs?per_page=100&page={page}"
+
+
+def page(items: list, total: int, key: str) -> dict:
+    return {"status": 200, "body": {key: items, "total_count": total}}
+
+
+def quiet_runs() -> dict:
+    return {
+        runs_url("queued", 1): page([], 0, "workflow_runs"),
+        runs_url("in_progress", 1): page([], 0, "workflow_runs"),
+    }
+
+
+def runner(runner_id: int, name: str, status: str | None) -> dict:
+    record = {"id": runner_id, "name": name}
+    if status is not None:
+        record["status"] = status
+    return record
+
+
+def run_record(
+    run_id: int,
+    status: str,
+    started: str | None,
+    name: str = "Deploy",
+    created: str | None = None,
+) -> dict:
+    return {
+        "id": run_id,
+        "name": name,
+        "path": ".github/workflows/deploy.yml",
+        "status": status,
+        "run_started_at": started,
+        "created_at": created or started,
+        "html_url": f"https://github.com/{SLUG}/actions/runs/{run_id}",
+    }
+
+
+def job_record(
+    job_id: int,
+    name: str,
+    status: str,
+    started: str | None,
+    run_id: int,
+) -> dict:
+    return {
+        "id": job_id,
+        "name": name,
+        "status": status,
+        "started_at": started,
+        "html_url": f"https://github.com/{SLUG}/actions/runs/{run_id}/job/{job_id}",
+    }
+
+
+def runs_fixture(runs: list[dict]) -> dict:
+    queued = [run for run in runs if run["status"] == "queued"]
+    active = [run for run in runs if run["status"] == "in_progress"]
+    fixture = {
+        runs_url("queued", 1): page(queued, len(queued), "workflow_runs"),
+        runs_url("in_progress", 1): page(active, len(active), "workflow_runs"),
+    }
+    for run in runs:
+        fixture[jobs_url(run["id"], 1)] = page(run.get("_jobs", []), len(run.get("_jobs", [])), "jobs")
+    return fixture
+
+
+def git_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@example.com",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "test@example.com",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    return env
+
+
+def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        text=True,
+        capture_output=True,
+        env=git_env(),
+        check=False,
+    )
+    if check and result.returncode != 0:
+        raise AssertionError(f"git {' '.join(args)} failed:\n{result.stderr}")
+    return result
+
+
+def init_repo(path: Path) -> None:
+    path.mkdir(parents=True)
+    git(path, "init", "-b", "main")
+    (path / "README").write_text("main\n")
+    git(path, "add", "README")
+    git(path, "commit", "-m", "init")
+
+
+def run_watch(args: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), *args],
+        text=True,
+        capture_output=True,
+        env=env or os.environ.copy(),
+        check=False,
+    )
+
+
+def write_fixture(directory: Path, payload: dict) -> Path:
+    path = directory / "github.json"
+    path.write_text(json.dumps(payload))
+    return path
+
+
+def plan(directory: Path, fixture: dict, now: str = NOW, previous: Path | None = None) -> dict:
+    path = write_fixture(directory, fixture)
+    args = [
+        "plan",
+        "--github-fixture",
+        str(path),
+        "--repo-slug",
+        SLUG,
+        "--now",
+        now,
+        "--threshold-seconds",
+        "900",
+    ]
+    if previous is not None:
+        args.extend(["--previous", str(previous)])
+    result = run_watch(args)
+    if result.returncode != 0:
+        raise AssertionError(result.stderr or result.stdout)
+    return json.loads(result.stdout)
+
+
+def sync(repo: Path, directory: Path, fixture: dict, now: str = NOW, push: bool = False) -> subprocess.CompletedProcess[str]:
+    path = write_fixture(directory, fixture)
+    env = os.environ.copy()
+    env["GITHUB_TOKEN"] = GITHUB_TOKEN
+    args = [
+        "sync",
+        "--git-repo",
+        str(repo),
+        "--branch",
+        "runner-watch-state",
+        "--repo-slug",
+        SLUG,
+        "--github-fixture",
+        str(path),
+        "--now",
+        now,
+        "--threshold-seconds",
+        "900",
+    ]
+    if push:
+        args.append("--push")
+    return run_watch(args, env=env)
+
+
+def assert_exit(result: subprocess.CompletedProcess[str], code: int) -> None:
+    if result.returncode != code:
+        raise AssertionError(
+            f"expected exit {code}, got {result.returncode}\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+
+
+def state_text(repo: Path) -> str:
+    result = git(repo, "show", "runner-watch-state:state.json")
+    return result.stdout
+
+
+def commit_count(repo: Path, ref: str = "runner-watch-state") -> int:
+    result = git(repo, "rev-list", "--count", ref)
+    return int(result.stdout.strip())
+
+
+def assert_clean(repo: Path) -> None:
+    status = git(repo, "status", "--porcelain")
+    if status.stdout.strip():
+        raise AssertionError(f"worktree changed:\n{status.stdout}")
+    main = git(repo, "rev-parse", "HEAD").stdout
+    named = git(repo, "rev-parse", "main").stdout
+    if main != named:
+        raise AssertionError("runner-watch moved main")
+
+
+class Broker:
+    def __init__(self) -> None:
+        self.notifications: list[dict] = []
+        self.posts = 0
+        self.gets = 0
+        self.list_status = 200
+        self.post_status = 200
+        self.bad_list_body = False
+        broker = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                broker.gets += 1
+                if self.headers.get("Authorization") != f"Bearer {TOKEN}":
+                    self.respond(401, {"error": "unauthorized"})
+                    return
+                if broker.list_status != 200:
+                    self.respond(broker.list_status, {"error": "list failed"})
+                    return
+                if broker.bad_list_body:
+                    self.respond(200, {"nope": True})
+                    return
+                tag = parse_qs(urlsplit(self.path).query).get("tag", [None])[0]
+                matches = [item for item in broker.notifications if item.get("tag") == tag]
+                self.respond(200, {"notifications": matches[:1]})
+
+            def do_POST(self) -> None:
+                broker.posts += 1
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode())
+                if self.headers.get("Authorization") != f"Bearer {TOKEN}":
+                    self.respond(401, {"error": "unauthorized"})
+                    return
+                if broker.post_status != 200:
+                    self.respond(broker.post_status, {"error": "post failed"})
+                    return
+                broker.notifications.append(payload)
+                self.respond(
+                    200,
+                    {
+                        "status": "sent",
+                        "notification_id": len(broker.notifications),
+                        "ha_context_id": "ctx",
+                    },
+                )
+
+            def respond(self, status: int, payload: dict) -> None:
+                body = json.dumps(payload).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, fmt: str, *args) -> None:
+                return
+
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+        host, port = self.httpd.server_address[:2]
+        self.url = f"http://{host}:{port}"
+
+    def close(self) -> None:
+        self.httpd.shutdown()
+        self.thread.join(timeout=5)
+
+
+def deliver(args: list[str]) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["HOMELAB_FUNCTIONS_TOKEN"] = TOKEN
+    return run_watch(args, env=env)
+
+
+def closed_port() -> int:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def test_detection(tmp: Path) -> None:
+    online = plan(tmp, {runners_url(1): page([runner(1, "macmini", "online")], 1, "runners"), **quiet_runs()})
+    if online["incidents"]:
+        raise AssertionError(f"online runner should be quiet: {online}")
+
+    offline = plan(
+        tmp,
+        {
+            runners_url(1): page([runner(1, "macmini", "online")], 2, "runners"),
+            runners_url(2): page([runner(17, "nasfeo", "offline")], 2, "runners"),
+            **quiet_runs(),
+        },
+    )
+    incident = offline["incidents"].get("runner-offline:17")
+    if incident is None or "nasfeo" not in incident["title"] or "offline" not in incident["message"]:
+        raise AssertionError(f"page 2 offline runner missing: {offline}")
+    if "runner-offline:1" in offline["incidents"]:
+        raise AssertionError("online runner was alerted")
+    if not incident["tag"].endswith("20261116T181500Z"):
+        raise AssertionError(f"tag should include opened_at: {incident['tag']}")
+
+    missing_status = plan(tmp, {runners_url(1): page([runner(4, "odd", None)], 1, "runners"), **quiet_runs()})
+    if "missing" not in missing_status["incidents"]["runner-offline:4"]["message"]:
+        raise AssertionError(missing_status)
+
+    empty = plan(tmp, {runners_url(1): page([], 0, "runners"), **quiet_runs()})
+    if "runners-unlisted" not in empty["incidents"]:
+        raise AssertionError(empty)
+
+    young = run_record(7, "queued", "2026-11-16T18:00:01Z")
+    young["_jobs"] = [job_record(70, "Deploy nasfeo", "queued", "2026-11-16T18:00:01Z", 7)]
+    young_state = plan(tmp, {runners_url(1): page([runner(1, "macmini", "online")], 1, "runners"), **runs_fixture([young])})
+    if young_state["incidents"]:
+        raise AssertionError(f"899 seconds should stay quiet: {young_state}")
+
+    old = run_record(8, "in_progress", "2026-11-16T16:00:00Z")
+    old["_jobs"] = [job_record(80, "Deploy nasfeo", "queued", "2026-11-16T18:00:00Z", 8)]
+    old_state = plan(tmp, {runners_url(1): page([runner(1, "macmini", "online")], 1, "runners"), **runs_fixture([old])})
+    queued = old_state["incidents"].get("deploy-queued:80")
+    if queued is None or "2026-11-16T18:00:00Z" not in queued["message"]:
+        raise AssertionError(f"900 seconds should alert from started_at: {old_state}")
+    if "deploy-queued:run:8" in old_state["incidents"]:
+        raise AssertionError("job incident should not also alert the run")
+
+    recent_job = run_record(9, "in_progress", "2026-11-16T16:00:00Z")
+    recent_job["_jobs"] = [job_record(90, "Deploy nasfeo", "queued", "2026-11-16T18:14:00Z", 9)]
+    recent_state = plan(
+        tmp,
+        {runners_url(1): page([runner(1, "macmini", "online")], 1, "runners"), **runs_fixture([recent_job])},
+    )
+    if recent_state["incidents"]:
+        raise AssertionError(f"job started_at should win over an old run clock: {recent_state}")
+
+    null_job = run_record(10, "queued", "2026-11-16T16:00:00Z")
+    null_job["_jobs"] = [job_record(100, "Deploy nasfeo", "queued", None, 10)]
+    null_state = plan(
+        tmp,
+        {runners_url(1): page([runner(1, "macmini", "online")], 1, "runners"), **runs_fixture([null_job])},
+    )
+    if "deploy-queued:100" not in null_state["incidents"]:
+        raise AssertionError(f"null started_at should use the run clock: {null_state}")
+
+    active_job = run_record(11, "in_progress", "2026-11-16T16:00:00Z")
+    active_job["_jobs"] = [job_record(110, "Deploy macmini", "in_progress", "2026-11-16T16:00:00Z", 11)]
+    active_state = plan(
+        tmp,
+        {runners_url(1): page([runner(1, "macmini", "online")], 1, "runners"), **runs_fixture([active_job])},
+    )
+    if active_state["incidents"]:
+        raise AssertionError(f"in_progress job should stay quiet: {active_state}")
+
+    other = run_record(12, "queued", "2026-11-16T16:00:00Z", name="Runner watch")
+    other["path"] = ".github/workflows/runner-watch.yml"
+    other["_jobs"] = [job_record(120, "Detect offline runners", "queued", "2026-11-16T16:00:00Z", 12)]
+    other_state = plan(tmp, {runners_url(1): page([runner(1, "macmini", "online")], 1, "runners"), **runs_fixture([other])})
+    if other_state["incidents"]:
+        raise AssertionError(f"non-Deploy run should stay quiet: {other_state}")
+
+    bare_run = run_record(13, "queued", "2026-11-16T16:00:00Z")
+    bare_run["_jobs"] = []
+    bare_state = plan(
+        tmp,
+        {runners_url(1): page([runner(1, "macmini", "online")], 1, "runners"), **runs_fixture([bare_run])},
+    )
+    if "deploy-queued:run:13" not in bare_state["incidents"]:
+        raise AssertionError(f"queued run with no jobs should alert: {bare_state}")
+
+
+def test_git_and_failures(tmp: Path) -> None:
+    repo = tmp / "repo"
+    init_repo(repo)
+    denied = {
+        runners_url(1): {"status": 403, "body": {"message": "Resource not accessible by integration"}},
+    }
+    denied_result = sync(repo, tmp, denied)
+    assert_exit(denied_result, 1)
+    if "403" not in denied_result.stderr:
+        raise AssertionError(denied_result.stderr)
+    combined = denied_result.stdout + denied_result.stderr
+    if GITHUB_TOKEN in combined:
+        raise AssertionError("GitHub token leaked into command output")
+    if git(repo, "rev-parse", "--verify", "--quiet", "runner-watch-state", check=False).returncode == 0:
+        raise AssertionError("403 wrote runner-watch-state")
+
+    offline = {runners_url(1): page([runner(17, "nasfeo", "offline")], 1, "runners"), **quiet_runs()}
+    first = sync(repo, tmp, offline, now=NOW)
+    assert_exit(first, 0)
+    if "committed" not in first.stdout:
+        raise AssertionError(first.stdout)
+    if commit_count(repo) != 1:
+        raise AssertionError("first incident should be one commit")
+    if "20261116T181500Z" not in state_text(repo):
+        raise AssertionError(state_text(repo))
+    assert_clean(repo)
+    author = git(repo, "log", "-1", "--format=%an", "runner-watch-state").stdout.strip()
+    if author != "runner-watch":
+        raise AssertionError(f"state commit used {author!r}")
+
+    second = sync(repo, tmp, offline, now="2026-11-16T19:00:00Z")
+    assert_exit(second, 0)
+    if "unchanged" not in second.stdout or commit_count(repo) != 1:
+        raise AssertionError(f"same incident should not commit again:\n{second.stdout}")
+    if "20261116T190000Z" in state_text(repo):
+        raise AssertionError("opened_at was rewritten")
+
+    clear = sync(repo, tmp, {runners_url(1): page([runner(17, "nasfeo", "online")], 1, "runners"), **quiet_runs()})
+    assert_exit(clear, 0)
+    cleared = json.loads(state_text(repo))
+    if cleared["incidents"] or commit_count(repo) != 2:
+        raise AssertionError(f"recovery should drop the incident without a phone: {cleared}")
+
+    again = sync(repo, tmp, offline, now="2026-11-16T20:00:00Z")
+    assert_exit(again, 0)
+    reopened = json.loads(state_text(repo))
+    tag = reopened["incidents"]["runner-offline:17"]["tag"]
+    if "20261116T200000Z" not in tag or commit_count(repo) != 3:
+        raise AssertionError(f"a new outage needs a new tag: {reopened}")
+
+    partial = {
+        runners_url(1): page([runner(1, "macmini", "online")], 2, "runners"),
+        runners_url(2): {"status": 404, "body": {}},
+        **quiet_runs(),
+    }
+    before = state_text(repo)
+    missed = sync(repo, tmp, partial)
+    assert_exit(missed, 1)
+    if state_text(repo) != before or commit_count(repo) != 3:
+        raise AssertionError("incomplete runner list must not publish")
+
+
+def test_push_retry_and_fetch(tmp: Path, broker: Broker) -> None:
+    bare = tmp / "remote.git"
+    subprocess.run(["git", "init", "--bare", "-b", "main", str(bare)], check=True, capture_output=True, text=True)
+    repo = tmp / "publisher"
+    init_repo(repo)
+    git(repo, "remote", "add", "origin", str(bare))
+    git(repo, "push", "origin", "main")
+    marker = bare / "reject-once"
+    hook = bare / "hooks" / "pre-receive"
+    hook.write_text(
+        f"""#!/bin/sh
+if [ ! -f "{marker}" ]; then
+  : > "{marker}"
+  echo "reject once" >&2
+  exit 1
+fi
+exit 0
+"""
+    )
+    hook.chmod(0o755)
+    offline = {runners_url(1): page([runner(17, "nasfeo", "offline")], 1, "runners"), **quiet_runs()}
+    pushed = sync(repo, tmp, offline, push=True)
+    assert_exit(pushed, 0)
+    if "pushed" not in pushed.stdout or "reject once" not in pushed.stderr:
+        raise AssertionError(f"push should retry after one rejection:\n{pushed.stdout}\n{pushed.stderr}")
+    remote_count = subprocess.run(
+        ["git", "--git-dir", str(bare), "rev-list", "--count", "refs/heads/runner-watch-state"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    if remote_count.stdout.strip() != "1":
+        raise AssertionError(f"remote should have one state commit, got {remote_count.stdout!r}")
+    repeated = sync(repo, tmp, offline, now="2026-11-16T19:00:00Z", push=True)
+    assert_exit(repeated, 0)
+    if "unchanged" not in repeated.stdout:
+        raise AssertionError(repeated.stdout)
+
+    clone = tmp / "clone"
+    subprocess.run(["git", "clone", str(bare), str(clone)], check=True, capture_output=True, text=True, env=git_env())
+    sent = deliver(
+        [
+            "deliver",
+            "--git-repo",
+            str(clone),
+            "--branch",
+            "runner-watch-state",
+            "--fetch",
+            "--notify-url",
+            broker.url,
+        ]
+    )
+    assert_exit(sent, 0)
+    if broker.posts != 1 or "sent " not in sent.stdout:
+        raise AssertionError(f"fetch deliver should phone once:\n{sent.stdout}\nposts={broker.posts}")
+    if TOKEN in sent.stdout + sent.stderr:
+        raise AssertionError("notify token leaked into command output")
+    body = broker.notifications[0]
+    if body.get("group") != "runner-watch" or "nasfeo" not in body.get("title", "") or not body.get("url"):
+        raise AssertionError(f"notify body is wrong: {body}")
+    again = deliver(
+        [
+            "deliver",
+            "--git-repo",
+            str(clone),
+            "--branch",
+            "runner-watch-state",
+            "--fetch",
+            "--notify-url",
+            broker.url,
+        ]
+    )
+    assert_exit(again, 0)
+    if broker.posts != 1 or "already sent" not in again.stdout:
+        raise AssertionError(f"second deliver should not post again:\n{again.stdout}")
+
+    quiet = tmp / "quiet"
+    init_repo(quiet)
+    bare_main = tmp / "main-only.git"
+    subprocess.run(["git", "init", "--bare", "-b", "main", str(bare_main)], check=True, capture_output=True, text=True)
+    git(quiet, "remote", "add", "origin", str(bare_main))
+    git(quiet, "push", "origin", "main")
+    missing = deliver(
+        [
+            "deliver",
+            "--git-repo",
+            str(quiet),
+            "--fetch",
+            "--notify-url",
+            broker.url,
+        ]
+    )
+    assert_exit(missing, 0)
+    if broker.posts != 1 or "nothing to send" not in missing.stdout:
+        raise AssertionError(missing.stdout)
+
+
+def test_notify_failures(tmp: Path, broker: Broker) -> None:
+    state = tmp / "pending.json"
+    state.write_text(
+        json.dumps(
+            {
+                "incidents": {
+                    "runner-offline:17": {
+                        "message": "Self-hosted runner nasfeo (id 17) status is offline.",
+                        "opened_at": "2026-11-16T21:00:00Z",
+                        "tag": "rw-runner-offline-17-20261116T210000Z",
+                        "title": "nasfeo runner is offline",
+                        "url": f"https://github.com/{SLUG}/settings/actions/runners",
+                    },
+                    "deploy-queued:80": {
+                        "message": "Deploy job Deploy nasfeo (id 80) has been queued since 2026-11-16T18:00:00Z.",
+                        "opened_at": "2026-11-16T21:00:00Z",
+                        "tag": "rw-deploy-queued-80-20261116T210000Z",
+                        "title": "Deploy nasfeo is queued",
+                        "url": "",
+                    },
+                }
+            }
+        )
+    )
+    posts_before = broker.posts
+    recorded_before = len(broker.notifications)
+    broker.post_status = 401
+    rejected = deliver(["deliver", "--state-file", str(state), "--notify-url", broker.url])
+    assert_exit(rejected, 1)
+    if broker.posts != posts_before + 1 or len(broker.notifications) != recorded_before:
+        raise AssertionError("401 should stop after the failing post and record nothing")
+
+    broker.post_status = 502
+    pending_posts = broker.posts
+    pending = deliver(["deliver", "--state-file", str(state), "--notify-url", broker.url])
+    assert_exit(pending, 0)
+    if (
+        pending.stdout.count("pending ") != 2
+        or broker.posts != pending_posts + 2
+        or len(broker.notifications) != recorded_before
+    ):
+        raise AssertionError(
+            f"502 should leave both incidents pending:\n{pending.stdout}\nposts={broker.posts}"
+        )
+
+    broker.post_status = 200
+    recovered = deliver(["deliver", "--state-file", str(state), "--notify-url", broker.url])
+    assert_exit(recovered, 0)
+    fresh = broker.notifications[recorded_before:]
+    titles = [item["title"] for item in fresh]
+    if titles.count("nasfeo runner is offline") != 1 or titles.count("Deploy nasfeo is queued") != 1:
+        raise AssertionError(f"failed sends must be retried once: {titles}")
+    queued_body = next(item for item in fresh if item["title"] == "Deploy nasfeo is queued")
+    if "url" in queued_body:
+        raise AssertionError("empty url must be omitted")
+
+    broker.list_status = 401
+    gets = broker.gets
+    posts = broker.posts
+    listed = deliver(["deliver", "--state-file", str(state), "--notify-url", broker.url])
+    assert_exit(listed, 1)
+    if broker.posts != posts or broker.gets != gets + 1:
+        raise AssertionError("a failed list must not post")
+    broker.list_status = 200
+    broker.bad_list_body = True
+    posts = broker.posts
+    malformed = deliver(["deliver", "--state-file", str(state), "--notify-url", broker.url])
+    assert_exit(malformed, 1)
+    if broker.posts != posts:
+        raise AssertionError("a malformed list must not post")
+    broker.bad_list_body = False
+
+    env = os.environ.copy()
+    env.pop("HOMELAB_FUNCTIONS_TOKEN", None)
+    missing_token = run_watch(["deliver", "--state-file", str(state), "--notify-url", broker.url], env=env)
+    assert_exit(missing_token, 1)
+    if "HOMELAB_FUNCTIONS_TOKEN is unset" not in missing_token.stderr:
+        raise AssertionError(missing_token.stderr)
+
+    empty = tmp / "empty.json"
+    empty.write_text('{"incidents": {}}\n')
+    quiet = run_watch(["deliver", "--state-file", str(empty), "--notify-url", broker.url], env=env)
+    assert_exit(quiet, 0)
+
+    refused = deliver(
+        ["deliver", "--state-file", str(state), "--notify-url", f"http://127.0.0.1:{closed_port()}"]
+    )
+    assert_exit(refused, 0)
+    if "pending" not in refused.stdout:
+        raise AssertionError(refused.stdout)
+
+    corrupt = tmp / "corrupt.json"
+    corrupt.write_text("{")
+    broken = deliver(["deliver", "--state-file", str(corrupt), "--notify-url", broker.url])
+    assert_exit(broken, 1)
+
+
+def workflow_on(document: dict) -> dict:
+    if "on" in document:
+        return document["on"]
+    value = document.get(True)
+    if not isinstance(value, dict):
+        raise AssertionError("workflow is missing on")
+    return value
+
+
+def test_workflows() -> None:
+    detect_path = REPO / ".github" / "workflows" / "runner-watch.yml"
+    notify_path = REPO / ".github" / "workflows" / "runner-watch-notify.yml"
+    detect = yaml.safe_load(detect_path.read_text())
+    notify = yaml.safe_load(notify_path.read_text())
+    detect_on = workflow_on(detect)
+    notify_on = workflow_on(notify)
+    if detect["jobs"]["detect"]["runs-on"] != "ubuntu-latest":
+        raise AssertionError("detect must run on a GitHub-hosted runner")
+    if "8091" in detect_path.read_text() or "notify/joe" in detect_path.read_text():
+        raise AssertionError("detect must not call homelab-functions")
+    notify_job = notify["jobs"]["notify"]
+    if notify_job["runs-on"] != ["self-hosted", "macmini"]:
+        raise AssertionError(notify_job["runs-on"])
+    if not str(notify_job["if"]).startswith("github.repository == 'feocco/homelab-config'"):
+        raise AssertionError("notify job is missing the repository guard")
+    if "http://127.0.0.1:8091" not in notify_path.read_text():
+        raise AssertionError("notify must use the macmini loopback broker")
+    if "contents: write" in notify_path.read_text() or "git push" in notify_path.read_text():
+        raise AssertionError("notify must not write git state")
+    if "HOMELAB_FUNCTIONS__HOMELAB_FUNCTIONS_TOKEN" not in notify_path.read_text():
+        raise AssertionError("notify must reuse the existing homelab-functions token")
+    secrets = [
+        line.strip()
+        for line in notify_path.read_text().splitlines()
+        if "secrets." in line and "HOMELAB_FUNCTIONS__HOMELAB_FUNCTIONS_TOKEN" not in line
+    ]
+    if secrets:
+        raise AssertionError(f"notify references an unexpected secret: {secrets}")
+    detect_permissions = detect["jobs"]["detect"]["permissions"]
+    if detect_permissions.get("actions") != "read" or detect_permissions.get("contents") != "write":
+        raise AssertionError(detect_permissions)
+    if "schedule" not in detect_on or "schedule" not in notify_on:
+        raise AssertionError("both workflows should be scheduled")
+    sources = notify_on["workflow_run"]["workflows"]
+    if sources != ["Runner watch"]:
+        raise AssertionError(sources)
+    if notify.get("concurrency", {}).get("cancel-in-progress") is not True:
+        raise AssertionError("notify should keep a single pending job while macmini is offline")
+
+
+def main() -> None:
+    broker = Broker()
+    try:
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            test_detection(tmp)
+            test_git_and_failures(tmp)
+            test_push_retry_and_fetch(tmp, broker)
+            test_notify_failures(tmp, broker)
+        test_workflows()
+    finally:
+        broker.close()
+    print("Runner watch checks passed.")
+
+
+if __name__ == "__main__":
+    main()

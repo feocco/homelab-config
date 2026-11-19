@@ -1,0 +1,707 @@
+#!/usr/bin/env python3
+"""Record offline runners and queued Deploy jobs, then phone Joe once per incident.
+
+The GitHub-hosted detect job is the only writer of branch runner-watch-state.
+The macmini notify job reads that branch and uses the homelab-functions
+notification ledger as the send record. This repo has issues disabled, and
+Actions cache expires, so neither can hold an incident that may last for days.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable
+
+
+GITHUB_API = "https://api.github.com"
+STATE_FILE = "state.json"
+DEFAULT_BRANCH = "runner-watch-state"
+DEFAULT_THRESHOLD_SECONDS = 15 * 60
+NOTIFY_GROUP = "runner-watch"
+RETRY_STATUSES = {502, 504}
+PAGE_LIMIT = 20
+Getter = Callable[[str], tuple[int, Any]]
+
+
+class GitHubAPIError(RuntimeError):
+    pass
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def die(message: str, code: int = 1) -> None:
+    print(message, file=sys.stderr)
+    raise SystemExit(code)
+
+
+def empty_state() -> dict[str, Any]:
+    return {"incidents": {}}
+
+
+def dump_state(state: dict[str, Any]) -> str:
+    return json.dumps({"incidents": state["incidents"]}, indent=2, sort_keys=True) + "\n"
+
+
+def load_state(text: str) -> dict[str, Any]:
+    if not text.strip():
+        return empty_state()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"runner-watch state is not JSON: {exc}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("incidents"), dict):
+        raise ValueError("runner-watch state must contain an incidents object")
+    return {"incidents": data["incidents"]}
+
+
+def parse_time(value: str) -> datetime:
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def normalize_now(value: str | None) -> str:
+    current = parse_time(value) if value else datetime.now(timezone.utc)
+    return current.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def incident_tag(key: str, opened_at: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", key).strip("-")
+    stamp = re.sub(r"[^0-9TZ]", "", opened_at)
+    return f"rw-{slug}-{stamp}"
+
+
+def make_incident(key: str, title: str, message: str, url: str, opened_at: str) -> dict[str, str]:
+    return {
+        "message": message,
+        "opened_at": opened_at,
+        "tag": incident_tag(key, opened_at),
+        "title": title,
+        "url": url,
+    }
+
+
+def usable_incident(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    for field in ("message", "opened_at", "tag", "title"):
+        item = value.get(field)
+        if not isinstance(item, str) or not item.strip():
+            return False
+    url = value.get("url", "")
+    return isinstance(url, str)
+
+
+def freeze_incident(value: dict[str, Any]) -> dict[str, str]:
+    return {
+        "message": value["message"].strip(),
+        "opened_at": value["opened_at"].strip(),
+        "tag": value["tag"].strip(),
+        "title": value["title"].strip(),
+        "url": value.get("url", "").strip(),
+    }
+
+
+def reconcile(previous: dict[str, Any], detected: dict[str, dict[str, str]]) -> dict[str, Any]:
+    old = previous.get("incidents") or {}
+    merged: dict[str, dict[str, str]] = {}
+    for key, incident in detected.items():
+        existing = old.get(key)
+        if usable_incident(existing):
+            merged[key] = freeze_incident(existing)
+        else:
+            merged[key] = incident
+    return {"incidents": merged}
+
+
+def first_timestamp(*values: Any) -> str | None:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def age_seconds(started: str | None, now: datetime) -> float:
+    if started is None:
+        return 0
+    try:
+        opened = parse_time(started)
+    except ValueError:
+        return 0
+    return max(0.0, (now - opened).total_seconds())
+
+
+def require_id(record: dict[str, Any], label: str) -> int | str:
+    if "id" not in record:
+        raise GitHubAPIError(f"{label} is missing id")
+    return record["id"]
+
+
+def runner_incidents(runners: list[dict[str, Any]], repo: str, opened_at: str) -> dict[str, dict[str, str]]:
+    incidents: dict[str, dict[str, str]] = {}
+    runner_url = f"https://github.com/{repo}/settings/actions/runners"
+    if not runners:
+        key = "runners-unlisted"
+        incidents[key] = make_incident(
+            key,
+            "No self-hosted runners are listed",
+            f"GitHub returned an empty runner list for {repo}.",
+            runner_url,
+            opened_at,
+        )
+        return incidents
+    for runner in runners:
+        if runner.get("status") == "online":
+            continue
+        runner_id = require_id(runner, "runner")
+        name = runner.get("name")
+        if not isinstance(name, str) or not name.strip():
+            name = f"runner {runner_id}"
+        status = runner.get("status")
+        shown = status.strip() if isinstance(status, str) and status.strip() else "missing"
+        key = f"runner-offline:{runner_id}"
+        incidents[key] = make_incident(
+            key,
+            f"{name} runner is offline",
+            f"Self-hosted runner {name} (id {runner_id}) status is {shown}.",
+            runner_url,
+            opened_at,
+        )
+    return incidents
+
+
+def is_deploy_run(run: dict[str, Any]) -> bool:
+    name = run.get("name")
+    path = run.get("path")
+    if name is None and path is None:
+        return True
+    return name == "Deploy" or path == ".github/workflows/deploy.yml"
+
+
+def job_incidents(
+    runs: list[dict[str, Any]],
+    threshold: int,
+    now: datetime,
+    opened_at: str,
+) -> dict[str, dict[str, str]]:
+    incidents: dict[str, dict[str, str]] = {}
+    for run in runs:
+        if not is_deploy_run(run):
+            continue
+        jobs = run.get("jobs") or []
+        if not isinstance(jobs, list):
+            raise GitHubAPIError("workflow jobs must be a list")
+        queued_jobs = [job for job in jobs if isinstance(job, dict) and job.get("status") == "queued"]
+        if queued_jobs:
+            for job in queued_jobs:
+                job_id = require_id(job, "job")
+                started = first_timestamp(
+                    job.get("started_at"),
+                    run.get("run_started_at"),
+                    run.get("created_at"),
+                )
+                if age_seconds(started, now) < threshold:
+                    continue
+                name = job.get("name")
+                if not isinstance(name, str) or not name.strip():
+                    name = f"job {job_id}"
+                url = job.get("html_url") or run.get("html_url") or ""
+                if not isinstance(url, str):
+                    url = ""
+                since = started or "an unknown time"
+                key = f"deploy-queued:{job_id}"
+                incidents[key] = make_incident(
+                    key,
+                    f"{name} is queued",
+                    f"Deploy job {name} (id {job_id}) has been queued since {since}.",
+                    url,
+                    opened_at,
+                )
+            continue
+        if run.get("status") != "queued":
+            continue
+        run_id = require_id(run, "workflow run")
+        started = first_timestamp(run.get("run_started_at"), run.get("created_at"))
+        if age_seconds(started, now) < threshold:
+            continue
+        url = run.get("html_url") or ""
+        if not isinstance(url, str):
+            url = ""
+        since = started or "an unknown time"
+        key = f"deploy-queued:run:{run_id}"
+        incidents[key] = make_incident(
+            key,
+            f"Deploy run {run_id} is queued",
+            f"Deploy run {run_id} has been queued since {since} and has no jobs yet.",
+            url,
+            opened_at,
+        )
+    return incidents
+
+
+def detect_incidents(
+    snapshot: dict[str, Any],
+    repo: str,
+    now_text: str,
+    threshold: int,
+) -> dict[str, dict[str, str]]:
+    now = parse_time(now_text)
+    runners = snapshot.get("runners")
+    runs = snapshot.get("runs")
+    if not isinstance(runners, list) or not isinstance(runs, list):
+        raise GitHubAPIError("snapshot must contain runners and runs lists")
+    incidents = runner_incidents(runners, repo, now_text)
+    incidents.update(job_incidents(runs, threshold, now, now_text))
+    return incidents
+
+
+def runners_page(repo: str, page: int) -> str:
+    return f"{GITHUB_API}/repos/{repo}/actions/runners?per_page=100&page={page}"
+
+
+def runs_page(repo: str, status: str, page: int) -> str:
+    return (
+        f"{GITHUB_API}/repos/{repo}/actions/workflows/deploy.yml/runs"
+        f"?status={status}&per_page=100&page={page}"
+    )
+
+
+def jobs_page(repo: str, run_id: int | str, page: int) -> str:
+    return f"{GITHUB_API}/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100&page={page}"
+
+
+def fetch_json(get: Getter, url: str) -> dict[str, Any]:
+    status, body = get(url)
+    if status != 200:
+        raise GitHubAPIError(f"GitHub API returned {status} for {url}")
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise GitHubAPIError(f"GitHub API returned invalid JSON for {url}") from exc
+    if not isinstance(body, dict):
+        raise GitHubAPIError(f"GitHub API returned a non-object for {url}")
+    return body
+
+
+def collect_pages(get: Getter, url_for_page: Callable[[int], str], key: str) -> list[Any]:
+    collected: list[Any] = []
+    total: int | None = None
+    for page in range(1, PAGE_LIMIT + 1):
+        url = url_for_page(page)
+        body = fetch_json(get, url)
+        batch = body.get(key)
+        if not isinstance(batch, list):
+            raise GitHubAPIError(f"GitHub API response for {url} is missing {key}")
+        if "total_count" not in body or not isinstance(body["total_count"], int):
+            raise GitHubAPIError(f"GitHub API response for {url} is missing total_count")
+        total = body["total_count"]
+        collected.extend(batch)
+        if len(collected) >= total or not batch:
+            break
+    if total is None or len(collected) < total:
+        raise GitHubAPIError(f"GitHub API listing for {key} was incomplete")
+    return collected
+
+
+def fetch_snapshot(get: Getter, repo: str) -> dict[str, Any]:
+    runners = collect_pages(get, lambda page: runners_page(repo, page), "runners")
+    runs: list[dict[str, Any]] = []
+    seen: set[int | str] = set()
+    for status in ("queued", "in_progress"):
+        for run in collect_pages(get, lambda page, status=status: runs_page(repo, status, page), "workflow_runs"):
+            if not isinstance(run, dict) or "id" not in run or run["id"] in seen:
+                continue
+            seen.add(run["id"])
+            jobs = collect_pages(get, lambda page, run_id=run["id"]: jobs_page(repo, run_id, page), "jobs")
+            run = dict(run)
+            run["jobs"] = jobs
+            runs.append(run)
+    return {"runners": runners, "runs": runs}
+
+
+def validate_repo_slug(repo: str) -> str:
+    if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) is None:
+        die(f"repo slug must look like owner/name, got {repo!r}")
+    return repo
+
+
+def validate_notify_url(url: str) -> str:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        die("notify URL must be http or https")
+    if parsed.username or parsed.password:
+        die("notify URL must not include credentials")
+    return url.rstrip("/")
+
+
+def github_getter(token: str) -> Getter:
+    def get(url: str) -> tuple[int, Any]:
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+                "User-Agent": "homelab-runner-watch",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        try:
+            with urllib.request.build_opener(_NoRedirect).open(request, timeout=30) as response:
+                return response.status, json.loads(response.read().decode())
+        except urllib.error.HTTPError as exc:
+            exc.read()
+            return exc.code, {}
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise GitHubAPIError(f"GitHub API request failed for {url}: {exc}") from exc
+
+    return get
+
+
+def fixture_getter(path: Path) -> Getter:
+    try:
+        mapping = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        die(f"could not read GitHub fixture {path}: {exc}")
+    if not isinstance(mapping, dict):
+        die(f"GitHub fixture {path} must be a JSON object")
+
+    def get(url: str) -> tuple[int, Any]:
+        if url not in mapping:
+            raise GitHubAPIError(f"GitHub fixture has no response for {url}")
+        entry = mapping[url]
+        if not isinstance(entry, dict) or "status" not in entry or "body" not in entry:
+            raise GitHubAPIError(f"GitHub fixture entry for {url} must contain status and body")
+        return int(entry["status"]), entry["body"]
+
+    return get
+
+
+def git_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["GIT_AUTHOR_NAME"] = "runner-watch"
+    env["GIT_AUTHOR_EMAIL"] = "runner-watch@users.noreply.github.com"
+    env["GIT_COMMITTER_NAME"] = "runner-watch"
+    env["GIT_COMMITTER_EMAIL"] = "runner-watch@users.noreply.github.com"
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return env
+
+
+def git(repo: Path, *args: str, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        input=input_text,
+        text=True,
+        capture_output=True,
+        env=git_env(),
+        check=False,
+    )
+
+
+def git_ok(repo: Path, *args: str, input_text: str | None = None) -> str:
+    result = git(repo, *args, input_text=input_text)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        die(f"git {' '.join(args)} failed: {detail}")
+    return result.stdout.strip()
+
+
+def ref_exists(repo: Path, ref: str) -> bool:
+    return git(repo, "rev-parse", "--verify", "--quiet", ref).returncode == 0
+
+
+def read_state_ref(repo: Path, ref: str | None) -> dict[str, Any]:
+    if ref is None or not ref_exists(repo, ref):
+        return empty_state()
+    result = git(repo, "show", f"{ref}:{STATE_FILE}")
+    if result.returncode != 0:
+        die(f"could not read {STATE_FILE} from {ref}")
+    try:
+        return load_state(result.stdout)
+    except ValueError as exc:
+        die(str(exc))
+
+
+def commit_state(repo: Path, branch: str, text: str, parent_ref: str | None) -> None:
+    blob = git_ok(repo, "hash-object", "-w", "--stdin", input_text=text)
+    tree = git_ok(repo, "mktree", input_text=f"100644 blob {blob}\t{STATE_FILE}\n")
+    args = ["commit-tree", tree, "-m", "Record runner watch incidents"]
+    if parent_ref is not None and ref_exists(repo, parent_ref):
+        args.extend(["-p", git_ok(repo, "rev-parse", "--verify", parent_ref)])
+    commit = git_ok(repo, *args)
+    git_ok(repo, "update-ref", f"refs/heads/{branch}", commit)
+
+
+def fetch_remote_branch(repo: Path, branch: str) -> str:
+    result = git(
+        repo,
+        "fetch",
+        "origin",
+        f"refs/heads/{branch}:refs/remotes/origin/{branch}",
+    )
+    if result.returncode == 0:
+        return "fetched"
+    stderr = result.stderr or ""
+    if "couldn't find remote ref" in stderr or "fatal: couldn't find remote ref" in stderr:
+        return "absent"
+    die(f"could not fetch {branch}: {stderr.strip()}")
+    return "error"
+
+
+def push_branch(repo: Path, branch: str) -> bool:
+    result = git(
+        repo,
+        "push",
+        "--quiet",
+        "origin",
+        f"refs/heads/{branch}:refs/heads/{branch}",
+    )
+    if result.returncode == 0:
+        return True
+    print((result.stderr or "git push failed").strip(), file=sys.stderr)
+    return False
+
+
+def publish_text(repo: Path, branch: str, text: str, parent_ref: str | None) -> str:
+    if branch == "main" or branch.startswith("refs/"):
+        die("runner-watch must not write refs/heads/main")
+    current = None
+    if parent_ref is not None and ref_exists(repo, parent_ref):
+        shown = git(repo, "show", f"{parent_ref}:{STATE_FILE}")
+        if shown.returncode != 0:
+            die(f"could not read {STATE_FILE} from {parent_ref}")
+        current = shown.stdout
+    if current == text:
+        if parent_ref is not None and parent_ref != f"refs/heads/{branch}":
+            git_ok(repo, "update-ref", f"refs/heads/{branch}", git_ok(repo, "rev-parse", parent_ref))
+        return "unchanged"
+    commit_state(repo, branch, text, parent_ref)
+    return "committed"
+
+
+def command_plan(args: argparse.Namespace) -> int:
+    repo = validate_repo_slug(args.repo_slug)
+    now_text = normalize_now(args.now)
+    previous = empty_state()
+    if args.previous is not None:
+        try:
+            previous = load_state(args.previous.read_text())
+        except (OSError, ValueError) as exc:
+            die(str(exc))
+    try:
+        snapshot = fetch_snapshot(fixture_getter(args.github_fixture), repo)
+        detected = detect_incidents(snapshot, repo, now_text, args.threshold_seconds)
+    except GitHubAPIError as exc:
+        die(str(exc))
+    sys.stdout.write(dump_state(reconcile(previous, detected)))
+    return 0
+
+
+def command_sync(args: argparse.Namespace) -> int:
+    repo_slug = validate_repo_slug(args.repo_slug)
+    now_text = normalize_now(args.now)
+    if args.github_fixture is not None:
+        getter = fixture_getter(args.github_fixture)
+    else:
+        token = os.environ.get("GITHUB_TOKEN", "").strip()
+        if not token:
+            die("GITHUB_TOKEN is unset")
+        getter = github_getter(token)
+    try:
+        snapshot = fetch_snapshot(getter, repo_slug)
+        detected = detect_incidents(snapshot, repo_slug, now_text, args.threshold_seconds)
+    except GitHubAPIError as exc:
+        die(str(exc))
+
+    attempts = 3 if args.push else 1
+    for _attempt in range(attempts):
+        parent_ref: str | None
+        if args.push:
+            fetched = fetch_remote_branch(args.git_repo, args.branch)
+            parent_ref = f"refs/remotes/origin/{args.branch}" if fetched == "fetched" else None
+        else:
+            local_ref = f"refs/heads/{args.branch}"
+            parent_ref = local_ref if ref_exists(args.git_repo, local_ref) else None
+        previous = read_state_ref(args.git_repo, parent_ref)
+        text = dump_state(reconcile(previous, detected))
+        result = publish_text(args.git_repo, args.branch, text, parent_ref)
+        if result == "unchanged":
+            print("unchanged")
+            return 0
+        print("committed")
+        if not args.push:
+            return 0
+        if push_branch(args.git_repo, args.branch):
+            print("pushed")
+            return 0
+        print(f"push of {args.branch} was rejected; retrying", file=sys.stderr)
+    die(f"could not publish {args.branch}")
+    return 1
+
+
+def request_json(method: str, url: str, token: str, body: dict[str, Any] | None = None) -> tuple[int | None, Any]:
+    data = None if body is None else json.dumps(body).encode()
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {token}",
+        "User-Agent": "homelab-runner-watch",
+    }
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(request, timeout=20) as response:
+            raw = response.read().decode()
+            parsed = json.loads(raw) if raw else {}
+            return response.status, parsed
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode()
+        try:
+            parsed = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            parsed = {}
+        return exc.code, parsed
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return None, None
+
+
+def send_incident(base_url: str, token: str, incident: dict[str, str]) -> str:
+    tag = incident["tag"]
+    query = urllib.parse.urlencode({"tag": tag, "limit": "1"})
+    status, body = request_json("GET", f"{base_url}/v1/notifications?{query}", token)
+    if status is None or status in RETRY_STATUSES:
+        print(f"pending {tag}")
+        return "pending"
+    if status < 200 or status >= 300:
+        print(f"notification list for {tag} failed with HTTP {status}", file=sys.stderr)
+        return "hard"
+    if not isinstance(body, dict) or not isinstance(body.get("notifications"), list):
+        print(f"notification list for {tag} was not usable", file=sys.stderr)
+        return "hard"
+    if body["notifications"]:
+        print(f"already sent {tag}")
+        return "sent"
+    payload: dict[str, str] = {
+        "title": incident["title"],
+        "message": incident["message"],
+        "tag": tag,
+        "group": NOTIFY_GROUP,
+    }
+    if incident.get("url"):
+        payload["url"] = incident["url"]
+    status, _body = request_json("POST", f"{base_url}/v1/notify/joe", token, payload)
+    if status is not None and 200 <= status < 300:
+        print(f"sent {tag}")
+        return "sent"
+    if status is None or status in RETRY_STATUSES:
+        print(f"pending {tag}")
+        return "pending"
+    print(f"notify for {tag} failed with HTTP {status}", file=sys.stderr)
+    return "hard"
+
+
+def load_deliver_state(args: argparse.Namespace) -> dict[str, Any] | None:
+    if args.state_file is not None:
+        try:
+            return load_state(args.state_file.read_text())
+        except (OSError, ValueError) as exc:
+            die(str(exc))
+    if args.fetch:
+        fetched = fetch_remote_branch(args.git_repo, args.branch)
+        if fetched == "absent":
+            return None
+        return read_state_ref(args.git_repo, f"refs/remotes/origin/{args.branch}")
+    local_ref = f"refs/heads/{args.branch}"
+    if not ref_exists(args.git_repo, local_ref):
+        return None
+    return read_state_ref(args.git_repo, local_ref)
+
+
+def command_deliver(args: argparse.Namespace) -> int:
+    base_url = validate_notify_url(args.notify_url)
+    state = load_deliver_state(args)
+    if state is None:
+        print("nothing to send")
+        return 0
+    incidents = state["incidents"]
+    if not incidents:
+        print("nothing to send")
+        return 0
+    token = os.environ.get("HOMELAB_FUNCTIONS_TOKEN", "").strip()
+    if not token:
+        die("HOMELAB_FUNCTIONS_TOKEN is unset")
+    for key in sorted(incidents):
+        incident = incidents[key]
+        if not usable_incident(incident):
+            die(f"incident {key} is missing title, message, tag, or opened_at")
+        outcome = send_incident(base_url, token, freeze_incident(incident))
+        if outcome == "hard":
+            return 1
+    return 0
+
+
+def add_common(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--threshold-seconds", type=int, default=DEFAULT_THRESHOLD_SECONDS)
+    parser.add_argument("--now")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    plan = commands.add_parser("plan", help="print the reconciled incident state")
+    plan.add_argument("--github-fixture", type=Path, required=True)
+    plan.add_argument("--repo-slug", required=True)
+    plan.add_argument("--previous", type=Path)
+    add_common(plan)
+    plan.set_defaults(func=command_plan)
+
+    sync = commands.add_parser("sync", help="detect incidents and publish them")
+    sync.add_argument("--git-repo", type=Path, required=True)
+    sync.add_argument("--branch", default=DEFAULT_BRANCH)
+    sync.add_argument("--repo-slug", required=True)
+    sync.add_argument("--github-fixture", type=Path)
+    sync.add_argument("--push", action="store_true")
+    add_common(sync)
+    sync.set_defaults(func=command_sync)
+
+    deliver = commands.add_parser("deliver", help="phone Joe once per unsent incident")
+    deliver.add_argument("--notify-url", required=True)
+    deliver.add_argument("--git-repo", type=Path)
+    deliver.add_argument("--branch", default=DEFAULT_BRANCH)
+    deliver.add_argument("--state-file", type=Path)
+    deliver.add_argument("--fetch", action="store_true")
+    deliver.set_defaults(func=command_deliver)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    if getattr(args, "threshold_seconds", 0) < 0:
+        die("threshold must be zero or greater")
+    if args.command == "deliver" and args.state_file is None and args.git_repo is None:
+        die("deliver needs --state-file or --git-repo")
+    if args.command == "deliver" and args.fetch and args.git_repo is None:
+        die("deliver --fetch needs --git-repo")
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
