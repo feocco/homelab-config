@@ -52,6 +52,7 @@ on:
           - streaming-sessions
           - streaming-sessions-kafka
           - streaming-sessions-postgres
+          - tailnet-client-probe
           - waiting
       force_recreate:
         description: Force recreate containers
@@ -105,6 +106,7 @@ jobs:
           HOMELAB_SMOKE_SIGNAL__HA_NOTIFY_JOE_SERVICE: ${{ secrets.HOMELAB_SMOKE_SIGNAL__HA_NOTIFY_JOE_SERVICE }}
           HOMELAB_SMOKE_SIGNAL__HA_URL: ${{ secrets.HOMELAB_SMOKE_SIGNAL__HA_URL }}
           HOMELAB_SMOKE_SIGNAL__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.HOMELAB_SMOKE_SIGNAL__HOMELAB_FUNCTIONS_TOKEN }}
+          TAILNET_CLIENT_PROBE__HOMELAB_FUNCTIONS_TOKEN: ${{ secrets.TAILNET_CLIENT_PROBE__HOMELAB_FUNCTIONS_TOKEN }}
           # END GENERATED SERVICE SECRETS
         run: |
           ./scripts/render-service-env --host nasfeo --all \

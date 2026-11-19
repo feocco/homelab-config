@@ -1,0 +1,21 @@
+# Generated from scripts/sync-cloudflare-dns --dry-run; scripts/tests/check-tailnet-client-probe keeps it in sync.
+auth.home.feocco.com
+docs.home.feocco.com
+grafana.home.feocco.com
+hass-janitor.home.feocco.com
+hello-nas.home.feocco.com
+home-ops.home.feocco.com
+home.feocco.com
+homelab-functions.home.feocco.com
+homelab-log-watcher.home.feocco.com
+homelab-sre-agent.home.feocco.com
+honeymoon-planner.home.feocco.com
+instacart-history-service.home.feocco.com
+inventory.home.feocco.com
+laundry-monitor.home.feocco.com
+mealie-planner.home.feocco.com
+pirate-radio.home.feocco.com
+plant-monitor.home.feocco.com
+reader.home.feocco.com
+streaming-sessions.home.feocco.com
+waiting.home.feocco.com

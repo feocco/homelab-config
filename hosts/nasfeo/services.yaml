@@ -44,6 +44,10 @@ services:
     path: services/homelab-smoke-signal
     enabled: true
 
+  tailnet-client-probe:
+    path: services/tailnet-client-probe
+    enabled: true
+
   bedtime:
     path: services/bedtime
     enabled: false
