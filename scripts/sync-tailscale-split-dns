@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Route homelab DNS names for tailnet clients to public DNS (Tailscale split DNS).
+
+Why: UniFi LAN DNS answers *.home.feocco.com with the Mac mini LAN address
+(192.168.1.43). Android 17 treats RFC1918 addresses on Wi-Fi as "local network"
+and drops an app's packets unless it holds ACCESS_LOCAL_NETWORK. Chrome 156 on
+Android 17 can lose that grant (REVOKED_COMPAT) and then loops 32 restarts into
+ERR_TOO_MANY_RETRIES (crbug.com/579403238). Traffic over a VPN interface is not
+"local network", so a phone with Tailscale on works if it resolves homelab
+names to tailnet addresses. Split DNS makes every tailnet client ask Cloudflare,
+which serves the DNS-only tailnet A records written by sync-cloudflare-dns.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.machinery
+import importlib.util
+import ipaddress
+import json
+import os
+import pathlib
+import sys
+import urllib.error
+import urllib.request
+from typing import Any
+
+API_BASE = "https://api.tailscale.com/api/v2"
+HOME_DOMAIN = "home.feocco.com"
+# Public resolvers that answer from the Cloudflare zone sync-cloudflare-dns manages.
+SPLIT_DNS_NAMESERVERS = ["1.1.1.1", "1.0.0.1"]
+TAILNET_V4 = ipaddress.ip_network("100.64.0.0/10")
+
+SplitDns = dict[str, list[str]]
+
+
+def load_cloudflare_sync(base_dir: pathlib.Path) -> Any:
+    path = base_dir / "scripts" / "sync-cloudflare-dns"
+    loader = importlib.machinery.SourceFileLoader("sync_cloudflare_dns", str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def split_domain(hostname: str) -> str:
+    if hostname == HOME_DOMAIN or hostname.endswith(f".{HOME_DOMAIN}"):
+        return HOME_DOMAIN
+    return hostname
+
+
+def lan_routed_hostnames(cf: Any, base_dir: pathlib.Path, host_name: str) -> tuple[set[str], set[str], set[str]]:
+    """Return (dns-only names, cloudflare-tunnel names, retired LAN-only names) that UniFi answers locally."""
+    _, services = cf.parse_host_file(base_dir / "hosts" / host_name / "services.yaml")
+    dns_only: set[str] = set()
+    tunnel: set[str] = set()
+    for _service, entry in sorted(services.items()):
+        if entry.get("enabled") is False:
+            continue
+        manifest = cf.parse_ops(base_dir / str(entry["path"]) / "ops.yaml")
+        if manifest.get("route_dns") != "unifi" or manifest.get("route_https") is not True:
+            continue
+        names = set(cf.route_hostnames(manifest))
+        if str(manifest.get("route_public_dns") or "cloudflare-dns-only") == "cloudflare-tunnel":
+            tunnel.update(names)
+        else:
+            dns_only.update(names)
+    retired = {
+        route["hostname"]
+        for route in cf.parse_retired_routes(base_dir / "services" / "caddy" / "retired-routes.yaml")
+        if not route.get("tailscale_service")
+    } - dns_only - tunnel
+    return dns_only, tunnel, retired
+
+
+def desired_split_dns(base_dir: pathlib.Path, host_name: str) -> tuple[SplitDns, list[str]]:
+    cf = load_cloudflare_sync(base_dir)
+    dns_only, tunnel, retired = lan_routed_hostnames(cf, base_dir, host_name)
+    answers = {record["name"]: record["value"] for record in cf.desired_records(base_dir, host_name)}
+
+    problems: list[str] = []
+    for name in sorted(dns_only):
+        value = answers.get(name)
+        if value is None:
+            problems.append(f"{name}: no Cloudflare DNS-only record, so tailnet clients would get NXDOMAIN")
+        elif ipaddress.ip_address(value) not in TAILNET_V4:
+            problems.append(f"{name}: Cloudflare answer {value} is not a tailnet address")
+    if problems:
+        raise SystemExit("Split DNS would hand tailnet clients unusable answers:\n- " + "\n- ".join(problems))
+
+    warnings = [
+        f"{name}: retired LAN-only redirect; tailnet clients resolve it from public DNS only"
+        for name in sorted(retired)
+    ]
+    domains = sorted({split_domain(name) for name in dns_only | tunnel})
+    return {domain: list(SPLIT_DNS_NAMESERVERS) for domain in domains}, warnings
+
+
+def api_key() -> str:
+    key = os.environ.get("TAILSCALE_API_KEY") or os.environ.get("TS_API_KEY") or ""
+    if not key:
+        raise SystemExit("TAILSCALE_API_KEY is required unless --dry-run is used")
+    return key
+
+
+def request_json(method: str, path: str, payload: Any = None) -> Any:
+    tailnet = os.environ.get("TAILNET", "-")
+    req = urllib.request.Request(
+        f"{API_BASE}/tailnet/{tailnet}{path}",
+        data=None if payload is None else json.dumps(payload).encode(),
+        method=method,
+        headers={"Authorization": f"Bearer {api_key()}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            body = response.read().decode()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise SystemExit(f"Tailscale API {method} {path} failed: HTTP {exc.code}: {detail}") from exc
+    return json.loads(body) if body else {}
+
+
+def current_split_dns() -> SplitDns:
+    fixture = os.environ.get("TAILSCALE_SPLIT_DNS_FIXTURE")
+    payload = json.loads(pathlib.Path(fixture).read_text()) if fixture else request_json("GET", "/dns/split-dns")
+    return {str(domain): list(servers or []) for domain, servers in (payload or {}).items()}
+
+
+def drift(desired: SplitDns, current: SplitDns) -> list[str]:
+    return [
+        f"{domain}: {current.get(domain) or 'unset'} != {servers}"
+        for domain, servers in desired.items()
+        if current.get(domain) != servers
+    ]
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--base-dir", default=str(pathlib.Path(__file__).resolve().parents[1]))
+    parser.add_argument("--host", default="macmini")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--check", action="store_true")
+    mode.add_argument("--apply", action="store_true")
+    args = parser.parse_args(argv)
+
+    desired, warnings = desired_split_dns(pathlib.Path(args.base_dir), args.host)
+    for warning in warnings:
+        print(f"WARN {warning}", file=sys.stderr)
+    if args.dry_run or not (args.check or args.apply):
+        for domain, servers in desired.items():
+            print(f"Would set Tailscale split DNS {domain} -> {', '.join(servers)}")
+        return 0
+
+    mismatches = drift(desired, current_split_dns())
+    if args.check:
+        if mismatches:
+            print("Tailscale split DNS does not match route manifests:", file=sys.stderr)
+            for mismatch in mismatches:
+                print(f"- {mismatch}", file=sys.stderr)
+            return 1
+        print("Tailscale split DNS matches route manifests.")
+        return 0
+
+    if mismatches:
+        # PATCH only touches the listed domains; other split-DNS entries stay as they are.
+        request_json("PATCH", "/dns/split-dns", desired)
+    for domain, servers in desired.items():
+        print(f"Set Tailscale split DNS {domain} -> {', '.join(servers)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
