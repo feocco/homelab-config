@@ -125,10 +125,11 @@ services:
      that will be documented and made durable immediately afterward.
    - For small, validated homelab fixes, prefer pushing or merging to
      `homelab-config/main` before the final deployment.
-   - Use a manual `workflow_dispatch` deploy from a feature branch only as a
-     canary, emergency validation path, or review step. The deploy script
-     requires `--canary` for non-`main` deploys. Treat branch-deployed runtime
-     config as temporary until the same change is merged to `main`.
+   - Do not `workflow_dispatch` Deploy from a feature branch. The workflow
+     refuses every ref other than `refs/heads/main` before the host jobs start.
+     A temporary branch canary is `./scripts/homelab-deploy --canary` on the
+     host. Treat that runtime as temporary until the same change is merged to
+     `main`.
    - If a branch deployment succeeds, promptly merge or push the validated
      change to `main`, then verify `origin/main` contains the exact runtime
      config that was deployed. If practical, redeploy the service from `main`.

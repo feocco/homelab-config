@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Prove host deploy workflows accept refs/heads/main and reject every other ref."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+from pathlib import Path
+
+import yaml
+
+
+REPO = Path(__file__).resolve().parents[2]
+GATE = REPO / "scripts" / "require-main-ref"
+WORKFLOWS = REPO / ".github" / "workflows"
+
+
+def run_gate(ref: str | None) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    if ref is None:
+        env.pop("GITHUB_REF", None)
+    else:
+        env["GITHUB_REF"] = ref
+    return subprocess.run(
+        [str(GATE)],
+        check=False,
+        text=True,
+        capture_output=True,
+        env=env,
+    )
+
+
+def expect_accept(ref: str) -> None:
+    result = run_gate(ref)
+    output = result.stdout + result.stderr
+    if result.returncode != 0 or ref not in output:
+        raise SystemExit(f"expected {ref} to be accepted:\n{output}")
+
+
+def expect_reject(ref: str | None, named: str) -> None:
+    result = run_gate(ref)
+    output = result.stdout + result.stderr
+    if result.returncode == 0 or named not in output or "refs/heads/main" not in output:
+        raise SystemExit(f"expected {named} to be rejected:\n{output}")
+
+
+def needs_require_main(job: dict) -> bool:
+    needs = job.get("needs")
+    if needs == "require-main":
+        return True
+    return isinstance(needs, list) and "require-main" in needs
+
+
+def workflow_on(document: dict) -> dict:
+    raw = document.get("on", document.get(True))
+    if not isinstance(raw, dict):
+        raise SystemExit("deploy.yml is missing an on: mapping")
+    return raw
+
+
+expect_accept("refs/heads/main")
+expect_reject("refs/heads/cursor/example", "refs/heads/cursor/example")
+expect_reject("refs/tags/v1", "refs/tags/v1")
+expect_reject("refs/pull/50/merge", "refs/pull/50/merge")
+expect_reject("", "<empty>")
+expect_reject(None, "<empty>")
+
+main_result = run_gate("refs/heads/main")
+if main_result.returncode != 0:
+    raise SystemExit(main_result.stderr)
+
+deploy_text = (WORKFLOWS / "deploy.yml").read_text()
+deploy = yaml.safe_load(deploy_text)
+jobs = deploy["jobs"]
+require_main = jobs["require-main"]
+if require_main.get("runs-on") != "ubuntu-latest":
+    raise SystemExit("require-main must run on ubuntu-latest, before a self-hosted runner")
+joined_steps = " ".join(
+    step.get("run", "") for step in require_main.get("steps", []) if isinstance(step, dict)
+)
+if "scripts/require-main-ref" not in joined_steps:
+    raise SystemExit("require-main must run scripts/require-main-ref")
+
+host_jobs = [
+    name
+    for name, job in jobs.items()
+    if name != "require-main" and isinstance(job, dict)
+]
+if host_jobs != ["deploy-nasfeo", "deploy-macmini"]:
+    raise SystemExit(f"unexpected deploy jobs: {host_jobs}")
+for name in host_jobs:
+    job = jobs[name]
+    if not needs_require_main(job):
+        raise SystemExit(f"{name} must need require-main")
+    condition = str(job.get("if", ""))
+    if "success()" not in condition:
+        raise SystemExit(f"{name} if must include success() so a failed ref check skips the host")
+    if "github.repository == 'feocco/homelab-config'" not in condition:
+        raise SystemExit(f"{name} is missing the repository guard")
+
+inputs = workflow_on(deploy).get("workflow_dispatch", {}).get("inputs", {})
+if "canary" in inputs or "inputs.canary" in deploy_text or "--canary" in deploy_text:
+    raise SystemExit("deploy.yml must not keep a canary bypass")
+
+callers = sorted(
+    path.name
+    for path in WORKFLOWS.glob("*.yml")
+    if "homelab-deploy" in path.read_text() or "require-main-ref" in path.read_text()
+)
+if callers != ["deploy.yml"]:
+    raise SystemExit(f"host deploy entrypoints must be only deploy.yml, found {callers}")
+
+printed = subprocess.run(
+    [str(REPO / "scripts" / "redeploy-image"), "--host", "macmini", "plant-monitor", "--print"],
+    check=False,
+    text=True,
+    capture_output=True,
+)
+printed_text = printed.stdout + printed.stderr
+if printed.returncode != 0:
+    raise SystemExit(printed_text)
+if "--ref main" not in printed_text or "canary" in printed_text:
+    raise SystemExit(f"image redeploy must target main and must not pass canary:\n{printed_text}")
+
+print("Main deploy ref gate passed.")

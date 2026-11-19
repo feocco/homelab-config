@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Host deploys of this repo run only from main. Image tags built from a
+# service pull request stay allowed when main's config names that tag.
+set -euo pipefail
+
+ref="${GITHUB_REF:-}"
+if [[ "${ref}" == "refs/heads/main" ]]; then
+  printf 'Deploy ref is %s.\n' "${ref}"
+  exit 0
+fi
+
+if [[ -z "${ref}" ]]; then
+  ref="<empty>"
+fi
+printf 'Refusing to deploy %s. homelab-config host deploys run only from refs/heads/main.\n' "${ref}" >&2
+exit 1
