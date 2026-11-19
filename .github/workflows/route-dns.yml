@@ -19,6 +19,7 @@ on:
           - all
           - unifi
           - cloudflare
+          - tailscale
       mode:
         description: Check desired state or apply and verify it
         required: true
@@ -47,6 +48,7 @@ jobs:
           UNIFI_API_KEY: ${{ secrets.UNIFI_API_KEY }}
           UNIFI_CONSOLE_ID: ${{ vars.UNIFI_CONSOLE_ID }}
           CADDY__CLOUDFLARE_API_TOKEN: ${{ secrets.CADDY__CLOUDFLARE_API_TOKEN }}
+          TAILSCALE_API_KEY: ${{ secrets.TAILSCALE_API_KEY }}
         run: |
           sync_provider() {
             local provider="$1"
@@ -66,6 +68,13 @@ jobs:
                 fi
                 script="./scripts/sync-cloudflare-dns"
                 ;;
+              tailscale)
+                if [ -z "${TAILSCALE_API_KEY}" ]; then
+                  echo "TAILSCALE_API_KEY repository secret is required." >&2
+                  exit 2
+                fi
+                script="./scripts/sync-tailscale-split-dns"
+                ;;
               *)
                 echo "Unsupported provider: ${provider}" >&2
                 exit 2
@@ -83,7 +92,7 @@ jobs:
               sync_provider unifi
               sync_provider cloudflare
               ;;
-            unifi|cloudflare)
+            unifi|cloudflare|tailscale)
               sync_provider "${PROVIDER_INPUT}"
               ;;
             *)

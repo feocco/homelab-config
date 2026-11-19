@@ -11,7 +11,7 @@ WATCH="false"
 usage() {
   cat <<'EOF'
 Usage:
-  dispatch-route-dns [--host macmini] [--provider all|unifi|cloudflare]
+  dispatch-route-dns [--host macmini] [--provider all|unifi|cloudflare|tailscale]
                      [--mode check|apply] [--ref REF] [--print] [--watch]
 
 Examples:
@@ -60,7 +60,7 @@ done
 
 [[ "${HOST}" == "macmini" ]] || { echo "Unsupported host: ${HOST}" >&2; exit 2; }
 [[ "${MODE}" == "check" || "${MODE}" == "apply" ]] || { echo "Unsupported mode: ${MODE}" >&2; exit 2; }
-[[ "${PROVIDER}" == "all" || "${PROVIDER}" == "unifi" || "${PROVIDER}" == "cloudflare" ]] || {
+[[ "${PROVIDER}" == "all" || "${PROVIDER}" == "unifi" || "${PROVIDER}" == "cloudflare" || "${PROVIDER}" == "tailscale" ]] || {
   echo "Unsupported provider: ${PROVIDER}" >&2
   exit 2
 }
