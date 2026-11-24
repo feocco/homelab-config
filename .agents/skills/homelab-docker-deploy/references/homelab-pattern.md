@@ -44,7 +44,7 @@ gh run view <run-id> --repo feocco/homelab-config --log
 If SSH is configured:
 
 ```bash
-ssh -o BatchMode=yes feocco@nasfeo 'sudo -n /usr/local/bin/homelab-deploy --list'
+ssh -o BatchMode=yes feocco@nasfeo 'cd /volume1/docker/homelab-config && ./scripts/homelab-deploy --list'
 ssh -o BatchMode=yes feocco@nasfeo 'sudo -n /usr/local/bin/docker ps --filter name=<service>'
 ssh -o BatchMode=yes feocco@nasfeo 'sudo -n /usr/local/bin/docker logs --tail=100 <service>'
 ```

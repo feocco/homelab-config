@@ -473,17 +473,6 @@ prepare_service() {
     return 0
   fi
 
-  if [[ "${service}" == "homelab-smoke-signal" ]]; then
-    if [[ "${DRY_RUN}" == "true" ]]; then
-      echo "Would remove legacy homelab-sentinel container if present"
-      return 0
-    fi
-
-    echo "Removing legacy homelab-sentinel container if present"
-    docker rm -f homelab-sentinel >/dev/null 2>&1 || true
-    return 0
-  fi
-
   if [[ "${service}" != "homepage" ]]; then
     return 0
   fi
