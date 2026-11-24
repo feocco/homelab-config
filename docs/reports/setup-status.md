@@ -13,10 +13,8 @@
 - Added GitHub Actions workflow in `feocco/plant-monitor` to build and push the image to GHCR.
 - Confirmed the first GHCR build completed successfully.
 - Confirmed plant monitor runs on NAS with `docker-compose`.
-- Previously confirmed passwordless sudo worked for `/usr/local/bin/homelab-deploy plant-monitor`.
 - Added host-aware `hosts/<host>/services.yaml` manifest pattern.
 - Added repo-owned `scripts/homelab-deploy`.
-- Added repo-owned `scripts/install-deploy-script`.
 - Added self-hosted runner deploy workflow scaffold.
 - Added Dockerized GitHub runner Compose config.
 - Proved Mac mini runner and Tailnet-only `hello-nas` canary deploy.
@@ -54,12 +52,11 @@ Run these from a terminal that can reach the NAS:
 ssh <nas-user>@nasfeo 'docker --version && docker-compose version'
 ```
 
-Install/update the deploy script on the NAS:
+Update the deploy script on the NAS:
 
 ```bash
 cd /volume1/docker/homelab-config
 git pull
-sudo scripts/install-deploy-script
 ./scripts/homelab-deploy --host nasfeo --list
 ./scripts/homelab-deploy --host nasfeo plant-monitor
 ```

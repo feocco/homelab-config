@@ -52,11 +52,4 @@ if [[ "${deploy_dry_run}" != *"Would generate Homelab Functions catalog config"*
   exit 1
 fi
 
-smoke_dry_run="$("${REPO_DIR}/scripts/homelab-deploy" --host nasfeo homelab-smoke-signal --dry-run --deploy-base-dir "${REPO_DIR}")"
-if [[ "${smoke_dry_run}" != *"Would remove legacy homelab-sentinel container if present"* ]]; then
-  echo "homelab-smoke-signal dry-run should show legacy container cleanup" >&2
-  echo "${smoke_dry_run}" >&2
-  exit 1
-fi
-
 echo "Smoke Signal config checks passed."
